@@ -1,0 +1,14 @@
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+# .NET
+ipc/**/bin/
+ipc/**/obj/
+*.user
+.vs/
+# Python
+__pycache__/
+.venv/
+# IPC 本機資料
+ipc/data/
+*.db

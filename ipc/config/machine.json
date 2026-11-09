@@ -1,0 +1,17 @@
+{
+  "_comment": "換機台只改這個檔。TODO 數值待確認",
+  "buses": [
+    { "port": "COM1", "baud": 115200, "pollMs": 50,  "slaves": [ 1 ] },
+    { "port": "COM2", "baud": 115200, "pollMs": 100, "slaves": [ 2, 3, 4 ] }
+  ],
+  "throttleValve": { "port": "COM3", "baud": 19200 },
+  "rf": { "port": "COM4", "baud": 9600, "ids": [ 11, 12 ] },
+  "watchdogMs": 1000,
+  "gauges": {
+    "chamberConvectron": { "board": 3, "aiIndex": 3, "formula": "TODO 依型號手冊", "unit": "Torr" },
+    "chamberIonGauge":   { "board": 3, "aiIndex": 2, "formula": "log", "a": 1.0, "b": -10.0, "unit": "Torr",
+                           "_note": "範例：P = 10^((V - b)/a)，TODO 依型號手冊" },
+    "chamberManometer":  { "board": 1, "formula": "linear", "fullScaleTorr": 1.0, "fullScaleMv": 10000 }
+  },
+  "dataLog": { "path": "data/ald.db", "intervalMs": 1000, "keepDays": 90 }
+}

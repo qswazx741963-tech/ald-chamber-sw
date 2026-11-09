@@ -1,0 +1,151 @@
+# =====================================================================
+#  ALD Chamber Modbus 暫存器定義（唯一來源 / Single source of truth）
+#  改完執行：python tools/codegen/gen_registers.py
+#
+#  欄位說明
+#    name   : 名稱（大寫底線）
+#    addr   : 起始位址（0 起算，Modbus Poll 裡 Input Register 3x0001 = addr 0）
+#    type   : u16（預設）/ i16 / i32（i32 佔 2 個暫存器，高位在前）
+#    count  : 陣列長度（預設 1），例如 6 組 MFC
+#    scale  : 實際值 = 原始值 × scale（預設 1）
+#    unit   : 單位（只做說明）
+#    min/max: 允許的「實際值」範圍，IPC 寫入前與 Arduino 收到後都會檢查
+#    bits   : 位元欄位，依序 bit0, bit1 ...
+#    values : 列舉值（命令碼）
+#
+#  位址格局（四塊板相同）
+#    IR 0-9    共用表頭        HR 0-9    共用命令
+#    IR 10-19  DI 位元         HR 10-19  DO 命令位元
+#    IR 20-29  DO 回授位元     HR 20-99  設定值
+#    IR 30-99  AI / 運算值     HR 100-199 參數區
+#  ※ 待確認項目標 TODO，硬體定案後再補
+# =====================================================================
+map_version: 1
+
+common:
+  input:
+    - { name: BOARD_ID,       addr: 0 }
+    - { name: FW_VERSION,     addr: 1, desc: "例如 0x0102 = v1.2" }
+    - { name: MAP_VERSION,    addr: 2, desc: "必須等於 map_version，否則 IPC 拒絕連線" }
+    - name: STATUS
+      addr: 3
+      bits: [READY, RUNNING, SAFE_STATE, WATCHDOG_TRIPPED, PARAM_REJECTED, LOCAL_INTERLOCK]
+    - { name: ALARM_BITS,     addr: 4, desc: "各板自訂警報位元（TODO 定義）" }
+    - { name: HEARTBEAT_ECHO, addr: 5, desc: "回傳最後收到的 HEARTBEAT" }
+    - { name: BOARD_COUNTER,  addr: 6, desc: "板內主迴圈計數，確認板子沒當機" }
+    - { name: LAST_ERROR,     addr: 7 }
+  holding:
+    - { name: HEARTBEAT,   addr: 0, desc: "IPC 每次輪詢 +1" }
+    - name: COMMAND
+      addr: 1
+      values: { NONE: 0, START: 1, STOP: 2, RESET_ALARM: 3, ENTER_SAFE: 4 }
+    - { name: WATCHDOG_MS, addr: 2, unit: ms, min: 200, max: 10000, desc: "預設 1000，TODO 確認" }
+
+boards:
+  # ------------------------------------------------------------------
+  board1_process:
+    slave_id: 1
+    port: COM1
+    desc: 製程控制（ALD 閥、MFC、腔體壓力計）
+    input:
+      - name: DI
+        addr: 10
+        bits: [RF1_POWER_CABLE_OK, RF1_MATCH_CABLE_OK]
+      - name: DO_FB
+        addr: 20
+        bits: [ALD_V1, ALD_V2, ALD_V3, ALD_V4, ALD_V5, ALD_V6,
+               MFC_UP_V1, MFC_UP_V2, MFC_UP_V3, MFC_UP_V4, MFC_UP_V5, MFC_UP_V6]
+      - { name: MFC_PV,        addr: 30, count: 6, scale: 0.1, unit: sccm }
+      - { name: MANOMETER_RAW, addr: 36, unit: mV, desc: "原始電壓，換算在 IPC" }
+      - { name: ALD_CYCLE_NOW, addr: 40 }
+      - { name: ALD_STEP_NOW,  addr: 41 }
+    holding:
+      - name: DO_CMD
+        addr: 10
+        bits: [ALD_V1, ALD_V2, ALD_V3, ALD_V4, ALD_V5, ALD_V6,
+               MFC_UP_V1, MFC_UP_V2, MFC_UP_V3, MFC_UP_V4, MFC_UP_V5, MFC_UP_V6]
+      - { name: MFC_SP,         addr: 20, count: 6, scale: 0.1, unit: sccm, min: 0, max: 1000 }
+      - { name: ALD_CYCLES,     addr: 100, min: 1, max: 60000 }
+      - { name: ALD_STEP_COUNT, addr: 101, min: 1, max: 16 }
+      - { name: ALD_STEP_VALVES, addr: 110, count: 16, desc: "每步要開的 ALD 閥位元（bit0 = ALD_V1）" }
+      - { name: ALD_STEP_MS,     addr: 130, count: 16, unit: ms, min: 1, max: 60000 }
+
+  # ------------------------------------------------------------------
+  board2_heater:
+    slave_id: 2
+    port: COM2
+    desc: 加熱器與熱電偶（12 組，板內 PID）
+    heaters: &heaters [LID_CONE, CHAMBER_LID, CHAMBER_WALL, SUSCEPTOR_UP, SUSCEPTOR_LOW,
+                       AMPOULE1, AMPOULE2, GASLINE1, GASLINE2, FORELINE, SPARE1, SPARE2]
+    input:
+      - name: DI
+        addr: 10
+        bits: [OT_LID_CONE, OT_CHAMBER_LID, OT_CHAMBER_WALL]
+      - name: DO_FB
+        addr: 20
+        bits: *heaters
+      - { name: TC_TEMP, addr: 30, count: 12, type: i16, scale: 0.1, unit: degC }
+      - { name: HEATER_DUTY, addr: 50, count: 12, scale: 0.1, unit: "%" }
+    holding:
+      - name: HEATER_ENABLE
+        addr: 10
+        bits: *heaters
+      - { name: HEATER_SP,   addr: 20, count: 12, scale: 0.1, unit: degC,     min: 0, max: 300, desc: "TODO 各組上限" }
+      - { name: HEATER_RAMP, addr: 40, count: 12, scale: 0.1, unit: degC/min, min: 0, max: 50 }
+      - { name: PID_KP, addr: 100, count: 12, scale: 0.01 }
+      - { name: PID_KI, addr: 120, count: 12, scale: 0.001 }
+      - { name: PID_KD, addr: 140, count: 12, scale: 0.01 }
+
+  # ------------------------------------------------------------------
+  board3_vacuum:
+    slave_id: 3
+    port: COM2
+    desc: 壓力 / 真空、閥件、泵（板內互鎖）
+    valves: &valves [TURBO_GV, TURBO_ROUGH, CHAMBER_ROUGH, CHAMBER_VENT, LOADLOCK_VENT,
+                     LOADLOCK_ROUGH, SLIT_OPEN, SLIT_CLOSE, DRYPUMP_ON, TURBO_ON]
+    input:
+      - name: DI
+        addr: 10
+        bits: [CHAMBER_LID_CLOSED, LID_COVER_CLOSED, LOADLOCK_LID_CLOSED,
+               TURBO_GV_OPENED, TURBO_GV_CLOSED, SLIT_OPENED, SLIT_CLOSED,
+               INDEXER_UP, INDEXER_DOWN, DRYPUMP_RUNNING, DRYPUMP_ALARM,
+               TURBO_AT_SPEED, TURBO_ALARM]
+      - name: DO_FB
+        addr: 20
+        bits: *valves
+      - name: DO_BLOCKED
+        addr: 21
+        desc: "IPC 有下命令但被板內互鎖擋下的閥"
+        bits: *valves
+      - { name: AI_RAW, addr: 30, count: 8, unit: mV,
+          desc: "0 CDA, 1 冷卻水流量, 2 Ion gauge, 3 Chamber convectron, 4 Foreline convectron, 5 Loadlock convectron, 6-7 Spare" }
+    holding:
+      - name: DO_CMD
+        addr: 10
+        bits: *valves
+
+  # ------------------------------------------------------------------
+  board4_motion:
+    slave_id: 4
+    port: COM2
+    desc: 馬達、升降、感測器（3 軸：0 Susceptor, 1 Wafer lift, 2 Loadlock）
+    input:
+      - name: DI
+        addr: 10
+        bits: [SUSCEPTOR_HOME, SUSCEPTOR_PROCESS, WAFER_LIFT_HOME, WAFER_LIFT_UP,
+               LOADLOCK_HOME, WAFER_PRESENT]
+      - name: DO_FB
+        addr: 20
+        bits: [WAFER_LIFT_UP, WAFER_LIFT_DOWN, INDEXER_UP, INDEXER_DOWN]
+      - { name: AXIS_POS,   addr: 30, count: 3, type: i32, unit: step }
+      - { name: AXIS_STATE, addr: 40, count: 3, desc: "0 idle, 1 moving, 2 homing, 3 error" }
+    holding:
+      - name: DO_CMD
+        addr: 10
+        bits: [WAFER_LIFT_UP, WAFER_LIFT_DOWN, INDEXER_UP, INDEXER_DOWN]
+      - { name: AXIS_TARGET, addr: 20, count: 3, type: i32, unit: step }
+      - { name: AXIS_SPEED,  addr: 30, count: 3, unit: step/s, min: 1, max: 20000 }
+      - name: AXIS_CMD
+        addr: 40
+        count: 3
+        values: { NONE: 0, MOVE: 1, HOME: 2, STOP: 3 }

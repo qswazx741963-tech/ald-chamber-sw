@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>AldChamber</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Ald.Core\Ald.Core.csproj" />
+    <ProjectReference Include="..\Ald.Comm\Ald.Comm.csproj" />
+    <ProjectReference Include="..\Ald.Data\Ald.Data.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\config\machine.json" Link="config\machine.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
