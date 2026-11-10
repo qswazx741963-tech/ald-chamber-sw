@@ -28,8 +28,8 @@ uint8_t  hal_board_type_straps(void);       /* 板上板型電阻 / 跳線 */
 bool     hal_safe_line_ok(void);            /* 背板 SAFE 線：true = 正常（高電位） */
 void     hal_safe_line_pull(bool pull_low); /* true = 本板把 SAFE 線拉低，全機進安全狀態 */
 
-/* ---- 串列埠（主控板：Loadlock / Throttle valve / RF） ---- */
-enum { HAL_UART_LOADLOCK = 0, HAL_UART_THROTTLE = 1, HAL_UART_RF = 2 };
+/* ---- 串列埠（主控板：Throttle valve / RF；Loadlock 由 IPC 經 RS-485 直接控制，不在這裡） ---- */
+enum { HAL_UART_THROTTLE = 0, HAL_UART_RF = 1 };
 int      hal_uart_write(uint8_t port, const char *s, uint16_t len);   /* 非阻塞，緩衝不夠回傳 -1 */
 int      hal_uart_read_byte(uint8_t port);                           /* 沒資料回傳 -1 */
 

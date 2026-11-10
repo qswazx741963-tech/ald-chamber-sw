@@ -5,14 +5,14 @@
 | 層 | 位置 | 反應時間 | 用途 |
 | --- | --- | --- | --- |
 | 1 硬體 | 背板 SAFE 線、EMO、過溫開關、TRANSFER_PERMIT 繼電器 | 立即 | 人員 / 危險氣體 / 設備損壞，**不靠軟體** |
-| 2 主控板 | `firmware/main_board/app/interlock.c` | < 10 ms | 跨板、跨系統（PM ↔ Loadlock），**真正執行** |
-| 3 IPC | `ipc/src/Ald.Core/Interlocks.cs` | 按鈕前 | 先擋、顯示原因給操作員 |
+| 2 主控板 | `firmware/main_board/app/interlock.c` | < 10 ms | PM 側跨板互鎖（PM-01~03、MON-01），**真正執行**；Loadlock 狀態來自 IPC 鏡像 |
+| 3 IPC | `ipc/src/Ald.Core/Interlocks.cs` | 送命令前 | **Loadlock 側（LL-01~08）的實際執行者**；PM 側先擋、顯示原因 |
 
 板內互鎖（例如真空板 Turbo / vent）在各執行板 `role_*.c`。
 
 **改規則要三處一起改**：本文件、`interlock.c` + `firmware/tests/test_main_board.c`、`Interlocks.cs` + `InterlockTests.cs`。
 
-## 二、Loadlock ↔ PM（SLK 韌體是 MANUAL_MODE，自己完全不擋，全部靠這裡）
+## 二、Loadlock ↔ PM（SLK 維持全開放不改，Loadlock 命令由 IPC 經 RS-485 送出前檢查）
 
 | 編號 | 動作 | 允許條件（全部成立） | 被擋原因位元 |
 | --- | --- | --- | --- |
@@ -35,7 +35,8 @@
 | 編號 | 條件 | 反應 |
 | --- | --- | --- |
 | MON-01 | PM 在跑製程 / RF / vent，但 SV 不是「確定關閉」（含 LL 資料不新鮮） | 立刻停 ALD、關前驅物閥、RF off、關 vent |
-| MON-02 | LL-01 任一條件不成立 | 拉掉 TRANSFER_PERMIT 繼電器（SV 開線圈斷電） |
+| MON-02 | LL-01 任一條件不成立 | TRANSFER_PERMIT 輸出 OFF（預留，目前不接 Loadlock） |
+| MON-03 | IPC 寫的 Loadlock 鏡像超過 500 ms 沒更新 | 視為 Loadlock 狀態不明 → PM-01~03 全擋，PM 在跑則觸發 MON-01 |
 
 ## 四、PM 內部
 

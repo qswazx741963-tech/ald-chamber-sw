@@ -35,7 +35,6 @@ public sealed class MainBoardLink : IDisposable
     private TcpClient? _tcp;
     private IModbusMaster? _master;
     private ushort _heartbeat;
-    private ushort _llSeq;
     private CancellationTokenSource? _cts;
 
     public bool Connected { get; private set; }
@@ -68,14 +67,16 @@ public sealed class MainBoardLink : IDisposable
     }
 
     /// <summary>
-    /// 送 Loadlock 命令：寫 LL_CMD / LL_CMD_ARG，最後 LL_CMD_SEQ +1 觸發。
-    /// 結果看主控板 IR LL_CMD_ACK（= 回傳的序號）與 LL_CMD_RESULT；被擋下時 IL_DENY 會寫原因。
+    /// 把 Loadlock 狀態寫進主控板 HR LL_M_*（鏡像），主控板用它做 PM 側互鎖。
+    /// 由 LoadlockService 每收到一筆新 TLM 呼叫一次；seq 每次 +1，主控板靠它判斷資料是否新鮮。
     /// </summary>
-    public ushort SendLoadlockCommand(MainBoard.Holding.LlCmdValues cmd, int arg = 0)
+    public void WriteLoadlockMirror(SlkTelemetry t, ushort seq)
     {
-        _llSeq++;
-        Write(MainBoard.Holding.LlCmd, (ushort)cmd, (ushort)(arg >> 16), (ushort)arg, _llSeq);
-        return _llSeq;
+        ushort flags = (ushort)((t.RoughOpen ? 1 : 0) | (t.VentOpen ? 2 : 0) | (t.LidOpen ? 4 : 0));
+        Write(MainBoard.Holding.LlMSeq,
+            seq, (ushort)t.Sv, (ushort)t.Z, (ushort)t.Arm,
+            (ushort)(t.Pos >> 16), (ushort)t.Pos, (ushort)t.Alm, flags,
+            (ushort)(t.PresMTorr >> 16), (ushort)t.PresMTorr);
     }
 
     private void Connect()
@@ -85,8 +86,6 @@ public sealed class MainBoardLink : IDisposable
         _tcp.Connect(_host, _port);
         _master = new ModbusFactory().CreateMaster(_tcp);
         _master.Transport.Retries = 1;
-        // 從主控板讀回目前的 LL_CMD_SEQ，避免 IPC 重開後序號撞到
-        _llSeq = _master.ReadHoldingRegisters(_unitId, MainBoard.Holding.LlCmdSeq, 1)[0];
     }
 
     private ushort[] ReadInput(ushort start, ushort count)

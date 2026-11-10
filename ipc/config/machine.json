@@ -14,9 +14,15 @@
     { "slot": 3, "type": "Vacuum" },
     { "slot": 4, "type": "Motion" }
   ],
+  "loadlock": {
+    "_comment": "SLK 模組，IPC 經 RS-485 直接控制（SLK 端 RS-232，中間接自動收發 RS-232↔RS-485 轉換器）。SLK 韌體不改",
+    "port": "COM1",
+    "baud": 115200,
+    "pollMs": 200
+  },
   "watchdogMs": 1000,
   "interlock": {
-    "_comment": "這些值會寫進主控板 HR IL_*，真正執行互鎖的是主控板",
+    "_comment": "Loadlock 互鎖由 IPC 執行；這些值也會寫進主控板 HR IL_*，主控板用來做 PM 側互鎖",
     "svLoadlockMaxTorr": 2.0,
     "svChamberMaxTorr": 1.0,
     "loadlockStaleMs": 500,

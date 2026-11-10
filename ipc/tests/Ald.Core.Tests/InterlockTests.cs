@@ -51,3 +51,50 @@ public class InterlockTests
     // ---- LL-08：SV 開著不能 vent Loadlock
     [Fact] public void LoadlockVent_Denied_WhenSvOpen() => Assert.False(Allowed(MachineAction.LoadlockVent, Ready() with { SlitValve = LoadlockSv.Open }));
 }
+
+public class LoadlockProtocolTests
+{
+    private const string TlmOk =
+        "TLM:CHM=2,ARM=2,SV=1,Z=1,WAF=1,WPR=1,SEQ=0,RGH=0,VNT=1,BYP=1,PRES=-1,LID=0,ALM=0,POS=120,SPD=0";
+
+    [Fact]
+    public void ParseTlm_ReadsFields()
+    {
+        var t = Ald.Comm.SlkProtocol.ParseTlm(TlmOk)!;
+        Assert.Equal(1, t.Sv);
+        Assert.Equal(-1, t.PresMTorr);
+        Assert.True(t.VentOpen);
+        Assert.Equal(120, t.Pos);
+    }
+
+    [Fact] public void ParseTlm_RejectsBroken() => Assert.Null(Ald.Comm.SlkProtocol.ParseTlm("TLM:CHM=2,ARM"));
+
+    [Fact]
+    public void Build_Commands()
+    {
+        Assert.Equal(">SEQ:LOAD", Ald.Comm.SlkProtocol.Build(LoadlockCommand.Load));
+        Assert.Equal(">VLV:SV:O", Ald.Comm.SlkProtocol.Build(LoadlockCommand.SvOpen));
+        Assert.Equal(">ARM:GOTO:5000", Ald.Comm.SlkProtocol.Build(LoadlockCommand.ArmGoto, 5000));
+        Assert.Null(Ald.Comm.SlkProtocol.Build(LoadlockCommand.ArmGoto, -1));
+    }
+
+    [Fact]
+    public void Completion_Events()
+    {
+        Assert.True(Ald.Comm.SlkProtocol.Completes(LoadlockCommand.SvOpen, "EVT:VLV:SV_OPEN"));
+        Assert.False(Ald.Comm.SlkProtocol.Completes(LoadlockCommand.Load, "EVT:SEQ:ERR:LOAD:SV_OPEN_TO"));
+        Assert.Null(Ald.Comm.SlkProtocol.Completes(LoadlockCommand.Load, "EVT:VLV:SV_OPEN"));
+        Assert.True(Ald.Comm.SlkProtocol.Completes(LoadlockCommand.EStop, "EVT:SYS:ESTOP"));
+    }
+
+    [Fact]
+    public void ActionFor_MapsToInterlockRules()
+    {
+        Assert.Equal(MachineAction.SlitValveOpen, LoadlockCommands.ActionFor(LoadlockCommand.SvOpen, 0, 5894));
+        Assert.Equal(MachineAction.ArmIntoPm, LoadlockCommands.ActionFor(LoadlockCommand.ArmGoto, 9000, 5894));
+        Assert.Equal(MachineAction.ArmLoadlockSide, LoadlockCommands.ActionFor(LoadlockCommand.ArmGoto, 100, 5894));
+        Assert.Equal(MachineAction.SlitValveClose, LoadlockCommands.ActionFor(LoadlockCommand.XferDone, 0, 5894));
+        Assert.Null(LoadlockCommands.ActionFor(LoadlockCommand.EStop, 0, 5894));
+        Assert.Null(LoadlockCommands.ActionFor(LoadlockCommand.VentOff, 0, 5894));
+    }
+}

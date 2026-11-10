@@ -2,7 +2,7 @@
 #pragma once
 #include "registers_common.h"
 
-/* vacuum: PM 壓力 / 真空、閥件、泵（板內互鎖）。Loadlock 的閥、Slit valve 已移到 SLK 模組 */
+/* vacuum: PM 壓力 / 真空、閥件、泵（板內互鎖）。Loadlock 的閥、Slit valve 由 SLK 模組控制 */
 #define VAC_DEFAULT_SLOT 3u
 #define VAC_BOARD_TYPE   3u
 

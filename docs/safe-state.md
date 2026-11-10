@@ -29,6 +29,5 @@
 | 4 馬達 | 步進馬達 | 停止 | | ☐ |
 | 4 馬達 | Wafer lift 氣缸 | 維持（TODO：斷氣時是否會掉） | | ☐ |
 | 主控 | RF | 關 | | ☐ |
-| 主控 | TRANSFER_PERMIT | 關（切 SV 開線圈電源） | | ☐ |
 | Loadlock | Slit valve | 維持（SLK 斷電交氣壓記憶，避免夾片） | | ☐ |
-| Loadlock | 手臂 | 停（主控板送 `>SYS:ES` 時） | | ☐ |
+| Loadlock | 手臂 | IPC 偵測到 PM 進安全狀態時送 `>SYS:ES`（TODO 確認要不要自動送） | | ☐ |

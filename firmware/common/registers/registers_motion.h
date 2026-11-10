@@ -2,7 +2,7 @@
 #pragma once
 #include "registers_common.h"
 
-/* motion: PM 內馬達與升降（軸 0 Susceptor、軸 1 Wafer lift）。Loadlock 手臂 / Indexer 已移到 SLK 模組 */
+/* motion: PM 內馬達與升降（軸 0 Susceptor、軸 1 Wafer lift）。Loadlock 手臂 / Indexer 由 SLK 模組控制 */
 #define MOT_DEFAULT_SLOT 4u
 #define MOT_BOARD_TYPE   4u
 

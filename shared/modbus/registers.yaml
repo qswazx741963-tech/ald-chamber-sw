@@ -5,6 +5,7 @@
 #  ■ 架構（方案 A，2026-11-10）
 #    IPC (ARK-1222) ──Ethernet / Modbus TCP──► 主控板（唯一的 Modbus 從站，Unit ID 1）
 #    主控板 ──CAN FD 背板──► 各槽執行板
+#    IPC ──RS-485──► Loadlock（SLK 模組，ASCII 協議，不經過主控板）
 #    IPC 看到的是「主控板上一整張表」，依槽位分區：
 #        絕對位址 = slot × slot_stride + 區內位址
 #    例：加熱板在 slot 2，HEATER_SP 區內位址 20 → IPC 寫 HR 2×200+20 = 420
@@ -61,7 +62,7 @@ boards:
     slot: 0
     board_type: MAIN
     prefix: MAIN
-    desc: 主控板（系統狀態、跨板互鎖、Loadlock / Throttle valve / RF 閘道）
+    desc: 主控板（系統狀態、跨板互鎖、Throttle valve / RF 閘道、Loadlock 狀態鏡像）
     input:
       - name: DI
         addr: 10
@@ -88,29 +89,6 @@ boards:
       - { name: RF_REF_W,  addr: 42, count: 2, unit: W }
       - { name: RF_STATUS, addr: 44, count: 2 }
 
-      # ---- Loadlock（SLK 模組，RS-232 ASCII，主控板轉成暫存器）
-      - name: LL_LINK
-        addr: 100
-        bits: [ONLINE, TLM_FRESH, ONLINE_MODE, IL_BYPASS, PORT_LOCKED]
-      - { name: LL_CHM, addr: 101, desc: "腔體狀態 0 IDLE,1 PUMPING,2 VAC_READY,3 SV_OPENING,4 TRANSFER_VAC,5 SV_CLOSING,6 VENTING,7 ATM_READY,99 ERROR" }
-      - { name: LL_ARM, addr: 102, desc: "手臂狀態 0 IDLE,1 HOMING,2 READY,3 MOVING,4 AT_POS,5 Z_RAISING,6 Z_UP,7 Z_LOWERING,99 ERROR" }
-      - { name: LL_SV,  addr: 103, desc: "Slit valve 0 UNKNOWN,1 CLOSED,2 OPENING,3 OPEN,4 CLOSING,5 ERROR" }
-      - { name: LL_Z,   addr: 104, desc: "Z 軸 0 UNKNOWN,1 DOWN,2 RAISING,3 UP,4 LOWERING" }
-      - { name: LL_WAF, addr: 105, desc: "Wafer 位置 0 UNKNOWN,1 AT_LL,2 ON_ARM,3 AT_PM" }
-      - { name: LL_SEQ, addr: 106, desc: "序列步 0-22" }
-      - name: LL_FLAGS
-        addr: 107
-        bits: [WAFER_PRESENT, ROUGH_OPEN, VENT_OPEN, LID_OPEN, PRES_UNDER_RANGE]
-      - { name: LL_PRES, addr: 108, type: i32, scale: 0.001, unit: Torr, desc: "SLK 回報 mTorr；-1 = 低於量測下限（1 Torr）" }
-      - { name: LL_ALM,  addr: 110, desc: "SLK 警報碼，0 = 正常" }
-      - { name: LL_POS,  addr: 111, type: i32, unit: step, desc: "手臂位置（36.84 step/mm）" }
-      - { name: LL_SPD,  addr: 113, unit: step/s }
-      - { name: LL_TLM_AGE_MS, addr: 114, unit: ms, desc: "最後一筆 TLM 距今時間" }
-      - name: LL_CMD_RESULT
-        addr: 115
-        values: { NONE: 0, SENT: 1, DENIED: 2, DONE: 3, ERROR: 4, BUSY: 5 }
-      - { name: LL_CMD_ACK,  addr: 116, desc: "主控板處理完的 LL_CMD_SEQ" }
-      - { name: LL_LAST_EVT, addr: 117, desc: "最後一個 SLK 事件代碼（見 docs/loadlock-integration.md）" }
     holding:
       - name: DO_CMD
         addr: 10
@@ -126,19 +104,23 @@ boards:
         addr: 30
         bits: [RF1, RF2]
       - { name: RF_SP_W, addr: 31, count: 2, unit: W, min: 0, max: 600, desc: "TODO 依 RF 電源規格" }
-      # ---- Loadlock 命令：IPC 先寫 LL_CMD / LL_CMD_ARG，最後把 LL_CMD_SEQ +1 觸發
-      - name: LL_CMD
-        addr: 100
-        values: { NONE: 0, STATUS: 1, ESTOP: 2, RESET: 3, RECOVER: 4,
-                  PUMP: 10, VENT: 11, LOAD: 12, UNLOAD: 13, ABORT: 14, XFER_DONE: 15,
-                  SV_OPEN: 20, SV_CLOSE: 21, ROUGH_ON: 22, ROUGH_OFF: 23, VENT_ON: 24, VENT_OFF: 25,
-                  ARM_HOME: 30, ARM_AHOME: 31, ARM_LL: 32, ARM_PM: 33, ARM_GOTO: 34, Z_UP: 35, Z_DOWN: 36 }
-      - { name: LL_CMD_ARG, addr: 101, type: i32, desc: "ARM_GOTO 目標步數" }
-      - { name: LL_CMD_SEQ, addr: 103, desc: "命令序號，+1 才會執行" }
+      # ---- Loadlock 狀態鏡像：IPC 經 RS-485 直接控制 Loadlock（SLK 不改），
+      #      每收到一筆 TLM 就把狀態寫到這裡，並把 LL_M_SEQ +1。
+      #      主控板用它做 PM 側互鎖（SV 沒關不准製程 / RF / vent）。LL_M_SEQ 超過 IL_LL_STALE_MS 沒變 → 視為 Loadlock 狀態不明。
+      - { name: LL_M_SEQ, addr: 100, desc: "IPC 每收到一筆新 TLM +1" }
+      - { name: LL_M_SV,  addr: 101, desc: "Slit valve 0 UNKNOWN,1 CLOSED,2 OPENING,3 OPEN,4 CLOSING,5 ERROR" }
+      - { name: LL_M_Z,   addr: 102, desc: "Z 軸 0 UNKNOWN,1 DOWN,2 RAISING,3 UP,4 LOWERING" }
+      - { name: LL_M_ARM, addr: 103, desc: "手臂狀態 0 IDLE,1 HOMING,2 READY,3 MOVING,4 AT_POS,5 Z_RAISING,6 Z_UP,7 Z_LOWERING,99 ERROR" }
+      - { name: LL_M_POS, addr: 104, type: i32, unit: step, desc: "手臂位置（36.84 step/mm）" }
+      - { name: LL_M_ALM, addr: 106, desc: "SLK 警報碼，0 = 正常" }
+      - name: LL_M_FLAGS
+        addr: 107
+        bits: [ROUGH_OPEN, VENT_OPEN, LID_OPEN]
+      - { name: LL_M_PRES, addr: 108, type: i32, unit: mTorr, desc: "-1 = 低於量測下限（1 Torr）" }
       # ---- 互鎖參數（主控板執行，IPC 只是顯示 / 修改）
       - { name: IL_SV_LL_MAX_TORR, addr: 150, scale: 0.01, unit: Torr, min: 0, max: 10,  desc: "開 SV 前 Loadlock 壓力上限，預設 2.00（SLK 原為 10）TODO" }
       - { name: IL_SV_PM_MAX_TORR, addr: 151, scale: 0.01, unit: Torr, min: 0, max: 10,  desc: "開 SV 前 PM 壓力上限，預設 1.00 TODO" }
-      - { name: IL_LL_STALE_MS,    addr: 152, unit: ms, min: 100, max: 5000, desc: "Loadlock TLM 超過此時間沒更新 → 視為未知，預設 500" }
+      - { name: IL_LL_STALE_MS,    addr: 152, unit: ms, min: 100, max: 5000, desc: "LL_M_SEQ 超過此時間沒更新 → 視為 Loadlock 狀態不明，預設 500" }
       - { name: IL_ARM_SAFE_POS,   addr: 153, type: i32, unit: step, desc: "手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm）" }
 
   # ------------------------------------------------------------------
@@ -206,7 +188,7 @@ boards:
     slot: 3
     board_type: VACUUM
     prefix: VAC
-    desc: PM 壓力 / 真空、閥件、泵（板內互鎖）。Loadlock 的閥、Slit valve 已移到 SLK 模組
+    desc: PM 壓力 / 真空、閥件、泵（板內互鎖）。Loadlock 的閥、Slit valve 由 SLK 模組控制
     valves: &valves [TURBO_GV, TURBO_ROUGH, CHAMBER_ROUGH, CHAMBER_VENT, DRYPUMP_ON, TURBO_ON]
     input:
       - name: DI
@@ -233,7 +215,7 @@ boards:
     slot: 4
     board_type: MOTION
     prefix: MOT
-    desc: PM 內馬達與升降（軸 0 Susceptor、軸 1 Wafer lift）。Loadlock 手臂 / Indexer 已移到 SLK 模組
+    desc: PM 內馬達與升降（軸 0 Susceptor、軸 1 Wafer lift）。Loadlock 手臂 / Indexer 由 SLK 模組控制
     input:
       - name: DI
         addr: 10

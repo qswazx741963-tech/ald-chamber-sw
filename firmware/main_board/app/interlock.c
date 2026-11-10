@@ -1,5 +1,5 @@
 #include "interlock.h"
-#include "slk_link.h"
+#include "ll_mirror.h"
 
 bool il_arm_clear_of_sv(const il_inputs_t *in)
 {

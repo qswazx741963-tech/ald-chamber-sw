@@ -12,6 +12,7 @@ public enum MachineAction
     SlitValveClose,
     ArmIntoPm,
     ArmLoadlockSide,
+    ZMove,
     Transfer,          // SEQ:LOAD / SEQ:UNLOAD
     LoadlockPump,
     LoadlockVent,
@@ -24,9 +25,11 @@ public sealed record InterlockResult(bool Allowed, string Reason)
 }
 
 /// <summary>
-/// IPC 端互鎖 = 三層保護裡的第三層：按鈕按下前先擋、顯示原因給操作員看。
-/// 真正執行互鎖的是主控板（firmware/main_board/app/interlock.c），規則編號相同（docs/interlocks.md），
-/// 兩邊改一邊就要改另一邊，並補單元測試。
+/// IPC 端互鎖。
+/// - Loadlock 側（LL-01~08）：Loadlock 由 IPC 經 RS-485 直接控制、SLK 韌體不做互鎖，
+///   所以**這裡就是 Loadlock 的實際互鎖**，每個命令送出前由 LoadlockService 呼叫。
+/// - PM 側（PM-01~03）：這裡先擋、顯示原因；主控板（firmware/main_board/app/interlock.c）再用 Loadlock 狀態鏡像真正執行。
+/// 規則編號見 docs/interlocks.md，改一邊就要改另一邊，並補單元測試。
 /// TODO 規則依製程確認
 /// </summary>
 public static class Interlocks
@@ -100,6 +103,12 @@ public static class Interlocks
                 => InterlockResult.Deny("PM Susceptor / Wafer lift 不在交接位置"),
             MachineAction.ArmIntoPm when pmBusy
                 => InterlockResult.Deny("PM 製程或 RF 進行中"),
+
+            // ---- LL-06 Z 軸：手臂在 PM 裡撿放片時，PM 要在交接位置、不能在跑
+            MachineAction.ZMove when !s.ArmClearOfSv && !s.PmAtTransfer
+                => InterlockResult.Deny("手臂在 PM 內，但 PM 不在交接位置"),
+            MachineAction.ZMove when !s.ArmClearOfSv && pmBusy
+                => InterlockResult.Deny("手臂在 PM 內，PM 製程或 RF 進行中"),
 
             // ---- LL-07 / LL-08 Loadlock 抽氣 / 洩壓
             MachineAction.LoadlockPump or MachineAction.LoadlockVent when !s.SlitClosed

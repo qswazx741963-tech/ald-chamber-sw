@@ -6,6 +6,10 @@
  *   2. 主控板（本檔）：每個命令送出前檢查 + 每圈持續監看
  *   3. IPC（Ald.Core/Interlocks.cs）：畫面上先擋、顯示原因
  *
+ * 2026-11-10：Loadlock 改由 IPC 經 RS-485 直接控制，Loadlock 側動作（IL_ACT_SV_OPEN ~ IL_ACT_TRANSFER）
+ *   由 IPC 執行同樣的規則；主控板實際使用的是 PM 側動作 + il_monitor，Loadlock 狀態來自 ll_mirror。
+ *   Loadlock 側規則仍保留在這裡，當作 IPC 規則的參考實作與測試基準。
+ *
  * 這裡只有「純邏輯」：輸入一包狀態，輸出允許 / 拒絕原因。不碰硬體，可以在 PC 上測。
  * 規則清單與編號見 docs/interlocks.md，改規則要同步改文件和 tests/test_interlock.c。
  */
@@ -18,7 +22,7 @@
 
 typedef enum {
     IL_ACT_NONE = 0,
-    /* Loadlock 側動作（命令要送給 SLK 前檢查） */
+    /* Loadlock 側動作（IPC 送命令給 SLK 前檢查；規則與 Interlocks.cs 相同） */
     IL_ACT_SV_OPEN = 1,       /* 開 Slit valve */
     IL_ACT_SV_CLOSE = 2,      /* 關 Slit valve */
     IL_ACT_ARM_INTO_PM = 3,   /* 手臂伸進 PM：ARM:PM、GOTO 超過安全位置 */
@@ -35,15 +39,15 @@ typedef enum {
 
 /* 持續監看的反應（il_monitor 回傳） */
 #define IL_REACT_PM_ABORT      0x01u   /* 停 ALD、關前驅物閥、RF off、停 PM vent */
-#define IL_REACT_PERMIT_OFF    0x02u   /* 拉掉 TRANSFER_PERMIT 繼電器（切 SV 開線圈電源） */
+#define IL_REACT_PERMIT_OFF    0x02u   /* TRANSFER_PERMIT 輸出 OFF（選配：接到 Loadlock 的硬體許可，目前 SLK 不接） */
 
 typedef struct {
     /* 系統 */
     bool     safe_active;        /* SAFE 線被拉低或系統在安全狀態 */
     bool     pm_slots_ok;        /* PM 相關執行板（製程 / 真空 / 馬達）都在線 */
-    /* Loadlock（來自 SLK TLM） */
+    /* Loadlock（主控板：來自 IPC 寫的 HR LL_M_* 鏡像） */
     bool     ll_fresh;           /* TLM 在 IL_LL_STALE_MS 內有更新 */
-    int16_t  ll_alm, ll_chm, ll_sv, ll_z, ll_arm, ll_seq;
+    int16_t  ll_alm, ll_sv, ll_z, ll_arm, ll_seq;
     int32_t  ll_pos;
     int32_t  ll_pres_mtorr;      /* -1 = 低於 1 Torr 下限 */
     bool     ll_rough_open, ll_vent_open, ll_lid_open;

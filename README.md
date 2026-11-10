@@ -3,8 +3,10 @@
 ALD 真空製程腔體設備控制軟體。三階架構（2026-11-10 方案 A）：
 
 ```
-研華 ARK-1222（C# / WPF） ──Modbus TCP──► 主控板（STM32H743） ──CAN FD 背板──► 執行板 ×N（STM32G474）
-                                              └─ RS-232 ─► Loadlock（SLK 模組）、Throttle valve、RF
+研華 ARK-1222（C# / WPF）
+   ├─ Modbus TCP ─► 主控板（STM32H743）─ CAN FD 背板 ─► 執行板 ×N（STM32G474）
+   │                   └─ UART ─► Throttle valve、RF
+   └─ RS-485 ─► Loadlock（SLK 模組，韌體不改；互鎖在 IPC 做）
 ```
 
 詳見 [`docs/architecture.md`](docs/architecture.md)。

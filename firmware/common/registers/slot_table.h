@@ -16,7 +16,7 @@
 /* 預設槽位配置：{ 槽號, 板型, IR 大小, HR 大小 } */
 typedef struct { uint8_t slot; uint8_t board_type; uint16_t ir_size; uint16_t hr_size; } ald_slot_def_t;
 #define ALD_SLOT_TABLE { \
-    { 0u, BOARD_TYPE_MAIN, 118u, 155u }, /* main */ \
+    { 0u, BOARD_TYPE_MAIN, 46u, 155u }, /* main */ \
     { 1u, BOARD_TYPE_PROCESS, 51u, 146u }, /* process */ \
     { 2u, BOARD_TYPE_HEATER, 62u, 152u }, /* heater */ \
     { 3u, BOARD_TYPE_VACUUM, 38u, 11u }, /* vacuum */ \
