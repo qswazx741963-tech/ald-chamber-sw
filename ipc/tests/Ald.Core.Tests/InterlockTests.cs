@@ -36,6 +36,7 @@ public class InterlockTests
     [Fact] public void SvOpen_Allowed_WhenReady() => Assert.True(Allowed(MachineAction.SlitValveOpen, Ready()));
     [Fact] public void SvOpen_Denied_WhenAldRunning() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { AldRunning = true }));
     [Fact] public void SvOpen_Denied_WhenLoadlockAtAtm() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = 760 }));
+    [Fact] public void SvOpen_Denied_WhenLoadlockPressureUnknown() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = double.NaN }));
     [Fact] public void SvOpen_Denied_WhenChamberPressureUnknown() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { ChamberPressureTorr = double.NaN }));
     [Fact] public void SvOpen_Denied_WhenLoadlockVentOpen() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockVentOpen = true }));
 
@@ -68,6 +69,10 @@ public class LoadlockProtocolTests
     }
 
     [Fact] public void ParseTlm_RejectsBroken() => Assert.Null(Ald.Comm.SlkProtocol.ParseTlm("TLM:CHM=2,ARM"));
+
+    [Fact]
+    public void ParseTlm_RejectsMissingSafetyField()
+        => Assert.Null(Ald.Comm.SlkProtocol.ParseTlm(TlmOk.Replace("PRES=-1,", "").Replace("POS=120,", "")));
 
     [Fact]
     public void Build_Commands()

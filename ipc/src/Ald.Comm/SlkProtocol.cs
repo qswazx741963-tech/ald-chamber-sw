@@ -56,7 +56,10 @@ public static class SlkProtocol
         _ => null,
     };
 
-    /// <summary>解析 "TLM:CHM=0,ARM=0,..."。欄位少於 10 個或格式錯回傳 null（破損資料不採用）。</summary>
+    /// <summary>互鎖會用到的欄位，缺任何一個就整筆不採用（不能用預設值或舊值頂替）。</summary>
+    private static readonly string[] Required = { "ARM", "SV", "Z", "SEQ", "RGH", "VNT", "PRES", "LID", "ALM", "POS" };
+
+    /// <summary>解析 "TLM:CHM=0,ARM=0,..."。格式錯或缺少互鎖必要欄位回傳 null（破損資料不採用）。</summary>
     public static SlkTelemetry? ParseTlm(string line)
     {
         if (!line.StartsWith("TLM:", StringComparison.Ordinal)) return null;
@@ -67,7 +70,7 @@ public static class SlkProtocol
             if (i <= 0 || !int.TryParse(part[(i + 1)..], out var v)) return null;
             kv[part[..i]] = v;
         }
-        if (kv.Count < 10) return null;
+        if (Required.Any(k => !kv.ContainsKey(k))) return null;
         int G(string k, int d = 0) => kv.TryGetValue(k, out var v) ? v : d;
         return new SlkTelemetry
         {

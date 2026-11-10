@@ -80,8 +80,9 @@ public static class Interlocks
                 => InterlockResult.Deny("Loadlock 艙蓋開啟"),
             MachineAction.SlitValveOpen or MachineAction.Transfer when s.LoadlockRoughOpen || s.LoadlockVentOpen
                 => InterlockResult.Deny("Loadlock 粗抽閥或洩壓閥開啟中"),
-            MachineAction.SlitValveOpen or MachineAction.Transfer when s.LoadlockPressureTorr > SvLoadlockMaxTorr
-                => InterlockResult.Deny($"Loadlock 壓力高於 {SvLoadlockMaxTorr} Torr"),
+            MachineAction.SlitValveOpen or MachineAction.Transfer
+                when double.IsNaN(s.LoadlockPressureTorr) || s.LoadlockPressureTorr > SvLoadlockMaxTorr
+                => InterlockResult.Deny($"Loadlock 壓力未知或高於 {SvLoadlockMaxTorr} Torr"),
             MachineAction.SlitValveOpen or MachineAction.Transfer
                 when double.IsNaN(s.ChamberPressureTorr) || s.ChamberPressureTorr > SvChamberMaxTorr
                 => InterlockResult.Deny($"PM 壓力未知或高於 {SvChamberMaxTorr} Torr"),
