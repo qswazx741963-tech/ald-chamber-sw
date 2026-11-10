@@ -1,17 +1,34 @@
-# 安全狀態表（TODO 逐點確認）
+# 安全狀態
 
-看門狗逾時（預設 1 s）或收到 ENTER_SAFE 時，各板輸出切到下表狀態。
+## 一、什麼時候進安全狀態
 
-| 板 | 輸出 | 安全狀態 | 已確認 |
-| --- | --- | --- | --- |
-| A1 | ALD valve 1–6 | 關 | ☐ |
-| A1 | MFC upstream valve 1–6 | 關 | ☐ |
-| A1 | MFC SP 1–6 | 0 | ☐ |
-| A2 | 加熱器 SSR 1–12 | 關 | ☐ |
-| A3 | Turbo / Chamber / Loadlock roughing | 關 | ☐ |
-| A3 | Chamber / Loadlock vent | 關 | ☐ |
-| A3 | Turbo gate valve | ？ | ☐ |
-| A3 | Slit valve | 維持 | ☐ |
-| A3 | Dry pump / Turbo pump | 維持運轉 | ☐ |
-| A4 | 步進馬達 | 停止 | ☐ |
-| A4 | Wafer lift / Indexer 氣缸 | 維持 | ☐ |
+| 觸發 | 誰偵測 | 範圍 |
+| --- | --- | --- |
+| IPC 心跳逾時（預設 1 s）或網路斷線 | 主控板 | 全機 |
+| 背板 SYNC 逾時（預設 1 s） | 各執行板 | 該板 |
+| SAFE 線被拉低（任何一塊板、EMO） | 硬體 + 各板 | 全機 |
+| IPC 下 ENTER_SAFE | 主控板 | 全機 |
+| 開機 | 各板 | 開機一律在安全狀態，等 RESET_ALARM |
+
+解除：IPC 連線正常 + SAFE 線正常 + EMO 正常 + IPC 下 RESET_ALARM。
+
+## 二、ALD 的安全狀態「不是全部關掉」
+
+前驅物（例如 TMA）若管路冷掉會冷凝、堵管，所以：**關前驅物、維持 N2 purge、加熱維持保溫**。
+
+| 槽 | 輸出 | 安全狀態 | 設定方式 | 已確認 |
+| --- | --- | --- | --- | --- |
+| 1 製程 | ALD 閥（前驅物） | 關 | | ☐ |
+| 1 製程 | ALD 閥（N2 purge） | **維持開** | HR `PURGE_VALVES` 指定哪幾顆 | ☐ |
+| 1 製程 | MFC 上游閥 / MFC SP | 關 / 0（TODO：purge MFC 是否保持） | | ☐ |
+| 2 加熱 | 加熱器 | **維持保溫溫度** | HR `HOLD_SP`，0 = 關 | ☐ |
+| 2 加熱 | 加熱器（過溫開關動作） | 關（硬體直接切 SSR 電源） | | ☐ |
+| 3 真空 | Chamber 粗抽 / vent / Turbo 粗抽 | 關 | | ☐ |
+| 3 真空 | Turbo GV | 關（TODO 確認） | | ☐ |
+| 3 真空 | Dry pump / Turbo | 維持運轉 | | ☐ |
+| 4 馬達 | 步進馬達 | 停止 | | ☐ |
+| 4 馬達 | Wafer lift 氣缸 | 維持（TODO：斷氣時是否會掉） | | ☐ |
+| 主控 | RF | 關 | | ☐ |
+| 主控 | TRANSFER_PERMIT | 關（切 SV 開線圈電源） | | ☐ |
+| Loadlock | Slit valve | 維持（SLK 斷電交氣壓記憶，避免夾片） | | ☐ |
+| Loadlock | 手臂 | 停（主控板送 `>SYS:ES` 時） | | ☐ |

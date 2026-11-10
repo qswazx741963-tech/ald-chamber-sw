@@ -1,17 +1,33 @@
 {
   "_comment": "換機台只改這個檔。TODO 數值待確認",
-  "buses": [
-    { "port": "COM1", "baud": 115200, "pollMs": 50,  "slaves": [ 1 ] },
-    { "port": "COM2", "baud": 115200, "pollMs": 100, "slaves": [ 2, 3, 4 ] }
+  "mainBoard": {
+    "_comment": "IPC 第二網口直連主控板（點對點，不經過 Switch）",
+    "host": "192.168.10.10",
+    "port": 502,
+    "unitId": 1,
+    "pollMs": 50
+  },
+  "slots": [
+    { "slot": 0, "type": "Main" },
+    { "slot": 1, "type": "Process" },
+    { "slot": 2, "type": "Heater" },
+    { "slot": 3, "type": "Vacuum" },
+    { "slot": 4, "type": "Motion" }
   ],
-  "throttleValve": { "port": "COM3", "baud": 19200 },
-  "rf": { "port": "COM4", "baud": 9600, "ids": [ 11, 12 ] },
   "watchdogMs": 1000,
+  "interlock": {
+    "_comment": "這些值會寫進主控板 HR IL_*，真正執行互鎖的是主控板",
+    "svLoadlockMaxTorr": 2.0,
+    "svChamberMaxTorr": 1.0,
+    "loadlockStaleMs": 500,
+    "armSafePosSteps": 5894
+  },
   "gauges": {
-    "chamberConvectron": { "board": 3, "aiIndex": 3, "formula": "TODO 依型號手冊", "unit": "Torr" },
-    "chamberIonGauge":   { "board": 3, "aiIndex": 2, "formula": "log", "a": 1.0, "b": -10.0, "unit": "Torr",
+    "chamberConvectron": { "slot": 3, "aiIndex": 3, "formula": "TODO 依型號手冊", "unit": "Torr" },
+    "chamberIonGauge":   { "slot": 3, "aiIndex": 2, "formula": "log", "a": 1.0, "b": -10.0, "unit": "Torr",
                            "_note": "範例：P = 10^((V - b)/a)，TODO 依型號手冊" },
-    "chamberManometer":  { "board": 1, "formula": "linear", "fullScaleTorr": 1.0, "fullScaleMv": 10000 }
+    "chamberManometer":  { "slot": 1, "formula": "linear", "fullScaleTorr": 1.0, "fullScaleMv": 10000,
+                           "_note": "主控板互鎖也用同一組換算（firmware/main_board/app/main_app.c PM_MANO_*），改這裡要一起改" }
   },
   "dataLog": { "path": "data/ald.db", "intervalMs": 1000, "keepDays": 90 }
 }

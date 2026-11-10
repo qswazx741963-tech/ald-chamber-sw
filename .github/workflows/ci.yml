@@ -13,15 +13,11 @@ jobs:
       - run: python tools/codegen/gen_registers.py --check
 
   firmware:
-    name: 編譯四塊板韌體
+    name: 韌體邏輯單元測試（PC / gcc）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install platformio
-      - run: pio run
-        working-directory: firmware
+      - run: make -C firmware/tests
 
   ipc:
     name: 編譯 IPC 並跑單元測試

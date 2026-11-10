@@ -1,6 +1,6 @@
 namespace Ald.Core;
 
-/// <summary>ALD Recipe：IPC 只把步驟表下載給 Arduino 1，時序由 Arduino 執行。</summary>
+/// <summary>ALD Recipe：IPC 只把步驟表下載給製程板（槽 1），時序由執行板的 1 kHz 計時器執行。</summary>
 public sealed class AldRecipe
 {
     public string Name { get; set; } = "";

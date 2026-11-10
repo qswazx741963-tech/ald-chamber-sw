@@ -5,7 +5,7 @@
     <DockPanel>
         <!-- TODO 畫面：設備總覽、手動操作、Recipe、警報、趨勢、權限 -->
         <StatusBar DockPanel.Dock="Bottom">
-            <TextBlock x:Name="LinkStatus" Text="Arduino 1–4：未連線" />
+            <TextBlock x:Name="LinkStatus" Text="主控板：未連線" />
         </StatusBar>
         <TabControl>
             <TabItem Header="總覽" />
