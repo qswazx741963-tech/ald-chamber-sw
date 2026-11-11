@@ -75,9 +75,13 @@ boards:
         addr: 13
         desc: "最近一次被主控板互鎖擋下的原因（可能多個同時成立）"
         bits: [SAFE_ACTIVE, SLOT_OFFLINE, LL_UNKNOWN, LL_ALARM, SV_NOT_CLOSED, SV_NOT_OPEN,
-               LL_PRESSURE_HIGH, PM_PRESSURE_HIGH, PM_BUSY, PM_VENTING, ARM_IN_SV_PATH,
+               DP_HIGH, PRESSURE_UNKNOWN, PM_BUSY, PM_VENTING, ARM_IN_SV_PATH,
                Z_NOT_DOWN, LL_LID_OPEN, LL_VALVE_CONFLICT, PM_NOT_AT_TRANSFER, LL_BUSY]
       - { name: IL_DENY_ACTION, addr: 14, desc: "最近一次被擋下的動作（IL_ACT_*，見 docs/interlocks.md）" }
+      - name: IL_DENY2
+        addr: 15
+        desc: "IL_DENY 的延伸（16 個 bit 不夠用）"
+        bits: [TURBO_GV_OPEN, ARM_MOVING, HEATER_NOT_DOWN]
 
       # ---- Throttle valve（NC iQPlus，主控板 UART）TODO 依手冊
       - { name: TV_PRESSURE, addr: 30, scale: 0.001, unit: Torr }
@@ -118,8 +122,11 @@ boards:
         bits: [ROUGH_OPEN, VENT_OPEN, LID_OPEN]
       - { name: LL_M_PRES, addr: 108, type: i32, unit: mTorr, desc: "-1 = 低於量測下限（1 Torr）" }
       # ---- 互鎖參數（主控板執行，IPC 只是顯示 / 修改）
-      - { name: IL_SV_LL_MAX_TORR, addr: 150, scale: 0.01, unit: Torr, min: 0, max: 10,  desc: "開 SV 前 Loadlock 壓力上限，預設 2.00（SLK 原為 10）TODO" }
-      - { name: IL_SV_PM_MAX_TORR, addr: 151, scale: 0.01, unit: Torr, min: 0, max: 10,  desc: "開 SV 前 PM 壓力上限，預設 1.00 TODO" }
+      - { name: IL_SV_DP_MAX_MTORR, addr: 150, unit: mTorr, min: 1, max: 10000, desc: "開 SV 前 Loadlock 與 PM 壓差上限，預設 50（config 可改）" }
+      - name: IL_LL_Z_ENABLE
+        addr: 151
+        desc: "SLK Z 軸是否啟用；之後取消 Z 軸（改用 PM Wafer lift）時設 DISABLED，Z 相關互鎖就不檢查"
+        values: { DISABLED: 0, ENABLED: 1 }
       - { name: IL_LL_STALE_MS,    addr: 152, unit: ms, min: 100, max: 5000, desc: "LL_M_SEQ 超過此時間沒更新 → 視為 Loadlock 狀態不明，預設 500" }
       - { name: IL_ARM_SAFE_POS,   addr: 153, type: i32, unit: step, desc: "手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm）" }
 
@@ -215,11 +222,11 @@ boards:
     slot: 4
     board_type: MOTION
     prefix: MOT
-    desc: PM 內馬達與升降（軸 0 Susceptor、軸 1 Wafer lift）。Loadlock 手臂 / Indexer 由 SLK 模組控制
+    desc: PM 內升降（軸 0 Heater module、軸 1 預留；Wafer lift 為氣缸）。Loadlock 手臂 / Indexer 由 SLK 模組控制
     input:
       - name: DI
         addr: 10
-        bits: [SUSCEPTOR_HOME, SUSCEPTOR_PROCESS, WAFER_LIFT_HOME, WAFER_LIFT_UP, WAFER_PRESENT]
+        bits: [HEATER_DOWN, HEATER_PROCESS, WAFER_LIFT_DOWN, WAFER_LIFT_UP, WAFER_PRESENT]
       - name: DO_FB
         addr: 20
         bits: [WAFER_LIFT_UP, WAFER_LIFT_DOWN]

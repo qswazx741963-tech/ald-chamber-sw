@@ -23,8 +23,10 @@
   "watchdogMs": 1000,
   "interlock": {
     "_comment": "Loadlock 互鎖由 IPC 執行；這些值也會寫進主控板 HR IL_*，主控板用來做 PM 側互鎖",
-    "svLoadlockMaxTorr": 2.0,
-    "svChamberMaxTorr": 1.0,
+    "svMaxDiffMtorr": 50,
+    "_svMaxDiffMtorr": "開 SV 條件：Loadlock 與 PM 壓差 ≤ 此值（mTorr）。SLK 壓力計下限 1 Torr，需加 mTorr 級壓力計才量得到",
+    "loadlockZEnabled": true,
+    "_loadlockZEnabled": "SLK Z 軸啟用；之後取消 Z 軸（改用 PM Wafer lift）時設 false",
     "loadlockStaleMs": 500,
     "armSafePosSteps": 5894
   },

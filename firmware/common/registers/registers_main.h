@@ -28,8 +28,8 @@
 #define MAIN_IR_IL_DENY_BIT_LL_ALARM                 3u
 #define MAIN_IR_IL_DENY_BIT_SV_NOT_CLOSED            4u
 #define MAIN_IR_IL_DENY_BIT_SV_NOT_OPEN              5u
-#define MAIN_IR_IL_DENY_BIT_LL_PRESSURE_HIGH         6u
-#define MAIN_IR_IL_DENY_BIT_PM_PRESSURE_HIGH         7u
+#define MAIN_IR_IL_DENY_BIT_DP_HIGH                  6u
+#define MAIN_IR_IL_DENY_BIT_PRESSURE_UNKNOWN         7u
 #define MAIN_IR_IL_DENY_BIT_PM_BUSY                  8u
 #define MAIN_IR_IL_DENY_BIT_PM_VENTING               9u
 #define MAIN_IR_IL_DENY_BIT_ARM_IN_SV_PATH           10u
@@ -39,6 +39,10 @@
 #define MAIN_IR_IL_DENY_BIT_PM_NOT_AT_TRANSFER       14u
 #define MAIN_IR_IL_DENY_BIT_LL_BUSY                  15u
 #define MAIN_IR_IL_DENY_ACTION                       14u  /* u16 */
+#define MAIN_IR_IL_DENY2                             15u  /* u16 */
+#define MAIN_IR_IL_DENY2_BIT_TURBO_GV_OPEN           0u
+#define MAIN_IR_IL_DENY2_BIT_ARM_MOVING              1u
+#define MAIN_IR_IL_DENY2_BIT_HEATER_NOT_DOWN         2u
 #define MAIN_IR_TV_PRESSURE                          30u  /* u16 [Torr] scale 0.001 */
 #define MAIN_IR_TV_POSITION                          31u  /* u16 [%] scale 0.1 */
 #define MAIN_IR_TV_STATUS                            32u  /* u16 */
@@ -85,12 +89,12 @@
 #define MAIN_HR_LL_M_FLAGS_BIT_VENT_OPEN             1u
 #define MAIN_HR_LL_M_FLAGS_BIT_LID_OPEN              2u
 #define MAIN_HR_LL_M_PRES                            108u  /* i32 [mTorr] */
-#define MAIN_HR_IL_SV_LL_MAX_TORR                    150u  /* u16 [Torr] scale 0.01 */
-#define MAIN_HR_IL_SV_LL_MAX_TORR_MIN_RAW            0
-#define MAIN_HR_IL_SV_LL_MAX_TORR_MAX_RAW            1000
-#define MAIN_HR_IL_SV_PM_MAX_TORR                    151u  /* u16 [Torr] scale 0.01 */
-#define MAIN_HR_IL_SV_PM_MAX_TORR_MIN_RAW            0
-#define MAIN_HR_IL_SV_PM_MAX_TORR_MAX_RAW            1000
+#define MAIN_HR_IL_SV_DP_MAX_MTORR                   150u  /* u16 [mTorr] */
+#define MAIN_HR_IL_SV_DP_MAX_MTORR_MIN_RAW           1
+#define MAIN_HR_IL_SV_DP_MAX_MTORR_MAX_RAW           10000
+#define MAIN_HR_IL_LL_Z_ENABLE                       151u  /* u16 */
+#define MAIN_HR_IL_LL_Z_ENABLE_DISABLED              0u
+#define MAIN_HR_IL_LL_Z_ENABLE_ENABLED               1u
 #define MAIN_HR_IL_LL_STALE_MS                       152u  /* u16 [ms] */
 #define MAIN_HR_IL_LL_STALE_MS_MIN_RAW               100
 #define MAIN_HR_IL_LL_STALE_MS_MAX_RAW               5000

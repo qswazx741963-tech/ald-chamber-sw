@@ -1,5 +1,6 @@
 #include "interlock.h"
 #include "ll_mirror.h"
+#include <limits.h>
 
 bool il_arm_clear_of_sv(const il_inputs_t *in)
 {
@@ -9,28 +10,35 @@ bool il_arm_clear_of_sv(const il_inputs_t *in)
 
 static bool sv_closed(const il_inputs_t *in) { return in->ll_fresh && in->ll_sv == SLK_SV_CLOSED; }
 
-/* LL-04：Z 有下降到位才可以橫移（SLK MANUAL_MODE 不檢查 IL-06，這裡補上） */
-static bool z_down(const il_inputs_t *in) { return in->ll_fresh && in->ll_z == SLK_Z_DOWN; }
+/* LL-04：Z 有下降到位才可以橫移（SLK MANUAL_MODE 不檢查 IL-06，這裡補上）。Z 軸停用時不檢查 */
+static bool z_down(const il_inputs_t *in) { return !in->ll_z_enabled || (in->ll_fresh && in->ll_z == SLK_Z_DOWN); }
+
+static bool arm_moving(const il_inputs_t *in) { return in->ll_arm == SLK_ARM_MOVING || in->ll_arm == SLK_ARM_HOMING; }
 
 static bool pm_busy(const il_inputs_t *in) { return in->pm_process_running || in->pm_rf_on; }
 
-static uint16_t sv_open_conditions(const il_inputs_t *in)
+static uint32_t sv_open_conditions(const il_inputs_t *in)
 {
-    uint16_t d = 0;
+    uint32_t d = 0;
     if (!in->pm_slots_ok)                       d |= IL_DENY(SLOT_OFFLINE);
     if (pm_busy(in))                            d |= IL_DENY(PM_BUSY);
     if (in->pm_venting)                         d |= IL_DENY(PM_VENTING);
     if (in->ll_lid_open)                        d |= IL_DENY(LL_LID_OPEN);
     if (in->ll_rough_open || in->ll_vent_open)  d |= IL_DENY(LL_VALVE_CONFLICT);
-    /* -1 = 低於 1 Torr 量測下限，視為合格 */
-    if (in->ll_pres_mtorr > in->sv_ll_max_mtorr) d |= IL_DENY(LL_PRESSURE_HIGH);
-    if (in->pm_pres_mtorr > in->sv_pm_max_mtorr) d |= IL_DENY(PM_PRESSURE_HIGH);
+    if (!in->pm_turbo_gv_closed)                d |= IL_DENY2(TURBO_GV_OPEN);
+    /* 壓差：LL 低於量測下限（-1）或 PM 壓力計離線 / 飽和 = 壓力未知，量不到就不准開 */
+    if (in->ll_pres_mtorr < 0 || in->pm_pres_mtorr == INT32_MAX) d |= IL_DENY(PRESSURE_UNKNOWN);
+    else {
+        int64_t dp = (int64_t)in->ll_pres_mtorr - in->pm_pres_mtorr;
+        if (dp < 0) dp = -dp;
+        if (dp > in->sv_dp_max_mtorr) d |= IL_DENY(DP_HIGH);
+    }
     return d;
 }
 
-uint16_t il_check(il_action_t act, const il_inputs_t *in)
+uint32_t il_check(il_action_t act, const il_inputs_t *in)
 {
-    uint16_t d = 0;
+    uint32_t d = 0;
 
     /* 共通：Loadlock 狀態不明時，任何跟 Loadlock 有關的動作都不准 */
     bool ll_related = act >= IL_ACT_SV_OPEN && act <= IL_ACT_TRANSFER;
@@ -69,6 +77,7 @@ uint16_t il_check(il_action_t act, const il_inputs_t *in)
         break;
 
     case IL_ACT_Z_MOVE:                                    /* LL-06：手臂在 PM 裡撿放片 */
+        if (!in->ll_z_enabled) break;
         if (!il_arm_clear_of_sv(in)) {
             if (!in->pm_at_transfer) d |= IL_DENY(PM_NOT_AT_TRANSFER);
             if (pm_busy(in))         d |= IL_DENY(PM_BUSY);
@@ -97,6 +106,22 @@ uint16_t il_check(il_action_t act, const il_inputs_t *in)
         }
         break;
 
+    case IL_ACT_PM_HEATER_MOVE:                            /* PM-04：手臂在 PM 內不准動 Heater */
+        if (!in->ll_fresh)             d |= IL_DENY(LL_UNKNOWN);
+        else if (!il_arm_clear_of_sv(in)) d |= IL_DENY(ARM_IN_SV_PATH);
+        break;
+
+    case IL_ACT_PM_LIFT_MOVE:                              /* PM-05：交接時手臂停住、Heater 在下位才可升降 */
+        if (!in->ll_fresh)             d |= IL_DENY(LL_UNKNOWN);
+        else if (arm_moving(in))       d |= IL_DENY2(ARM_MOVING);
+        if (!in->pm_heater_down)       d |= IL_DENY2(HEATER_NOT_DOWN);
+        break;
+
+    case IL_ACT_PM_TURBO_GV_OPEN:                          /* PM-06：SV 沒確定關閉不准開 Turbo GV */
+        if (!in->ll_fresh)             d |= IL_DENY(LL_UNKNOWN);
+        else if (!sv_closed(in))       d |= IL_DENY(SV_NOT_CLOSED);
+        break;
+
     default:
         break;
     }
@@ -114,6 +139,9 @@ uint8_t il_monitor(const il_inputs_t *in)
     /* MON-02：開 SV 的條件只要有一項不成立，就拉掉硬體 TRANSFER_PERMIT */
     if (in->safe_active || !in->ll_fresh || in->ll_alm != 0 || sv_open_conditions(in) != 0)
         r |= IL_REACT_PERMIT_OFF;
+
+    /* MON-04：手臂不在外面（或 LL 狀態不明）時 Heater module 還在動 → 立刻停 */
+    if (in->pm_heater_moving && !il_arm_clear_of_sv(in)) r |= IL_REACT_HEATER_STOP;
 
     return r;
 }

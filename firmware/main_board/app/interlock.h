@@ -18,7 +18,9 @@
 #include <stdint.h>
 #include "registers_main.h"
 
-#define IL_DENY(x) ((uint16_t)(1u << MAIN_IR_IL_DENY_BIT_##x))
+/* il_check 回傳 32 bit：低 16 bit = IR IL_DENY，高 16 bit = IR IL_DENY2 */
+#define IL_DENY(x)  ((uint32_t)1u << MAIN_IR_IL_DENY_BIT_##x)
+#define IL_DENY2(x) ((uint32_t)1u << (16u + MAIN_IR_IL_DENY2_BIT_##x))
 
 typedef enum {
     IL_ACT_NONE = 0,
@@ -35,11 +37,15 @@ typedef enum {
     IL_ACT_PM_PROCESS = 20,   /* ALD 製程開始、前驅物閥開 */
     IL_ACT_PM_RF_ON = 21,
     IL_ACT_PM_VENT = 22,
+    IL_ACT_PM_HEATER_MOVE = 23,   /* Heater module 升降（軸 0 MOVE / HOME） */
+    IL_ACT_PM_LIFT_MOVE = 24,     /* Wafer lift 氣缸上 / 下 */
+    IL_ACT_PM_TURBO_GV_OPEN = 25, /* Turbo gate valve 開 */
 } il_action_t;
 
 /* 持續監看的反應（il_monitor 回傳） */
 #define IL_REACT_PM_ABORT      0x01u   /* 停 ALD、關前驅物閥、RF off、停 PM vent */
 #define IL_REACT_PERMIT_OFF    0x02u   /* TRANSFER_PERMIT 輸出 OFF（選配：接到 Loadlock 的硬體許可，目前 SLK 不接） */
+#define IL_REACT_HEATER_STOP   0x04u   /* Heater module 立刻停（手臂進到 PM 時 Heater 還在動） */
 
 typedef struct {
     /* 系統 */
@@ -49,22 +55,25 @@ typedef struct {
     bool     ll_fresh;           /* TLM 在 IL_LL_STALE_MS 內有更新 */
     int16_t  ll_alm, ll_sv, ll_z, ll_arm, ll_seq;
     int32_t  ll_pos;
-    int32_t  ll_pres_mtorr;      /* -1 = 低於 1 Torr 下限 */
+    int32_t  ll_pres_mtorr;      /* -1 = 低於量測下限（SLK 壓力計 1 Torr）= 壓力未知 */
     bool     ll_rough_open, ll_vent_open, ll_lid_open;
     /* PM（來自執行板） */
     int32_t  pm_pres_mtorr;      /* 換算後腔體壓力；未知請填 INT32_MAX */
     bool     pm_process_running; /* ALD 序列執行中或任何前驅物閥開 */
     bool     pm_rf_on;
     bool     pm_venting;         /* Chamber vent 閥開 */
-    bool     pm_at_transfer;     /* Susceptor / Wafer lift 在交接位置 */
+    bool     pm_turbo_gv_closed; /* Turbo gate valve 關閉感測器 ON */
+    bool     pm_heater_down;     /* Heater module 在下位（交接高度） */
+    bool     pm_heater_moving;   /* Heater module 軸移動 / 回原點中 */
+    bool     pm_at_transfer;     /* 交接位置：Heater module 在下位 + Wafer lift 停在上 / 下定位（不在中間） */
     /* 參數（HR IL_*） */
-    int32_t  sv_ll_max_mtorr;
-    int32_t  sv_pm_max_mtorr;
+    int32_t  sv_dp_max_mtorr;    /* 開 SV 的 LL / PM 壓差上限 */
+    bool     ll_z_enabled;       /* SLK Z 軸啟用；false = 不檢查 Z */
     int32_t  arm_safe_pos;
 } il_inputs_t;
 
-/* 回傳 0 = 允許；非 0 = 拒絕原因位元（IL_DENY(...)） */
-uint16_t il_check(il_action_t act, const il_inputs_t *in);
+/* 回傳 0 = 允許；非 0 = 拒絕原因位元（IL_DENY(...) | IL_DENY2(...)） */
+uint32_t il_check(il_action_t act, const il_inputs_t *in);
 
 /* 每圈呼叫：回傳 IL_REACT_* */
 uint8_t  il_monitor(const il_inputs_t *in);

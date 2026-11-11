@@ -7,6 +7,8 @@ public enum MachineAction
     AldStart,
     ChamberVent,
     WaferLiftMove,
+    HeaterMove,        // Heater module 升降
+    TurboGateOpen,
     // Loadlock 側
     SlitValveOpen,
     SlitValveClose,
@@ -34,8 +36,10 @@ public sealed record InterlockResult(bool Allowed, string Reason)
 /// </summary>
 public static class Interlocks
 {
-    public static double SvLoadlockMaxTorr { get; set; } = 2.0;
-    public static double SvChamberMaxTorr { get; set; } = 1.0;
+    /// <summary>開 SV 的 Loadlock / PM 壓差上限（config interlock.svMaxDiffMtorr，預設 50 mTorr）。</summary>
+    public static double SvMaxDiffTorr { get; set; } = 0.050;
+    /// <summary>SLK Z 軸是否啟用（config interlock.loadlockZEnabled）。之後取消 Z 軸時設 false。</summary>
+    public static bool LoadlockZEnabled { get; set; } = true;
 
     public static InterlockResult Check(MachineAction action, MachineSnapshot s)
     {
@@ -51,6 +55,10 @@ public static class Interlocks
             return InterlockResult.Deny($"Loadlock 警報中（代碼 {s.LoadlockAlarm}）");
 
         bool pmBusy = s.AldRunning || s.RfOn;
+        bool zDown = !LoadlockZEnabled || s.ArmZ == LoadlockZ.Down;
+        bool pressureUnknown = double.IsNaN(s.LoadlockPressureTorr) || s.LoadlockPressureTorr < 0
+                            || double.IsNaN(s.ChamberPressureTorr);
+        double dp = Math.Abs(s.LoadlockPressureTorr - s.ChamberPressureTorr);
 
         return action switch
         {
@@ -68,8 +76,17 @@ public static class Interlocks
             MachineAction.ChamberVent when s.TurboAtSpeed || !s.TurboGateClosed
                 => InterlockResult.Deny("Turbo 運轉中或 Gate valve 未關"),
 
-            MachineAction.WaferLiftMove when !s.ArmClearOfSv && s.ArmZ != LoadlockZ.Down
-                => InterlockResult.Deny("Loadlock 手臂在 PM 內且 Z 未下降"),
+            // ---- PM-04~06：PM 內升降與 Turbo GV
+            MachineAction.HeaterMove or MachineAction.WaferLiftMove or MachineAction.TurboGateOpen when !s.LoadlockFresh
+                => InterlockResult.Deny("Loadlock 狀態不明，無法確認手臂 / Slit valve 位置"),
+            MachineAction.HeaterMove when !s.ArmClearOfSv
+                => InterlockResult.Deny("手臂在 PM 內，不能移動 Heater module"),
+            MachineAction.WaferLiftMove when s.ArmMoving
+                => InterlockResult.Deny("Loadlock 手臂移動中，不能升降 Wafer lift"),
+            MachineAction.WaferLiftMove when !s.HeaterDown
+                => InterlockResult.Deny("Heater module 不在下位"),
+            MachineAction.TurboGateOpen when !s.SlitClosed
+                => InterlockResult.Deny("Slit valve 未關，不能開 Turbo gate valve"),
 
             // ---- LL-01 開 SV / LL-03 傳片
             MachineAction.SlitValveOpen or MachineAction.Transfer when pmBusy
@@ -80,14 +97,14 @@ public static class Interlocks
                 => InterlockResult.Deny("Loadlock 艙蓋開啟"),
             MachineAction.SlitValveOpen or MachineAction.Transfer when s.LoadlockRoughOpen || s.LoadlockVentOpen
                 => InterlockResult.Deny("Loadlock 粗抽閥或洩壓閥開啟中"),
-            MachineAction.SlitValveOpen or MachineAction.Transfer
-                when double.IsNaN(s.LoadlockPressureTorr) || s.LoadlockPressureTorr > SvLoadlockMaxTorr
-                => InterlockResult.Deny($"Loadlock 壓力未知或高於 {SvLoadlockMaxTorr} Torr"),
-            MachineAction.SlitValveOpen or MachineAction.Transfer
-                when double.IsNaN(s.ChamberPressureTorr) || s.ChamberPressureTorr > SvChamberMaxTorr
-                => InterlockResult.Deny($"PM 壓力未知或高於 {SvChamberMaxTorr} Torr"),
+            MachineAction.SlitValveOpen or MachineAction.Transfer when !s.TurboGateClosed
+                => InterlockResult.Deny("Turbo gate valve 未關"),
+            MachineAction.SlitValveOpen or MachineAction.Transfer when pressureUnknown
+                => InterlockResult.Deny("壓力未知（Loadlock 低於量測下限或 PM 壓力計離線），無法確認壓差"),
+            MachineAction.SlitValveOpen or MachineAction.Transfer when dp > SvMaxDiffTorr
+                => InterlockResult.Deny($"Loadlock 與 PM 壓差 {dp * 1000:F0} mTorr，超過 {SvMaxDiffTorr * 1000:F0} mTorr"),
             MachineAction.Transfer when !s.PmAtTransfer
-                => InterlockResult.Deny("PM Susceptor / Wafer lift 不在交接位置"),
+                => InterlockResult.Deny("PM 不在交接位置（Heater module 下位、Wafer lift 定位）"),
             MachineAction.Transfer when s.LoadlockBusy
                 => InterlockResult.Deny("Loadlock 序列執行中"),
 
@@ -98,14 +115,16 @@ public static class Interlocks
             // ---- LL-04 / LL-05 手臂
             MachineAction.ArmIntoPm when s.SlitValve != LoadlockSv.Open
                 => InterlockResult.Deny("Slit valve 未全開"),
-            MachineAction.ArmIntoPm or MachineAction.ArmLoadlockSide when s.ArmZ != LoadlockZ.Down
+            MachineAction.ArmIntoPm or MachineAction.ArmLoadlockSide when !zDown
                 => InterlockResult.Deny("Z 軸未下降到位"),
             MachineAction.ArmIntoPm when !s.PmAtTransfer
-                => InterlockResult.Deny("PM Susceptor / Wafer lift 不在交接位置"),
+                => InterlockResult.Deny("PM 不在交接位置（Heater module 下位、Wafer lift 定位）"),
             MachineAction.ArmIntoPm when pmBusy
                 => InterlockResult.Deny("PM 製程或 RF 進行中"),
 
             // ---- LL-06 Z 軸：手臂在 PM 裡撿放片時，PM 要在交接位置、不能在跑
+            MachineAction.ZMove when !LoadlockZEnabled
+                => InterlockResult.Ok,
             MachineAction.ZMove when !s.ArmClearOfSv && !s.PmAtTransfer
                 => InterlockResult.Deny("手臂在 PM 內，但 PM 不在交接位置"),
             MachineAction.ZMove when !s.ArmClearOfSv && pmBusy

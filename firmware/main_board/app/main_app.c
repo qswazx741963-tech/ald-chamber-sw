@@ -42,6 +42,7 @@ static uint16_t s_ipc_hb, s_bp_hb;
 static uint32_t s_ipc_hb_ms, s_last_sync_ms;
 static bool     s_ipc_seen, s_safe = true;
 static ll_mirror_t s_ll;
+static uint16_t s_lift_out;   /* 上一次核准送出的 Wafer lift 氣缸命令 */
 
 static const ald_slot_def_t *slot_def(uint8_t slot)
 {
@@ -107,19 +108,30 @@ static void build_inputs(il_inputs_t *in, uint32_t now)
                           || (proc[PROC_IR_DO_FB] & 0x3Fu & (uint16_t)~purge);
     in->pm_rf_on = hr0[MAIN_HR_RF_ON] != 0;            /* TODO 改用 RF 電源實際回報 */
     in->pm_venting = vac[VAC_IR_DO_FB] & (1u << VAC_IR_DO_FB_BIT_CHAMBER_VENT);
-    /* TODO 交接位置定義待確認：目前假設 Susceptor 在原點、Wafer lift 在上 */
-    in->pm_at_transfer = (mot[MOT_IR_DI] & (1u << MOT_IR_DI_BIT_SUSCEPTOR_HOME))
-                      && (mot[MOT_IR_DI] & (1u << MOT_IR_DI_BIT_WAFER_LIFT_UP));
+    in->pm_turbo_gv_closed = vac[VAC_IR_DI] & (1u << VAC_IR_DI_BIT_TURBO_GV_CLOSED);
 
-    in->sv_ll_max_mtorr = (int32_t)hr0[MAIN_HR_IL_SV_LL_MAX_TORR] * 10;   /* 0.01 Torr → mTorr */
-    in->sv_pm_max_mtorr = (int32_t)hr0[MAIN_HR_IL_SV_PM_MAX_TORR] * 10;
+    /* 交接（2026-11-11 使用者確認）：Heater module 在下位、Wafer lift 在 down → 手臂送片進來 →
+     * Wafer lift up 接住 → 手臂退出 → Heater module up 到 Process 位置。
+     * 取片時 Wafer lift 在 up（片在 pin 上），所以交接位置 = Heater 在下位 + Wafer lift 停在上 / 下任一定位。 */
+    bool lift_dn = mot[MOT_IR_DI] & (1u << MOT_IR_DI_BIT_WAFER_LIFT_DOWN);
+    bool lift_up = mot[MOT_IR_DI] & (1u << MOT_IR_DI_BIT_WAFER_LIFT_UP);
+    uint16_t hstate = mot[MOT_IR_AXIS_STATE + 0];
+    in->pm_heater_down = mot[MOT_IR_DI] & (1u << MOT_IR_DI_BIT_HEATER_DOWN);
+    in->pm_heater_moving = hstate == 1u || hstate == 2u;            /* 1 moving, 2 homing */
+    in->pm_at_transfer = in->pm_heater_down && !in->pm_heater_moving && (lift_dn != lift_up);
+
+    uint16_t dp = hr0[MAIN_HR_IL_SV_DP_MAX_MTORR];
+    if (dp < MAIN_HR_IL_SV_DP_MAX_MTORR_MIN_RAW || dp > MAIN_HR_IL_SV_DP_MAX_MTORR_MAX_RAW) dp = 50;
+    in->sv_dp_max_mtorr = dp;
+    in->ll_z_enabled = hr0[MAIN_HR_IL_LL_Z_ENABLE] != MAIN_HR_IL_LL_Z_ENABLE_DISABLED;
     in->arm_safe_pos = reg_get_i32(&hr0[MAIN_HR_IL_ARM_SAFE_POS]);
 }
 
-static void record_deny(uint16_t deny, il_action_t act)
+static void record_deny(uint32_t deny, il_action_t act)
 {
     if (!deny) return;
-    ir_slot(0)[MAIN_IR_IL_DENY] = deny;
+    ir_slot(0)[MAIN_IR_IL_DENY] = (uint16_t)deny;
+    ir_slot(0)[MAIN_IR_IL_DENY2] = (uint16_t)(deny >> 16);
     ir_slot(0)[MAIN_IR_IL_DENY_ACTION] = (uint16_t)act;
 }
 
@@ -135,7 +147,7 @@ static void filter_hr(uint8_t slot, const il_inputs_t *in, uint8_t react)
         uint16_t purge = s_hr_out[PROC_HR_PURGE_VALVES];
         uint16_t ald_bits = s_hr_out[PROC_HR_DO_CMD] & 0x3Fu & (uint16_t)~purge;
         if (s_hr_out[COM_HR_COMMAND] == COM_HR_COMMAND_START || ald_bits) {
-            uint16_t d = il_check(IL_ACT_PM_PROCESS, in);
+            uint32_t d = il_check(IL_ACT_PM_PROCESS, in);
             if (d) {
                 record_deny(d, IL_ACT_PM_PROCESS);
                 if (s_hr_out[COM_HR_COMMAND] == COM_HR_COMMAND_START) s_hr_out[COM_HR_COMMAND] = COM_HR_COMMAND_NONE;
@@ -149,9 +161,32 @@ static void filter_hr(uint8_t slot, const il_inputs_t *in, uint8_t react)
     } else if (slot == VAC_DEFAULT_SLOT) {
         uint16_t vent = 1u << VAC_HR_DO_CMD_BIT_CHAMBER_VENT;
         if (s_hr_out[VAC_HR_DO_CMD] & vent) {
-            uint16_t d = il_check(IL_ACT_PM_VENT, in);
+            uint32_t d = il_check(IL_ACT_PM_VENT, in);
             if (d || (react & IL_REACT_PM_ABORT)) { record_deny(d, IL_ACT_PM_VENT); s_hr_out[VAC_HR_DO_CMD] &= (uint16_t)~vent; }
         }
+        /* PM-06：SV 不是確定關閉 → Turbo GV 不准開；已開著的也會在下一包被關掉（每 10 ms 重新判斷） */
+        uint16_t gv = 1u << VAC_HR_DO_CMD_BIT_TURBO_GV;
+        if (s_hr_out[VAC_HR_DO_CMD] & gv) {
+            uint32_t d = il_check(IL_ACT_PM_TURBO_GV_OPEN, in);
+            if (d) { record_deny(d, IL_ACT_PM_TURBO_GV_OPEN); s_hr_out[VAC_HR_DO_CMD] &= (uint16_t)~gv; }
+        }
+    } else if (slot == MOT_DEFAULT_SLOT) {
+        /* PM-04 / MON-04：Heater module（軸 0） */
+        uint16_t *hc = &s_hr_out[MOT_HR_AXIS_CMD + 0];
+        if (*hc == MOT_HR_AXIS_CMD_MOVE || *hc == MOT_HR_AXIS_CMD_HOME) {
+            uint32_t d = il_check(IL_ACT_PM_HEATER_MOVE, in);
+            if (d) { record_deny(d, IL_ACT_PM_HEATER_MOVE); *hc = MOT_HR_AXIS_CMD_NONE; }
+        }
+        if (react & IL_REACT_HEATER_STOP) *hc = MOT_HR_AXIS_CMD_STOP;
+        /* PM-05：Wafer lift 氣缸。命令有變化才檢查；不准就維持上一次核准的狀態（不是清成 0，避免片掉下來） */
+        uint16_t mask = (1u << MOT_HR_DO_CMD_BIT_WAFER_LIFT_UP) | (1u << MOT_HR_DO_CMD_BIT_WAFER_LIFT_DOWN);
+        uint16_t want = s_hr_out[MOT_HR_DO_CMD] & mask;
+        if (want != s_lift_out) {
+            uint32_t d = il_check(IL_ACT_PM_LIFT_MOVE, in);
+            if (d) record_deny(d, IL_ACT_PM_LIFT_MOVE);
+            else   s_lift_out = want;
+        }
+        s_hr_out[MOT_HR_DO_CMD] = (uint16_t)((s_hr_out[MOT_HR_DO_CMD] & (uint16_t)~mask) | s_lift_out);
     }
     if (s_safe) s_hr_out[COM_HR_COMMAND] = COM_HR_COMMAND_ENTER_SAFE;
 }

@@ -23,9 +23,17 @@ public sealed record MachineSnapshot
     public bool AldRunning { get; init; }
     public bool RfOn { get; init; }
 
-    // 槽 4 馬達板（PM）
-    public bool WaferLiftHome { get; init; }
-    public bool PmAtTransfer { get; init; }   // TODO 交接位置定義待確認
+    // 槽 4 馬達板（PM）：軸 0 Heater module、Wafer lift 氣缸
+    public bool HeaterDown { get; init; }
+    public bool HeaterMoving { get; init; }
+    public bool WaferLiftDown { get; init; }
+    public bool WaferLiftUp { get; init; }
+
+    /// <summary>
+    /// 交接位置：Heater module 在下位且沒在動，Wafer lift 停在上 / 下任一定位。
+    /// 送片：lift down → 手臂進來 → lift up 接片 → 手臂退出 → Heater up 到 Process。取片時 lift 在 up。
+    /// </summary>
+    public bool PmAtTransfer => HeaterDown && !HeaterMoving && WaferLiftDown != WaferLiftUp;
 
     // Loadlock（SLK 模組，經主控板）
     public bool LoadlockFresh { get; init; }          // TLM 在 IL_LL_STALE_MS 內有更新
@@ -35,7 +43,7 @@ public sealed record MachineSnapshot
     public bool ArmMoving { get; init; }
     public int ArmPosSteps { get; init; }
     public int ArmSafePosSteps { get; init; } = 5894; // 160 mm × 36.84 step/mm
-    public double LoadlockPressureTorr { get; init; } = double.NaN;   // -0.001 = 低於 1 Torr 量測下限
+    public double LoadlockPressureTorr { get; init; } = double.NaN;   // 負值 = 低於量測下限（SLK 1 Torr）= 未知
     public bool LoadlockLidOpen { get; init; }
     public bool LoadlockRoughOpen { get; init; }
     public bool LoadlockVentOpen { get; init; }

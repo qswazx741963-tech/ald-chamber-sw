@@ -17,7 +17,7 @@
    ├─ 槽 1 製程板：ALD 閥 ×6、MFC ×6、腔體壓力計、RF 線檢知
    ├─ 槽 2 加熱板：12 組 SSR / 熱電偶、3 個過溫開關
    ├─ 槽 3 真空板：Turbo GV、粗抽 / vent 閥、Dry pump、Turbo、真空計
-   ├─ 槽 4 馬達板：Susceptor 軸、Wafer lift
+   ├─ 槽 4 馬達板：Heater module 軸、Wafer lift 氣缸
    └─ 槽 5~15 預留擴充
 ```
 

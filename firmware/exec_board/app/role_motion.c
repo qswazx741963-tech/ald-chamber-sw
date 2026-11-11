@@ -1,5 +1,5 @@
 /*
- * 馬達板（PM 側）：軸 0 Susceptor、軸 1 Wafer lift；Wafer lift 氣缸上 / 下
+ * 馬達板（PM 側）：軸 0 Heater module、軸 1 預留；Wafer lift 氣缸上 / 下
  * 邏輯通道：DO 0–1 氣缸上 / 下；DI 0–4 依 MOT_IR_DI bits 順序
  * 步進脈衝：STM32G474 用計時器 PWM / HRTIM 產生，TODO 硬體定案後實作；這裡只有命令與狀態框架。
  */

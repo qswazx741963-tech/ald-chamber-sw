@@ -47,9 +47,10 @@ static il_inputs_t ready(void)
     in.pm_slots_ok = true;
     in.ll_fresh = true;
     in.ll_sv = SLK_SV_CLOSED; in.ll_z = SLK_Z_DOWN; in.ll_arm = SLK_ARM_READY;
-    in.ll_pos = 0; in.ll_pres_mtorr = -1;
-    in.pm_pres_mtorr = 50; in.pm_at_transfer = true;
-    in.sv_ll_max_mtorr = 2000; in.sv_pm_max_mtorr = 1000; in.arm_safe_pos = 5894;
+    in.ll_pos = 0; in.ll_pres_mtorr = 40;        /* 假設 LL 已加 mTorr 級壓力計 */
+    in.pm_pres_mtorr = 10; in.pm_at_transfer = true;
+    in.pm_turbo_gv_closed = true; in.pm_heater_down = true;
+    in.sv_dp_max_mtorr = 50; in.ll_z_enabled = true; in.arm_safe_pos = 5894;
     return in;
 }
 
@@ -58,8 +59,15 @@ static void test_il_sv_open(void)
     il_inputs_t in = ready();
     CHECK_EQ(il_check(IL_ACT_SV_OPEN, &in), 0);
     in = ready(); in.ll_fresh = false;           CHECK_EQ(il_check(IL_ACT_SV_OPEN, &in), IL_DENY(LL_UNKNOWN));
-    in = ready(); in.ll_pres_mtorr = 760000;     CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(LL_PRESSURE_HIGH));
-    in = ready(); in.pm_pres_mtorr = INT32_MAX;  CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(PM_PRESSURE_HIGH));
+    in = ready(); in.ll_pres_mtorr = 760000;     CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(DP_HIGH));
+    in = ready(); in.ll_pres_mtorr = 61;         CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(DP_HIGH));   /* 差 51 */
+    in = ready(); in.ll_pres_mtorr = 60;         CHECK_EQ(il_check(IL_ACT_SV_OPEN, &in), 0);               /* 差 50 剛好可以 */
+    in = ready(); in.pm_pres_mtorr = 80;         CHECK_EQ(il_check(IL_ACT_SV_OPEN, &in), 0);               /* PM 比 LL 高也算壓差 */
+    in = ready(); in.pm_pres_mtorr = 100;        CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(DP_HIGH));
+    in = ready(); in.ll_pres_mtorr = -1;         CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(PRESSURE_UNKNOWN)); /* 低於 SLK 下限 */
+    in = ready(); in.pm_pres_mtorr = INT32_MAX;  CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(PRESSURE_UNKNOWN));
+    in = ready(); in.pm_turbo_gv_closed = false; CHECK_EQ(il_check(IL_ACT_SV_OPEN, &in), IL_DENY2(TURBO_GV_OPEN));
+    in = ready(); in.pm_turbo_gv_closed = false; CHECK(il_check(IL_ACT_TRANSFER, &in) & IL_DENY2(TURBO_GV_OPEN));
     in = ready(); in.pm_process_running = true;  CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(PM_BUSY));
     in = ready(); in.pm_rf_on = true;            CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(PM_BUSY));
     in = ready(); in.pm_venting = true;          CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(PM_VENTING));
@@ -88,6 +96,7 @@ static void test_il_sv_close_and_arm(void)
     CHECK_EQ(il_check(IL_ACT_ARM_INTO_PM, &in), 0);
     in.ll_z = SLK_Z_UP;                          CHECK(il_check(IL_ACT_ARM_INTO_PM, &in) & IL_DENY(Z_NOT_DOWN));
     in = ready(); in.ll_z = SLK_Z_UP;            CHECK_EQ(il_check(IL_ACT_ARM_LL_SIDE, &in), IL_DENY(Z_NOT_DOWN));
+    in.ll_z_enabled = false;                     CHECK_EQ(il_check(IL_ACT_ARM_LL_SIDE, &in), 0);   /* Z 軸停用就不檢查 */
     in = ready(); in.pm_at_transfer = false;     CHECK(il_check(IL_ACT_TRANSFER, &in) & IL_DENY(PM_NOT_AT_TRANSFER));
     in = ready(); in.ll_seq = 5;                 CHECK(il_check(IL_ACT_TRANSFER, &in) & IL_DENY(LL_BUSY));
 }
@@ -116,6 +125,28 @@ static void test_il_pm_side(void)
     CHECK(il_monitor(&in) & IL_REACT_PM_ABORT);
     in = ready(); in.ll_fresh = false;           CHECK(il_monitor(&in) & IL_REACT_PERMIT_OFF);
     in = ready(); in.pm_pres_mtorr = INT32_MAX;  CHECK(il_monitor(&in) & IL_REACT_PERMIT_OFF);
+}
+
+static void test_il_pm_motion_and_gv(void)
+{
+    /* PM-04：手臂在 PM 內不准動 Heater；MON-04 動到一半手臂進來要停 */
+    il_inputs_t in = ready();
+    CHECK_EQ(il_check(IL_ACT_PM_HEATER_MOVE, &in), 0);
+    in.ll_pos = 9000;                            CHECK_EQ(il_check(IL_ACT_PM_HEATER_MOVE, &in), IL_DENY(ARM_IN_SV_PATH));
+    in.pm_heater_moving = true;                  CHECK(il_monitor(&in) & IL_REACT_HEATER_STOP);
+    in = ready(); in.pm_heater_moving = true;    CHECK(!(il_monitor(&in) & IL_REACT_HEATER_STOP));
+    in = ready(); in.ll_fresh = false;           CHECK_EQ(il_check(IL_ACT_PM_HEATER_MOVE, &in), IL_DENY(LL_UNKNOWN));
+
+    /* PM-05：Wafer lift 升降時手臂要停住、Heater 要在下位；手臂在 PM 內停住時可以升降（交接） */
+    in = ready(); in.ll_pos = 9000; in.ll_arm = SLK_ARM_AT_POS;
+    CHECK_EQ(il_check(IL_ACT_PM_LIFT_MOVE, &in), 0);
+    in.ll_arm = SLK_ARM_MOVING;                  CHECK_EQ(il_check(IL_ACT_PM_LIFT_MOVE, &in), IL_DENY2(ARM_MOVING));
+    in = ready(); in.pm_heater_down = false;     CHECK_EQ(il_check(IL_ACT_PM_LIFT_MOVE, &in), IL_DENY2(HEATER_NOT_DOWN));
+
+    /* PM-06：SV 沒關不准開 Turbo GV */
+    in = ready();                                CHECK_EQ(il_check(IL_ACT_PM_TURBO_GV_OPEN, &in), 0);
+    in.ll_sv = SLK_SV_OPEN;                      CHECK_EQ(il_check(IL_ACT_PM_TURBO_GV_OPEN, &in), IL_DENY(SV_NOT_CLOSED));
+    in = ready(); in.ll_fresh = false;           CHECK_EQ(il_check(IL_ACT_PM_TURBO_GV_OPEN, &in), IL_DENY(LL_UNKNOWN));
 }
 
 /* ------------------------------------------------------------ Loadlock 狀態鏡像 */
@@ -179,6 +210,7 @@ int main(void)
     RUN(test_il_sv_close_and_arm);
     RUN(test_il_pump_vent);
     RUN(test_il_pm_side);
+    RUN(test_il_pm_motion_and_gv);
     RUN(test_mirror);
     RUN(test_main_loop_safe_without_ipc);
     printf("主控板：%d 項檢查，%d 項失敗\n", g_checks, g_fail);

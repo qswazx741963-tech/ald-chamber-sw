@@ -11,10 +11,10 @@ public class InterlockTests
         SlotOnline = new[] { true, true, true, true, true },
         ChamberLidClosed = true, LidCoverClosed = true,
         Rf1PowerCableOk = true, Rf1MatchCableOk = true,
-        TurboGateClosed = true, WaferLiftHome = true, PmAtTransfer = true,
-        ChamberPressureTorr = 0.05,
+        TurboGateClosed = true, HeaterDown = true, WaferLiftDown = true,
+        ChamberPressureTorr = 0.010,
         LoadlockFresh = true, SlitValve = LoadlockSv.Closed, ArmZ = LoadlockZ.Down,
-        ArmPosSteps = 0, LoadlockPressureTorr = -0.001,
+        ArmPosSteps = 0, LoadlockPressureTorr = 0.040,   // 假設 LL 已加 mTorr 級壓力計
     };
 
     private static bool Allowed(MachineAction a, MachineSnapshot s) => Interlocks.Check(a, s).Allowed;
@@ -38,6 +38,16 @@ public class InterlockTests
     [Fact] public void SvOpen_Denied_WhenLoadlockAtAtm() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = 760 }));
     [Fact] public void SvOpen_Denied_WhenLoadlockPressureUnknown() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = double.NaN }));
     [Fact] public void SvOpen_Denied_WhenChamberPressureUnknown() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { ChamberPressureTorr = double.NaN }));
+    [Fact] public void SvOpen_Denied_WhenBelowSlkGaugeRange() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = -0.001 }));
+    [Fact] public void SvOpen_Denied_WhenDiffOver50mTorr() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = 0.065 }));
+    [Fact] public void SvOpen_Allowed_WhenDiffWithin50mTorr() => Assert.True(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = 0.055 }));
+    [Fact] public void SvOpen_Denied_WhenTurboGateOpen() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { TurboGateClosed = false }));
+    [Fact] public void TurboGateOpen_Denied_WhenSvOpen() => Assert.False(Allowed(MachineAction.TurboGateOpen, Ready() with { SlitValve = LoadlockSv.Open }));
+    [Fact] public void HeaterMove_Denied_WhenArmInPm() => Assert.False(Allowed(MachineAction.HeaterMove, Ready() with { ArmPosSteps = 9000 }));
+    [Fact] public void WaferLift_Allowed_WhenArmStoppedInPm() => Assert.True(Allowed(MachineAction.WaferLiftMove, Ready() with { ArmPosSteps = 9000 }));
+    [Fact] public void WaferLift_Denied_WhenArmMoving() => Assert.False(Allowed(MachineAction.WaferLiftMove, Ready() with { ArmMoving = true }));
+    [Fact] public void WaferLift_Denied_WhenHeaterUp() => Assert.False(Allowed(MachineAction.WaferLiftMove, Ready() with { HeaterDown = false }));
+    [Fact] public void ArmIntoPm_Denied_WhenHeaterUp() => Assert.False(Allowed(MachineAction.ArmIntoPm, Ready() with { SlitValve = LoadlockSv.Open, HeaterDown = false }));
     [Fact] public void SvOpen_Denied_WhenLoadlockVentOpen() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockVentOpen = true }));
 
     // ---- LL-02：關 SV 不能夾到手臂；安全狀態下仍允許

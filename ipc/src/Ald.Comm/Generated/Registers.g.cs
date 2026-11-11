@@ -84,8 +84,8 @@ public static class MainBoard
             LlAlarm = 1 << 3,
             SvNotClosed = 1 << 4,
             SvNotOpen = 1 << 5,
-            LlPressureHigh = 1 << 6,
-            PmPressureHigh = 1 << 7,
+            DpHigh = 1 << 6,
+            PressureUnknown = 1 << 7,
             PmBusy = 1 << 8,
             PmVenting = 1 << 9,
             ArmInSvPath = 1 << 10,
@@ -97,6 +97,14 @@ public static class MainBoard
         }
         /// <summary>最近一次被擋下的動作（IL_ACT_*，見 docs/interlocks.md）</summary>
         public const ushort IlDenyAction = 14;
+        /// <summary>IL_DENY 的延伸（16 個 bit 不夠用）</summary>
+        public const ushort IlDeny2 = 15;
+        [System.Flags] public enum IlDeny2Bits : ushort
+        {
+            TurboGvOpen = 1 << 0,
+            ArmMoving = 1 << 1,
+            HeaterNotDown = 1 << 2,
+        }
         /// <summary>[Torr]</summary>
         public const ushort TvPressure = 30;
         public const double TvPressureScale = 0.001;
@@ -191,16 +199,17 @@ public static class MainBoard
         }
         /// <summary>-1 = 低於量測下限（1 Torr） [mTorr]</summary>
         public const ushort LlMPres = 108;
-        /// <summary>開 SV 前 Loadlock 壓力上限，預設 2.00（SLK 原為 10）TODO [Torr]</summary>
-        public const ushort IlSvLlMaxTorr = 150;
-        public const double IlSvLlMaxTorrScale = 0.01;
-        public const double IlSvLlMaxTorrMin = 0;
-        public const double IlSvLlMaxTorrMax = 10;
-        /// <summary>開 SV 前 PM 壓力上限，預設 1.00 TODO [Torr]</summary>
-        public const ushort IlSvPmMaxTorr = 151;
-        public const double IlSvPmMaxTorrScale = 0.01;
-        public const double IlSvPmMaxTorrMin = 0;
-        public const double IlSvPmMaxTorrMax = 10;
+        /// <summary>開 SV 前 Loadlock 與 PM 壓差上限，預設 50（config 可改） [mTorr]</summary>
+        public const ushort IlSvDpMaxMtorr = 150;
+        public const double IlSvDpMaxMtorrMin = 1;
+        public const double IlSvDpMaxMtorrMax = 10000;
+        /// <summary>SLK Z 軸是否啟用；之後取消 Z 軸（改用 PM Wafer lift）時設 DISABLED，Z 相關互鎖就不檢查</summary>
+        public const ushort IlLlZEnable = 151;
+        public enum IlLlZEnableValues : ushort
+        {
+            Disabled = 0,
+            Enabled = 1,
+        }
         /// <summary>LL_M_SEQ 超過此時間沒更新 → 視為 Loadlock 狀態不明，預設 500 [ms]</summary>
         public const ushort IlLlStaleMs = 152;
         public const double IlLlStaleMsMin = 100;
@@ -587,7 +596,7 @@ public static class VacuumBoard
 
 }
 
-/// <summary>PM 內馬達與升降（軸 0 Susceptor、軸 1 Wafer lift）。Loadlock 手臂 / Indexer 由 SLK 模組控制（槽 4，位址 = 800 + 區內位址）</summary>
+/// <summary>PM 內升降（軸 0 Heater module、軸 1 預留；Wafer lift 為氣缸）。Loadlock 手臂 / Indexer 由 SLK 模組控制（槽 4，位址 = 800 + 區內位址）</summary>
 public static class MotionBoard
 {
     public const int Slot = 4;
@@ -627,9 +636,9 @@ public static class MotionBoard
         public const ushort Di = 810;
         [System.Flags] public enum DiBits : ushort
         {
-            SusceptorHome = 1 << 0,
-            SusceptorProcess = 1 << 1,
-            WaferLiftHome = 1 << 2,
+            HeaterDown = 1 << 0,
+            HeaterProcess = 1 << 1,
+            WaferLiftDown = 1 << 2,
             WaferLiftUp = 1 << 3,
             WaferPresent = 1 << 4,
         }

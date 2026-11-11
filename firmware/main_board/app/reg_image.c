@@ -12,8 +12,8 @@ void reg_image_init(void)
     uint16_t *hr = hr_slot(0);
     hr[COM_HR_WATCHDOG_MS] = 1000;
     /* 互鎖參數預設值（IPC 可以改，TODO 依實機確認） */
-    hr[MAIN_HR_IL_SV_LL_MAX_TORR] = 200;    /* 2.00 Torr */
-    hr[MAIN_HR_IL_SV_PM_MAX_TORR] = 100;    /* 1.00 Torr */
+    hr[MAIN_HR_IL_SV_DP_MAX_MTORR] = 50;    /* LL / PM 壓差 50 mTorr（使用者經驗值） */
+    hr[MAIN_HR_IL_LL_Z_ENABLE] = MAIN_HR_IL_LL_Z_ENABLE_ENABLED;
     hr[MAIN_HR_IL_LL_STALE_MS] = 500;
     reg_put_i32(&hr[MAIN_HR_IL_ARM_SAFE_POS], 5894);   /* 160 mm × 36.84 step/mm */
 }

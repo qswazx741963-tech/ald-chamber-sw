@@ -2,16 +2,16 @@
 #pragma once
 #include "registers_common.h"
 
-/* motion: PM 內馬達與升降（軸 0 Susceptor、軸 1 Wafer lift）。Loadlock 手臂 / Indexer 由 SLK 模組控制 */
+/* motion: PM 內升降（軸 0 Heater module、軸 1 預留；Wafer lift 為氣缸）。Loadlock 手臂 / Indexer 由 SLK 模組控制 */
 #define MOT_DEFAULT_SLOT 4u
 #define MOT_BOARD_TYPE   4u
 
 /* ---- Input Register (FC04)（區內位址；共用表頭見 COM_IR_*） */
 #define MOT_IR_SIZE 42u
 #define MOT_IR_DI                                    10u  /* u16 */
-#define MOT_IR_DI_BIT_SUSCEPTOR_HOME                 0u
-#define MOT_IR_DI_BIT_SUSCEPTOR_PROCESS              1u
-#define MOT_IR_DI_BIT_WAFER_LIFT_HOME                2u
+#define MOT_IR_DI_BIT_HEATER_DOWN                    0u
+#define MOT_IR_DI_BIT_HEATER_PROCESS                 1u
+#define MOT_IR_DI_BIT_WAFER_LIFT_DOWN                2u
 #define MOT_IR_DI_BIT_WAFER_LIFT_UP                  3u
 #define MOT_IR_DI_BIT_WAFER_PRESENT                  4u
 #define MOT_IR_DO_FB                                 20u  /* u16 */

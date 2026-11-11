@@ -32,8 +32,9 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | IR 10 | 10 | DI | u16 | 1 |  |  |  | bits: 0=SAFE_LINE_OK, 1=EMO_OK, 2=CDA_OK, 3=TRANSFER_PERMIT_OUT |
 | IR 11 | 11 | SLOT_ONLINE | u16 | 1 |  |  |  | bit n = 槽 n 在線且板型/版本正確 |
 | IR 12 | 12 | SYS_STATE | u16 | 1 |  |  |  | 值: 0=BOOT, 1=SAFE, 2=IDLE, 3=PROCESS, 4=TRANSFER, 5=ALARM |
-| IR 13 | 13 | IL_DENY | u16 | 1 |  |  |  | 最近一次被主控板互鎖擋下的原因（可能多個同時成立） bits: 0=SAFE_ACTIVE, 1=SLOT_OFFLINE, 2=LL_UNKNOWN, 3=LL_ALARM, 4=SV_NOT_CLOSED, 5=SV_NOT_OPEN, 6=LL_PRESSURE_HIGH, 7=PM_PRESSURE_HIGH, 8=PM_BUSY, 9=PM_VENTING, 10=ARM_IN_SV_PATH, 11=Z_NOT_DOWN, 12=LL_LID_OPEN, 13=LL_VALVE_CONFLICT, 14=PM_NOT_AT_TRANSFER, 15=LL_BUSY |
+| IR 13 | 13 | IL_DENY | u16 | 1 |  |  |  | 最近一次被主控板互鎖擋下的原因（可能多個同時成立） bits: 0=SAFE_ACTIVE, 1=SLOT_OFFLINE, 2=LL_UNKNOWN, 3=LL_ALARM, 4=SV_NOT_CLOSED, 5=SV_NOT_OPEN, 6=DP_HIGH, 7=PRESSURE_UNKNOWN, 8=PM_BUSY, 9=PM_VENTING, 10=ARM_IN_SV_PATH, 11=Z_NOT_DOWN, 12=LL_LID_OPEN, 13=LL_VALVE_CONFLICT, 14=PM_NOT_AT_TRANSFER, 15=LL_BUSY |
 | IR 14 | 14 | IL_DENY_ACTION | u16 | 1 |  |  |  | 最近一次被擋下的動作（IL_ACT_*，見 docs/interlocks.md） |
+| IR 15 | 15 | IL_DENY2 | u16 | 1 |  |  |  | IL_DENY 的延伸（16 個 bit 不夠用） bits: 0=TURBO_GV_OPEN, 1=ARM_MOVING, 2=HEATER_NOT_DOWN |
 | IR 30 | 30 | TV_PRESSURE | u16 | 1 | 0.001 | Torr |  |  |
 | IR 31 | 31 | TV_POSITION | u16 | 1 | 0.1 | % |  |  |
 | IR 32 | 32 | TV_STATUS | u16 | 1 |  |  |  |  |
@@ -62,8 +63,8 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 106 | 106 | LL_M_ALM | u16 | 1 |  |  |  | SLK 警報碼，0 = 正常 |
 | HR 107 | 107 | LL_M_FLAGS | u16 | 1 |  |  |  | bits: 0=ROUGH_OPEN, 1=VENT_OPEN, 2=LID_OPEN |
 | HR 108–109 | 108–109 | LL_M_PRES | i32 | 1 |  | mTorr |  | -1 = 低於量測下限（1 Torr） |
-| HR 150 | 150 | IL_SV_LL_MAX_TORR | u16 | 1 | 0.01 | Torr | 0–10 | 開 SV 前 Loadlock 壓力上限，預設 2.00（SLK 原為 10）TODO |
-| HR 151 | 151 | IL_SV_PM_MAX_TORR | u16 | 1 | 0.01 | Torr | 0–10 | 開 SV 前 PM 壓力上限，預設 1.00 TODO |
+| HR 150 | 150 | IL_SV_DP_MAX_MTORR | u16 | 1 |  | mTorr | 1–10000 | 開 SV 前 Loadlock 與 PM 壓差上限，預設 50（config 可改） |
+| HR 151 | 151 | IL_LL_Z_ENABLE | u16 | 1 |  |  |  | SLK Z 軸是否啟用；之後取消 Z 軸（改用 PM Wafer lift）時設 DISABLED，Z 相關互鎖就不檢查 值: 0=DISABLED, 1=ENABLED |
 | HR 152 | 152 | IL_LL_STALE_MS | u16 | 1 |  | ms | 100–5000 | LL_M_SEQ 超過此時間沒更新 → 視為 Loadlock 狀態不明，預設 500 |
 | HR 153–154 | 153–154 | IL_ARM_SAFE_POS | i32 | 1 |  | step |  | 手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm） |
 
@@ -177,7 +178,7 @@ PM 壓力 / 真空、閥件、泵（板內互鎖）。Loadlock 的閥、Slit val
 
 ## 槽 4：motion
 
-PM 內馬達與升降（軸 0 Susceptor、軸 1 Wafer lift）。Loadlock 手臂 / Indexer 由 SLK 模組控制
+PM 內升降（軸 0 Heater module、軸 1 預留；Wafer lift 為氣缸）。Loadlock 手臂 / Indexer 由 SLK 模組控制
 
 ### Input Register (FC04)
 
@@ -192,7 +193,7 @@ PM 內馬達與升降（軸 0 Susceptor、軸 1 Wafer lift）。Loadlock 手臂 
 | IR 806 | 6 | BOARD_COUNTER | u16 | 1 |  |  |  | 板內主迴圈計數，確認板子沒當機 |
 | IR 807 | 7 | LAST_ERROR | u16 | 1 |  |  |  |  |
 | IR 808 | 8 | SLOT_ID | u16 | 1 |  |  |  | 背板腳位讀到的槽號 |
-| IR 810 | 10 | DI | u16 | 1 |  |  |  | bits: 0=SUSCEPTOR_HOME, 1=SUSCEPTOR_PROCESS, 2=WAFER_LIFT_HOME, 3=WAFER_LIFT_UP, 4=WAFER_PRESENT |
+| IR 810 | 10 | DI | u16 | 1 |  |  |  | bits: 0=HEATER_DOWN, 1=HEATER_PROCESS, 2=WAFER_LIFT_DOWN, 3=WAFER_LIFT_UP, 4=WAFER_PRESENT |
 | IR 820 | 20 | DO_FB | u16 | 1 |  |  |  | bits: 0=WAFER_LIFT_UP, 1=WAFER_LIFT_DOWN |
 | IR 830–833 | 30–33 | AXIS_POS | i32 | 2 |  | step |  |  |
 | IR 840–841 | 40–41 | AXIS_STATE | u16 | 2 |  |  |  | 0 idle, 1 moving, 2 homing, 3 error |
