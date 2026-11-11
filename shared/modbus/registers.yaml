@@ -166,8 +166,8 @@ boards:
         addr: 160
         desc: "換算公式見 docs/gauges.md"
         values: { NONE: 0, LINEAR: 1, APGX_H: 2, WRG200_X: 3, WRG200_G: 4, WRG200_Q: 5 }
-      - { name: PM_GAUGE_AI_ADDR,  addr: 161, desc: "壓力計電壓（mV）所在的 IR 絕對位址，預設 236 = 槽 1 MANOMETER_RAW" }
-      - { name: PM_GAUGE_FS_MTORR, addr: 162, type: i32, unit: mTorr, desc: "LINEAR（電容式 0~10 V）滿刻度，例 1 Torr = 1000" }
+      - { name: PM_GAUGE_AI_ADDR,  addr: 161, desc: "壓力計電壓（mV）所在的 IR 絕對位址，預設 633 = 槽 3 AI_RAW[3] Chamber APGX-H" }
+      - { name: PM_GAUGE_FS_MTORR, addr: 162, type: i32, unit: mTorr, desc: "LINEAR（電容式 0~10 V）滿刻度，例 1000 Torr = 1000000" }
 
   # ------------------------------------------------------------------
   process:

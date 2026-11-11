@@ -1,6 +1,7 @@
 #include "reg_image.h"
 #include "registers_main.h"
 #include "registers_process.h"
+#include "registers_vacuum.h"
 #include <string.h>
 
 uint16_t g_ir[REG_IMAGE_SIZE];
@@ -20,8 +21,9 @@ void reg_image_init(void)
     hr[MAIN_HR_IL_SV_MODE] = MAIN_HR_IL_SV_MODE_BELOW; /* 2026-11-11 使用者：LL、PM 都 < 1 Torr 就可開 */
     hr[MAIN_HR_IL_SV_BELOW_MTORR] = 1000;
     hr[MAIN_HR_IL_LL_JUMP_MTORR] = 10000;
-    /* PM 壓力計：預設槽 1 腔體壓力計、0~10 V 線性、滿刻度 1 Torr（config 型號選單會覆寫） */
-    hr[MAIN_HR_PM_GAUGE_MODEL] = MAIN_HR_PM_GAUGE_MODEL_LINEAR;
-    hr[MAIN_HR_PM_GAUGE_AI_ADDR] = (uint16_t)(PROC_DEFAULT_SLOT * ALD_SLOT_STRIDE + PROC_IR_MANOMETER_RAW);
-    reg_put_i32(&hr[MAIN_HR_PM_GAUGE_FS_MTORR], 1000);
+    /* PM 互鎖壓力計：預設槽 3 AI 3 的 Chamber APGX-H（config 型號選單會覆寫）。
+     * 不用 Barocel：滿刻度 1000 Torr，1 Torr 只有 10 mV、零點漂移 0.2 Torr/°C，判斷不了「< 1 Torr」 */
+    hr[MAIN_HR_PM_GAUGE_MODEL] = MAIN_HR_PM_GAUGE_MODEL_APGX_H;
+    hr[MAIN_HR_PM_GAUGE_AI_ADDR] = (uint16_t)(VAC_DEFAULT_SLOT * ALD_SLOT_STRIDE + VAC_IR_AI_RAW + 3);
+    reg_put_i32(&hr[MAIN_HR_PM_GAUGE_FS_MTORR], 1000000);   /* 只有 LINEAR 用：Barocel 1000 Torr */
 }

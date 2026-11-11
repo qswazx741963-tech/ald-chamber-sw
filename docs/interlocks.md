@@ -57,4 +57,4 @@
 ## 五、待確認
 
 - 開 SV 壓力條件 2026-11-11 改為「LL、PM 都 < 1 Torr」（使用者決定，`IL_SV_MODE = BELOW`）。若之後 LL 加 mTorr 級壓力計，可切回壓差模式（`DIFF`）。
-- PM 互鎖壓力計：預設 Barocel 線性、滿刻度 1 Torr（TODO 確認實際訂購滿刻度），型號選單見 `gauges.md`。
+- PM 互鎖壓力計：預設 Chamber APGX-H（槽 3 AI 3）。Barocel 滿刻度 1000 Torr，1 Torr 以下量不準，不拿來判斷開 SV；型號選單見 `gauges.md`。

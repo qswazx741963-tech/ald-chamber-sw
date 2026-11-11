@@ -84,8 +84,8 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 156 | 156 | IL_SV_BELOW_MTORR | u16 | 1 |  | mTorr | 1–10000 | BELOW 模式門檻，預設 1000（1 Torr） |
 | HR 157 | 157 | IL_LL_JUMP_MTORR | u16 | 1 |  | mTorr | 1000–60000 | LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr） |
 | HR 160 | 160 | PM_GAUGE_MODEL | u16 | 1 |  |  |  | 換算公式見 docs/gauges.md 值: 0=NONE, 1=LINEAR, 2=APGX_H, 3=WRG200_X, 4=WRG200_G, 5=WRG200_Q |
-| HR 161 | 161 | PM_GAUGE_AI_ADDR | u16 | 1 |  |  |  | 壓力計電壓（mV）所在的 IR 絕對位址，預設 236 = 槽 1 MANOMETER_RAW |
-| HR 162–163 | 162–163 | PM_GAUGE_FS_MTORR | i32 | 1 |  | mTorr |  | LINEAR（電容式 0~10 V）滿刻度，例 1 Torr = 1000 |
+| HR 161 | 161 | PM_GAUGE_AI_ADDR | u16 | 1 |  |  |  | 壓力計電壓（mV）所在的 IR 絕對位址，預設 633 = 槽 3 AI_RAW[3] Chamber APGX-H |
+| HR 162–163 | 162–163 | PM_GAUGE_FS_MTORR | i32 | 1 |  | mTorr |  | LINEAR（電容式 0~10 V）滿刻度，例 1000 Torr = 1000000 |
 
 ## 槽 1：process
 

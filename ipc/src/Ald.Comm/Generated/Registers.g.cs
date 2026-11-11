@@ -321,9 +321,9 @@ public static class MainBoard
             Wrg200G = 4,
             Wrg200Q = 5,
         }
-        /// <summary>壓力計電壓（mV）所在的 IR 絕對位址，預設 236 = 槽 1 MANOMETER_RAW</summary>
+        /// <summary>壓力計電壓（mV）所在的 IR 絕對位址，預設 633 = 槽 3 AI_RAW[3] Chamber APGX-H</summary>
         public const ushort PmGaugeAiAddr = 161;
-        /// <summary>LINEAR（電容式 0~10 V）滿刻度，例 1 Torr = 1000 [mTorr]</summary>
+        /// <summary>LINEAR（電容式 0~10 V）滿刻度，例 1000 Torr = 1000000 [mTorr]</summary>
         public const ushort PmGaugeFsMtorr = 162;
     }
 

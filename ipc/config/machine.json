@@ -49,14 +49,14 @@
   },
   "gauges": {
     "_models": "型號選單（Ald.Core.GaugeModel，公式見 docs/gauges.md）：None、Linear（電容式 0–10 V，需 fullScaleTorr）、ApgxH、Wrg200X（標準 2–10 V）、Wrg200G、Wrg200Q",
-    "pmInterlockGauge": "chamberManometer",
-    "_pmInterlockGauge": "主控板互鎖（開 SV、PM 壓力）用哪一顆；啟動時寫進主控板 HR PM_GAUGE_MODEL / PM_GAUGE_AI_ADDR / PM_GAUGE_FS_MTORR",
+    "pmInterlockGauge": "chamberConvectron",
+    "_pmInterlockGauge": "主控板互鎖（開 SV、PM 壓力）用哪一顆。Barocel 滿刻度 1000 Torr 判斷不了 < 1 Torr，所以用 APGX-H；啟動時寫進主控板 HR PM_GAUGE_MODEL / PM_GAUGE_AI_ADDR / PM_GAUGE_FS_MTORR",
     "chamberManometer": {
       "model": "Linear",
-      "fullScaleTorr": 1.0,
+      "fullScaleTorr": 1000,
       "slot": 1,
       "register": "MANOMETER_RAW",
-      "_note": "Edwards Barocel 7000 系列；滿刻度 TODO 依實際訂購型號（1000/100/10/1/0.1 Torr）"
+      "_note": "Edwards Barocel 7000 系列，滿刻度 1000 Torr（使用者 2026-11-11 確認），解析度 0.05 % FS = 0.5 Torr，適合看大氣 / vent"
     },
     "chamberConvectron": {
       "model": "ApgxH",
