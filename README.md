@@ -5,7 +5,7 @@ ALD 真空製程腔體設備控制軟體。三階架構（2026-11-10 方案 A）
 ```
 研華 ARK-1222（Linux：C# / Avalonia 人機 + ald-ecat IgH 主站）
    ├─ EtherCAT ─► 主控板（STM32H743 + LAN9252）─ CAN FD 背板 ─► 執行板 ×8（STM32G474）
-   │                   └─ UART ─► Throttle valve、RF
+   │                   └─ UART ─► RF（Throttle valve 預留）
    └─（主控板 UART）RS-485 ─► Loadlock（SLK 模組，韌體不改；互鎖在主控板做）
 ```
 

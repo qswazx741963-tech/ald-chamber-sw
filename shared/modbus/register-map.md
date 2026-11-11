@@ -74,7 +74,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 21 | 21 | TV_SP_POSITION | u16 | 1 | 0.1 | % | 0–100 |  |
 | HR 22 | 22 | TV_SP_PRESSURE | u16 | 1 | 0.001 | Torr | 0–10 |  |
 | HR 30 | 30 | RF_ON | u16 | 1 |  |  |  | bits: 0=RF1, 1=RF2 |
-| HR 31–32 | 31–32 | RF_SP_W | u16 | 2 |  | W | 0–600 | TODO 依 RF 電源規格 |
+| HR 31–32 | 31–32 | RF_SP_W | u16 | 2 |  | W | 0–600 | 預計鎧泰科技 600 W / 300 W；上限依實際機型 |
 | HR 100 | 100 | LL_CMD | u16 | 1 |  |  |  | 值: 0=NONE, 1=STATUS, 2=ESTOP, 3=RESET, 4=RECOVER, 10=PUMP, 11=VENT, 12=LOAD, 13=UNLOAD, 14=ABORT, 15=XFER_DONE, 20=SV_OPEN, 21=SV_CLOSE, 22=ROUGH_ON, 23=ROUGH_OFF, 24=VENT_ON, 25=VENT_OFF, 30=ARM_HOME, 31=ARM_AHOME, 32=ARM_LL, 33=ARM_PM, 34=ARM_GOTO, 35=Z_UP, 36=Z_DOWN |
 | HR 101–102 | 101–102 | LL_CMD_ARG | i32 | 1 |  |  |  | ARM_GOTO 目標步數 |
 | HR 103 | 103 | LL_CMD_SEQ | u16 | 1 |  |  |  | 命令序號，改變才會執行一次（主控板開機時先記下目前值，不會執行舊命令） |

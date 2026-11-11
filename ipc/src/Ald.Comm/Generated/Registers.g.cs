@@ -253,7 +253,7 @@ public static class MainBoard
             Rf1 = 1 << 0,
             Rf2 = 1 << 1,
         }
-        /// <summary>TODO 依 RF 電源規格 [W]</summary>
+        /// <summary>預計鎧泰科技 600 W / 300 W；上限依實際機型 [W]</summary>
         public const ushort RfSpW = 31;
         public const ushort RfSpWCount = 2;
         public const double RfSpWMin = 0;

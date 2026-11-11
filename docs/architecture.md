@@ -13,7 +13,7 @@
    └─ LAN2 ── 屏蔽網路線（點對點直連）── EtherCAT
           │                                     LAN1 → 廠務網路（以後 SECS/GEM）
 【第二階】主控板（自製，STM32H743 + LAN9252 EtherCAT 從站 + FreeRTOS）
-   ├─ UART：Throttle valve、RF1 / RF2
+   ├─ UART：RF1 / RF2（預計鎧泰科技 600 W / 300 W）；Throttle valve 預留（目前不用）
    ├─ UART（RS-485）── Loadlock（SLK 模組，韌體不改、全開放；互鎖在這裡做）
    ├─ 硬體輸出：SAFE 線、燈塔、蜂鳴器（TRANSFER_PERMIT 預留，目前不接 Loadlock）
    └─ 背板：CAN FD（5 Mbps）+ SAFE 線 + SYNC 線 + 槽位腳位 SLOT_ID[3:0]
@@ -46,7 +46,7 @@
 | 主控板 ↔ 執行板 | CAN FD 背板 | 10 ms | 週期性整份複製 IR / HR，掉一包下一輪補回（`backplane.md`） |
 | 主控板 ↔ Loadlock | RS-485 115200 ASCII（SLK 端 RS-232 + 轉換器） | 200 ms 輪詢 TLM | `loadlock-integration.md` |
 | IPC → 主控板（Loadlock 命令） | HR LL_CMD / LL_CMD_ARG / LL_CMD_SEQ → IR LL_*（經 EtherCAT） | 有命令時 | SEQ 改變才執行一次 |
-| 主控板 ↔ TV / RF | RS-232 / RS-485 | TODO | 依設備手冊 |
+| 主控板 ↔ RF | 待確認（預計鎧泰科技 600 W / 300 W） | TODO | 依設備手冊；Throttle valve 目前製程不需要，UART 與暫存器位址保留 |
 
 **IPC 寫的是「請求」，主控板送出去的才算數**：IPC 寫進表裡的命令，主控板會先過互鎖，不准的位元清掉才轉給執行板，
 被擋下的原因寫在主控板 IR `IL_DENY`。

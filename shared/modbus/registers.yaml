@@ -83,12 +83,12 @@ boards:
         desc: "IL_DENY 的延伸（16 個 bit 不夠用）"
         bits: [TURBO_GV_OPEN, ARM_MOVING, HEATER_NOT_DOWN]
 
-      # ---- Throttle valve（NC iQPlus，主控板 UART）TODO 依手冊
+      # ---- Throttle valve：目前製程不需要（2026-11-11），位址保留給日後擴充，韌體不驅動
       - { name: TV_PRESSURE, addr: 30, scale: 0.001, unit: Torr }
       - { name: TV_POSITION, addr: 31, scale: 0.1, unit: "%" }
       - { name: TV_STATUS,   addr: 32 }
 
-      # ---- RF 1 / RF 2（主控板 UART）TODO 依手冊
+      # ---- RF 1 / RF 2（主控板 UART）：預計用鎧泰科技 600 W / 300 W，介面待確認
       - { name: RF_FWD_W,  addr: 40, count: 2, unit: W }
       - { name: RF_REF_W,  addr: 42, count: 2, unit: W }
       - { name: RF_STATUS, addr: 44, count: 2 }
@@ -131,7 +131,7 @@ boards:
       - name: DO_CMD
         addr: 10
         bits: [BUZZER, TOWER_RED, TOWER_YELLOW, TOWER_GREEN]
-      # ---- Throttle valve
+      # ---- Throttle valve（保留，目前不用）
       - name: TV_MODE
         addr: 20
         values: { OPEN: 0, CLOSE: 1, POSITION: 2, PRESSURE: 3 }
@@ -141,7 +141,7 @@ boards:
       - name: RF_ON
         addr: 30
         bits: [RF1, RF2]
-      - { name: RF_SP_W, addr: 31, count: 2, unit: W, min: 0, max: 600, desc: "TODO 依 RF 電源規格" }
+      - { name: RF_SP_W, addr: 31, count: 2, unit: W, min: 0, max: 600, desc: "預計鎧泰科技 600 W / 300 W；上限依實際機型" }
       # ---- Loadlock 命令：IPC 先寫 LL_CMD / LL_CMD_ARG，最後把 LL_CMD_SEQ +1 觸發；主控板過互鎖才送給 SLK
       - name: LL_CMD
         addr: 100
