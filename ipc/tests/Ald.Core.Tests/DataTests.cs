@@ -130,4 +130,75 @@ public sealed class DataTests : IDisposable
         }
         finally { File.Delete(csv); }
     }
+
+    [Fact]
+    public void AlarmLog_Query_FilterAndCsv()
+    {
+        using var a = new AlarmLog(_db);
+        var t0 = new DateTime(2026, 11, 11, 8, 0, 0, DateTimeKind.Local);
+        a.Add("真空", "Alarm", "Dry pump 警報", "DRYPUMP", "RAISE", t0);
+        a.Add("真空", "Alarm", "Dry pump 警報", "DRYPUMP", "CLEAR", t0.AddMinutes(1));
+        a.Add("操作", "Info", "配方 \"50%_test\", 開始", evt: "OPERATOR", time: t0.AddMinutes(2));
+        a.Add("加熱", "Warning", "溫度未到", time: t0.AddDays(2));
+
+        Assert.Equal(3, a.Query(t0, t0.AddHours(1)).Count);
+        Assert.Equal("配方 \"50%_test\", 開始", a.Query(t0, t0.AddHours(1))[0].Message);   // 新的在前
+        Assert.Equal(2, a.Query(t0, t0.AddHours(1), level: "Alarm").Count);
+        Assert.Equal(2, a.Query(t0, t0.AddDays(3), keyword: "dry PUMP").Count);              // 不分大小寫
+        Assert.Single(a.Query(t0, t0.AddDays(3), keyword: "50%_"));                          // % _ 當一般字
+        Assert.Empty(a.Query(t0, t0.AddDays(3), keyword: "5%t"));
+        Assert.Single(a.Query(t0, t0.AddDays(3), keyword: "真空", level: "Alarm", limit: 1));
+
+        var csv = _db + ".csv";
+        try
+        {
+            Assert.Equal(3, a.ExportCsv(csv, t0, t0.AddHours(1)));
+            var lines = File.ReadAllLines(csv);
+            Assert.Equal("time,event,level,source,message,code", lines[0].TrimStart('\uFEFF'));
+            Assert.StartsWith("2026-11-11 08:00:00.000,RAISE,Alarm,真空,", lines[1]);           // 舊的在前
+            Assert.Equal("2026-11-11 08:02:00.000,OPERATOR,Info,操作,\"配方 \"\"50%_test\"\", 開始\",", lines[3]);
+        }
+        finally { File.Delete(csv); }
+    }
+
+    [Fact]
+    public void RunLog_StartEnd_Query_Interrupted_Csv()
+    {
+        var t0 = new DateTime(2026, 11, 11, 9, 0, 0, DateTimeKind.Local);
+        var r = new ProcessRecipe { Name = "Al2O3 100c", Ald = new AldRecipe { Cycles = 100 } };
+        long a, b, c;
+        using (var log = new RunLog(_db))
+        {
+            a = log.Start("自動跑片", " W01 ", r, "op1", time: t0);
+            log.End(a, "Done", "", t0.AddMinutes(12));
+            b = log.Start("批次", "W02", r, "op1", "B20261111-0912", t0.AddMinutes(13));
+            log.End(b, "Failed", "ALD 中斷在 cycle 40/100", t0.AddMinutes(20));
+            c = log.Start("批次", "W03", r, "op1", "B20261111-0912", t0.AddMinutes(21));   // 斷電，沒有 End
+        }
+        using var log2 = new RunLog(_db);
+        Assert.Equal(1, log2.CloseDangling(t0.AddHours(1)));
+        Assert.Equal(0, log2.CloseDangling());
+
+        var all = log2.Query(t0, t0.AddHours(2));
+        Assert.Equal(new[] { c, b, a }, all.Select(x => x.Id));
+        Assert.Equal(RunLog.Interrupted, all[0].Result);
+        Assert.Equal("W01", all[2].WaferId);
+        Assert.Equal(TimeSpan.FromMinutes(12), all[2].Duration);
+        Assert.Equal(100, RecipeFile.Parse(all[2].RecipeJson).Ald!.Cycles);              // 配方整份留存
+
+        Assert.Equal(2, log2.Query(t0, t0.AddHours(2), keyword: "b20261111").Count);
+        Assert.Single(log2.Query(t0, t0.AddHours(2), keyword: "cycle 40"));
+        Assert.Single(log2.Query(t0, t0.AddHours(2), result: "Failed"));
+        Assert.Empty(log2.Query(t0.AddHours(1), t0.AddHours(2)));
+
+        var csv = _db + ".runs.csv";
+        try
+        {
+            Assert.Equal(3, log2.ExportCsv(csv, t0, t0.AddHours(2)));
+            var lines = File.ReadAllLines(csv);
+            Assert.Equal("id,start,end,duration_s,kind,wafer_id,recipe,batch,result,message,user", lines[0].TrimStart('\uFEFF'));
+            Assert.Equal($"{a},2026-11-11 09:00:00,2026-11-11 09:12:00,720,自動跑片,W01,Al2O3 100c,,Done,,op1", lines[1]);
+        }
+        finally { File.Delete(csv); }
+    }
 }

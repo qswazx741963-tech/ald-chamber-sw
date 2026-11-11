@@ -19,6 +19,7 @@ public partial class App : Application
     private TrendLog? _trend;
     private UserStore? _users;
     private MaintenanceStore? _maint;
+    private RunLog? _runs;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -45,15 +46,19 @@ public partial class App : Application
             _maint.BecameDue += r => _alarmLog.Add("保養", "Warning",
                 $"{r.Item.Name} 已達保養上限：{Maintenance.Format(r.Value, r.Item.Unit)} / {Maintenance.Format(r.Limit, r.Item.Unit)}", evt: "EVENT");
             _machine.Updated += s => _maint.Track(s, _machine.LastAld);
+            _runs = new RunLog(cfg.DataLog.Path);
+            if (_runs.CloseDangling() is var n and > 0)
+                _alarmLog.Add("履歷", "Warning", $"上次有 {n} 筆跑片沒有正常結束（程式關閉或斷電），已標成 Interrupted", evt: "EVENT");
             _machine.Start();
 
             var recipes = Arg("--recipes", Path.Combine(AppContext.BaseDirectory, "recipes"));
-            desktop.MainWindow = new MainWindow(_machine, _alarmLog, _trend, _users, _maint, recipes);
+            desktop.MainWindow = new MainWindow(_machine, _alarmLog, _trend, _users, _maint, _runs, recipes);
             desktop.Exit += (_, _) =>
             {
                 _machine.Dispose();   // 心跳停止 → 主控板看門狗 → 全機安全狀態
                 _trend.Dispose();
                 _maint.Dispose();
+                _runs.Dispose();
                 _alarmLog.Dispose();
                 _users.Dispose();
             };

@@ -137,8 +137,7 @@ public partial class MainWindow
     {
         if (_trend is null || _m is null) return;
         var (from, to) = TrendWindow();
-        var dir = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(_m.Config.DataLog.Path)) ?? ".", "export");
-        var path = Path.Combine(dir, $"trend_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+        var path = Path.Combine(ExportDir, $"trend_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
         try
         {
             int n = await Task.Run(() => _trend.ExportCsv(path, from, to));

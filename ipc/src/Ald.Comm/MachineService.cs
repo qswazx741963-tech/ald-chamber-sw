@@ -72,6 +72,7 @@ public sealed class MachineService : IMachine, IDisposable
             _heaterEnable = link.ReadHolding(HeaterBoard.Holding.HeaterEnable, 1)[0];
             var sp = link.ReadHolding(HeaterBoard.Holding.HeaterSp, 16);
             for (int i = 0; i < 16; i++) _heaterSp[i] = sp[i] * HeaterBoard.Holding.HeaterSpScale;
+            HeaterSetpointsKnown = true;
             _motDo = link.ReadHolding(MotionBoard.Holding.DoCmd, 1)[0];
             _tower = null;   // 重新連上後重寫一次燈號
         }
@@ -165,6 +166,9 @@ public sealed class MachineService : IMachine, IDisposable
     }
 
     private readonly double[] _heaterSp = new double[16];
+
+    /// <summary>已經從加熱板讀回過設定（連上後才是 true；之前 HeaterSetpoint 全是 null，不能拿來比對常駐設定）。</summary>
+    public bool HeaterSetpointsKnown { get; private set; }
 
     /// <summary>加熱板目前的設定（連上時從加熱板讀回，之後跟著 SetHeater 更新）；null = 該組沒開。</summary>
     public double? HeaterSetpoint(int ch)

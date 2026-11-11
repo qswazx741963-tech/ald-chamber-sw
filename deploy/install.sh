@@ -26,6 +26,7 @@ NEWCFG="$ROOT/etc/ald/machine.json.new"
 # 安裝位置的資料路徑改成絕對路徑（/var/lib/ald）
 sed -e 's#"path": "data/ald.db"#"path": "/var/lib/ald/ald.db"#' \
     -e 's#"waferMapPath": "data/wafer.json"#"waferMapPath": "/var/lib/ald/wafer.json"#' \
+    -e 's#"presetPath": "data/heaters.json"#"presetPath": "/var/lib/ald/heaters.json"#' \
     "$SRC/config/machine.json" > "$NEWCFG"
 if [ -f "$ROOT/etc/ald/machine.json" ]; then
     echo "   已有 machine.json，保留不動；新版預設值放在 machine.json.new，請比對"

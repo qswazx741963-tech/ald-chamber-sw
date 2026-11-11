@@ -62,6 +62,42 @@ public sealed class AlarmLog : IDisposable
         }
     }
 
+    /// <summary>
+    /// 查詢事件記錄（新的在前）。level = null 全部；keyword 比對來源與訊息（不分大小寫）。
+    /// </summary>
+    public IReadOnlyList<Row> Query(DateTime from, DateTime to, string? level = null, string? keyword = null, int limit = 5000)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            var where = new List<string> { "time >= $f", "time <= $t" };
+            cmd.Parameters.AddWithValue("$f", from.ToString("O"));
+            cmd.Parameters.AddWithValue("$t", to.ToString("O"));
+            if (!string.IsNullOrEmpty(level)) { where.Add("level = $l"); cmd.Parameters.AddWithValue("$l", level); }
+            if (!string.IsNullOrWhiteSpace(keyword))
+            {
+                where.Add("(source LIKE $k ESCAPE '\\' OR message LIKE $k ESCAPE '\\')");
+                cmd.Parameters.AddWithValue("$k", $"%{RunLog.Like(keyword.Trim())}%");
+            }
+            cmd.CommandText = $"SELECT time, source, level, message, code, event FROM alarm WHERE {string.Join(" AND ", where)} ORDER BY id DESC LIMIT $n";
+            cmd.Parameters.AddWithValue("$n", limit);
+            using var r = cmd.ExecuteReader();
+            var list = new List<Row>();
+            while (r.Read())
+                list.Add(new(DateTime.Parse(r.GetString(0)), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5)));
+            return list;
+        }
+    }
+
+    /// <summary>事件記錄匯出 CSV（UTF-8 BOM，Excel 直接開），時間由舊到新。</summary>
+    public int ExportCsv(string path, DateTime from, DateTime to, string? level = null, string? keyword = null)
+    {
+        var rows = Query(from, to, level, keyword, int.MaxValue).Reverse().ToList();
+        Csv.Write(path, new[] { "time", "event", "level", "source", "message", "code" },
+            rows.Select(x => new[] { x.Time.ToString("yyyy-MM-dd HH:mm:ss.fff"), x.Event, x.Level, x.Source, x.Message, x.Code }));
+        return rows.Count;
+    }
+
     public void Purge(int keepDays)
     {
         lock (_lock)
@@ -74,6 +110,22 @@ public sealed class AlarmLog : IDisposable
     }
 
     public void Dispose() => _db.Dispose();
+}
+
+/// <summary>CSV 輸出（UTF-8 BOM；有逗號、引號、換行的欄位加引號）。</summary>
+public static class Csv
+{
+    public static string Field(string s)
+        => s.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0 ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
+
+    public static void Write(string path, IEnumerable<string> header, IEnumerable<IEnumerable<string>> rows)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        using var w = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
+        w.WriteLine(string.Join(",", header.Select(Field)));
+        foreach (var r in rows) w.WriteLine(string.Join(",", r.Select(Field)));
+    }
 }
 
 internal static class Db

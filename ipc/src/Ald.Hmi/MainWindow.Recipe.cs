@@ -55,7 +55,7 @@ public partial class MainWindow
             var e = Check(r);
             if (e.Count > 0) { Msg("不能執行：\n" + string.Join("\n", e)); return; }
             Msg("");
-            RunRecipe(r);
+            RunRecipe(r, RunWaferId());
         };
         C<Button>("BtnRecipeAuto").Click += (_, _) =>
         {
@@ -63,7 +63,7 @@ public partial class MainWindow
             var e = Check(r).Concat(AutoRunJob.Precheck(r, _m.Snapshot, _wafers)).Distinct().ToList();
             if (e.Count > 0) { Msg("不能自動跑片：\n" + string.Join("\n", e)); return; }
             Msg("");
-            RunAuto(r);
+            RunAuto(r, RunWaferId());
         };
         C<Button>("BtnRecipeAbort").Click += (_, _) => AbortAll();
 

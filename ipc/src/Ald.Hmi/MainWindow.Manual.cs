@@ -87,16 +87,25 @@ public partial class MainWindow
             int ch = cmbH.SelectedIndex;
             double sp = (double)(C<NumericUpDown>("NumHeatSp").Value ?? 0);
             double ramp = (double)(C<NumericUpDown>("NumHeatRamp").Value ?? 0);
-            Cmd($"加熱 #{ch + 1} {cfg.Heaters.Channels[ch].Name} → {sp:0.0} °C", () => _m.SetHeater(ch, sp, true, ramp));
+            Cmd($"加熱 #{ch + 1} {cfg.Heaters.Channels[ch].Name} → {sp:0.0} °C", () =>
+            {
+                _m.SetHeater(ch, sp, true, ramp);
+                _heaters?.Set(ch, true, sp, ramp, $"{_user} 手動設定 #{ch + 1}");
+            });
         };
         C<Button>("BtnHeatOff").Click += (_, _) =>
         {
             int ch = cmbH.SelectedIndex;
-            Cmd($"加熱 #{ch + 1} 關閉", () => _m.SetHeater(ch, 0, false));
+            Cmd($"加熱 #{ch + 1} 關閉", () =>
+            {
+                _m.SetHeater(ch, 0, false);
+                _heaters?.Set(ch, false, 0, 0, $"{_user} 手動關閉 #{ch + 1}");
+            });
         };
         C<Button>("BtnHeatAllOff").Click += (_, _) => Cmd("加熱全部關閉", () =>
         {
             for (int i = 0; i < 16; i++) _m.SetHeater(i, 0, false);
+            _heaters?.TakeCurrent(_ => null, $"{_user} 加熱全部關閉");
         });
 
         // MFC

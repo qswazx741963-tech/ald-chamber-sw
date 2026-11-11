@@ -56,7 +56,7 @@ public partial class MainWindow
             AnyWarning: a.AnyWarning,
             UnackedWarning: a.UnackedWarning,
             Running: Busy && !BatchWaiting,
-            NeedOperator: _needOp || waferUnknown || BatchWaiting);
+            NeedOperator: _needOp || waferUnknown || BatchWaiting || HeaterMismatch);
         var cfg = _m.Config.Tower;
         try { _m.SetTower(Tower.Compute(input, cfg, Tower.BlinkOn(DateTime.Now, cfg))); }
         catch (Exception) { /* 斷線時寫不進去；主控板會自己只亮紅燈 */ }

@@ -67,6 +67,8 @@ public class BatchTests
         var op = Operator(job, prompts, stop.Token);
         // 第二片傳片時 SV 打不開
         job.Progress += p => { if (p.Step.StartsWith("2/3 B：人員已確認")) m.FailLl = LoadlockCommand.SvOpen; };
+        var changes = new List<string>();
+        job.ItemChanged += (i, x) => { lock (changes) changes.Add($"{i} {x.Item.WaferId} {x.State}"); };
         var st = await job.RunAsync(items, ventPmAtEnd: false);
         stop.Cancel(); await op;
 
@@ -77,6 +79,7 @@ public class BatchTests
         Assert.Contains("SV", r[1].Message + job.Step);
         Assert.Equal(BatchItemState.Waiting, r[2].State);
         Assert.Equal(1, m.Log.Count(l => l == "START"));
+        Assert.Equal(new[] { "0 A Running", "0 A Done", "1 B Running", "1 B Failed" }, changes);   // 履歷記錄用
     }
 
     [Fact]

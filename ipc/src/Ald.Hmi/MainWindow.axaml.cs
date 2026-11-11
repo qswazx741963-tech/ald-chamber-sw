@@ -23,9 +23,9 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private static readonly string[] SvText = { "未知", "關", "開啟中", "開", "關閉中", "錯誤" };
 
-    public MainWindow() : this(null, null, null, null, null, "recipes") { }
+    public MainWindow() : this(null, null, null, null, null, null, "recipes") { }
 
-    public MainWindow(MachineService? machine, AlarmLog? alarmLog, TrendLog? trend, UserStore? users, MaintenanceStore? maint, string recipeDir)
+    public MainWindow(MachineService? machine, AlarmLog? alarmLog, TrendLog? trend, UserStore? users, MaintenanceStore? maint, RunLog? runs, string recipeDir)
     {
         AvaloniaXamlLoader.Load(this);
         _m = machine;
@@ -34,6 +34,7 @@ public partial class MainWindow : Window
         _recipeDir = recipeDir;
         _users = users;
         _maint = maint;
+        _runs = runs;
         Wire();
         WireAccess();
         WireTrend();
@@ -43,6 +44,9 @@ public partial class MainWindow : Window
         WireMaint();
         WireTower();
         WireBatch();
+        WireEvents();
+        WireHeater();
+        WireHistory();
         _timer.Tick += (_, _) => Render();
         _timer.Start();
         Closed += (_, _) => _timer.Stop();
@@ -95,7 +99,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>自動跑片：送片 → 製程 → 取片 →（配方要求）回填。</summary>
-    private async void RunAuto(ProcessRecipe r)
+    private async void RunAuto(ProcessRecipe r, string waferId = "")
     {
         if (_m is null || _wafers is null || Busy) { _status = "已有流程在執行"; return; }
         _needOp = false;
@@ -103,12 +107,17 @@ public partial class MainWindow : Window
         _runIsAuto = true;
         _runName = $"自動跑片 {r.Name}";
         lock (_runLog) _runLog.Clear();
-        _auto.Progress += p => { LogRun(_runName, p); TowerEvent(p, doneNeedsOperator: true); };
+        string fail = "";
+        _auto.Progress += p => { LogRun(_runName, p); TowerEvent(p, doneNeedsOperator: true); if (p.State == SequencerState.Failed) fail = $"{p.Step} {p.Message}".Trim(); };
         _alarmLog?.Add(OpSource, "Info", _runName, evt: "OPERATOR");
-        await _auto.RunAsync(r);
+        var job = _auto;
+        long? id = RunStart("自動跑片", waferId, r);
+        await job.RunAsync(r);
+        RunEnd(id, job.State, fail);
     }
 
-    private async void RunRecipe(ProcessRecipe r)
+    /// <param name="waferId">null = 不記履歷（總覽的抽真空 / 回填）</param>
+    private async void RunRecipe(ProcessRecipe r, string? waferId = null)
     {
         if (_m is null || Busy) { _status = "已有流程在執行"; return; }
         _needOp = false;
@@ -116,8 +125,12 @@ public partial class MainWindow : Window
         _runIsAuto = false;
         _runName = r.Name;
         lock (_runLog) _runLog.Clear();
-        _seq.Progress += p => { LogRun($"流程 {r.Name}", p); TowerEvent(p, doneNeedsOperator: false); };
-        await _seq.RunAsync(r);
+        string fail = "";
+        _seq.Progress += p => { LogRun($"流程 {r.Name}", p); TowerEvent(p, doneNeedsOperator: false); if (p.State == SequencerState.Failed) fail = $"{p.Step} {p.Message}".Trim(); };
+        var seq = _seq;
+        long? id = waferId is null ? null : RunStart("製程", waferId, r);
+        await seq.RunAsync(r);
+        RunEnd(id, seq.State, fail);
     }
 
     private static string P(double torr) => double.IsNaN(torr) ? "  ---   " : torr.ToString("0.00E+00");
@@ -178,8 +191,7 @@ public partial class MainWindow : Window
             .Concat(_m.Alarms.Latched.Select(a => $"● [已消失] {a.Since:HH:mm:ss} {a.Info.Source}：{a.Info.Message}（未確認）"))
             .Concat(_seqFault ? new[] { "● [流程] 流程異常停止（未確認，詳見事件記錄）" } : Array.Empty<string>())
             .ToList();
-        if (_alarmLog is not null && DateTime.Now.Second % 2 == 0)
-            C<ListBox>("LstLog").ItemsSource = _alarmLog.Recent(200).Select(r => $"{r.Time:MM-dd HH:mm:ss} {r.Event,-8} {r.Source}：{r.Message}").ToList();
+        RenderEvents();
         C<TextBlock>("TxtStatusBar").Text = _status;
         RenderManual(s);
         RenderRecipe();
@@ -188,6 +200,8 @@ public partial class MainWindow : Window
         RenderTransfer(s);
         RenderMaint(s);
         RenderBatch();
+        RenderHeater(s);
+        RenderHistory();
         RenderTower(s);
     }
 }

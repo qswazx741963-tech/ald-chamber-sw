@@ -93,8 +93,16 @@ public partial class MainWindow
             TowerEvent(p, doneNeedsOperator: false);
             _batchListAt = DateTime.MinValue;
         };
+        string batchId = $"B{DateTime.Now:yyyyMMdd-HHmmss}";
+        var ids = new long?[items.Count];
+        _batch.ItemChanged += (i, x) =>
+        {
+            if (x.State == BatchItemState.Running) ids[i] = RunStart("批次", x.Item.WaferId, x.Item.Recipe, batchId);
+            else if (x.State is BatchItemState.Done or BatchItemState.Failed or BatchItemState.Aborted)
+                RunEnd(ids[i], x.State switch { BatchItemState.Done => SequencerState.Done, BatchItemState.Failed => SequencerState.Failed, _ => SequencerState.Aborted }, x.Message);
+        };
         bool vent = C<CheckBox>("ChkBatchVent").IsChecked == true;
-        _alarmLog?.Add(OpSource, "Info", $"批次開始：{items.Count} 片（{string.Join("、", items.Select(x => x.WaferId))}）{(vent ? "，結束後 PM 回填" : "")}", evt: "OPERATOR");
+        _alarmLog?.Add(OpSource, "Info", $"批次 {batchId} 開始：{items.Count} 片（{string.Join("、", items.Select(x => x.WaferId))}）{(vent ? "，結束後 PM 回填" : "")}", evt: "OPERATOR");
         await _batch.RunAsync(items, vent);
         _batchListAt = DateTime.MinValue;
     }

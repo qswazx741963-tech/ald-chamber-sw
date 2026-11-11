@@ -159,6 +159,8 @@ public sealed record HeaterChannelConfig
 public sealed record HeatersConfig
 {
     public List<HeaterChannelConfig> Channels { get; init; } = new();
+    /// <summary>加熱常駐設定檔（HeaterPreset），斷電重開後用來比對 / 恢復。</summary>
+    public string PresetPath { get; init; } = "data/heaters.json";
 }
 
 /// <summary>傳片流程（TransferSequencer）。</summary>

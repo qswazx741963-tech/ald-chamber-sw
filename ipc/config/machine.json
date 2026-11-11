@@ -135,7 +135,8 @@
     ]
   },
   "heaters": {
-    "_comment": "16 組 K 型熱電偶；limitDegC 寫進加熱板 HR HEATER_LIMIT，設定值超過就不加熱，0 = 不准加熱。上限依舊配件表：前驅物 200、main valve 250、其他 300~350（先取 300）、Chuck 600",
+    "_comment": "16 組 K 型熱電偶；limitDegC 寫進加熱板 HR HEATER_LIMIT，設定值超過就不加熱，0 = 不准加熱。上限依舊配件表：前驅物 200、main valve 250、其他 300~350（先取 300）、Chuck 600。presetPath = 手動頁設定的常駐加熱（斷電重開後比對，人員按恢復）",
+    "presetPath": "data/heaters.json",
     "channels": [
       {
         "name": "PRECURSOR1",

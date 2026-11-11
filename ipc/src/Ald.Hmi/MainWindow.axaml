@@ -32,6 +32,17 @@
             </DockPanel>
         </Border>
 
+        <!-- 加熱常駐設定跟加熱板不一致（斷電 / 主站重開）：人員確認後才恢復加熱 -->
+        <Border DockPanel.Dock="Top" x:Name="BarHeater" IsVisible="False" Padding="10,6" Background="#FFE8A0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="BtnHeatRestore" Content="恢復常駐加熱設定" Background="#2E7D32" Foreground="White" />
+                    <Button x:Name="BtnHeatAccept" Content="以目前為準（工程師）" />
+                </StackPanel>
+                <TextBlock x:Name="TxtHeaterBar" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="Black" />
+            </DockPanel>
+        </Border>
+
         <!-- 底部：目前流程 / 最後訊息 -->
         <Border DockPanel.Dock="Bottom" Padding="10,4" Background="#EEEEEE">
             <TextBlock x:Name="TxtStatusBar" Text="" />
@@ -76,8 +87,17 @@
                 <Grid RowDefinitions="Auto,*,Auto,2*" Margin="8">
                     <TextBlock Grid.Row="0" Text="目前警報（● = 未確認；按上方「確認 / 消音」）" FontWeight="Bold" />
                     <ListBox Grid.Row="1" x:Name="LstActive" />
-                    <TextBlock Grid.Row="2" Text="事件記錄（最新在上）" FontWeight="Bold" Margin="0,8,0,0" />
-                    <ListBox Grid.Row="3" x:Name="LstLog" />
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,8,0,4">
+                        <TextBlock Text="事件記錄（最新在上）" FontWeight="Bold" VerticalAlignment="Center" />
+                        <ComboBox x:Name="CmbEvtRange" Width="140" />
+                        <ComboBox x:Name="CmbEvtLevel" Width="120" />
+                        <TextBox x:Name="TxtEvtKey" Width="200" Watermark="關鍵字（來源 / 訊息）" />
+                        <Button x:Name="BtnEvtQuery" Content="查詢" />
+                        <CheckBox x:Name="ChkEvtLive" Content="自動更新" IsChecked="True" />
+                        <Button x:Name="BtnEvtCsv" Content="匯出 CSV" />
+                        <TextBlock x:Name="TxtEvtInfo" VerticalAlignment="Center" Foreground="#606060" />
+                    </StackPanel>
+                    <ListBox Grid.Row="3" x:Name="LstLog" FontFamily="monospace" />
                 </Grid>
             </TabItem>
             <TabItem Header="手動操作">
@@ -240,6 +260,10 @@
                     <DockPanel Grid.Column="1" Margin="12,4,4,4">
                         <StackPanel DockPanel.Dock="Top" Spacing="6">
                             <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="晶圓編號" VerticalAlignment="Center" />
+                                <TextBox x:Name="TxtRunWafer" Width="160" Watermark="（選填，記在履歷）" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
                                 <Button x:Name="BtnRecipeCheck" Content="檢查" />
                                 <Button x:Name="BtnRecipeRun" Content="只跑製程" Background="#2E7D32" Foreground="White" ToolTip.Tip="片已經在 PM（或空跑）時用" />
                                 <Button x:Name="BtnRecipeAuto" Content="自動跑片" Background="#1565C0" Foreground="White" ToolTip.Tip="送片 → 製程 → 取片 →（勾選時）回填" />
@@ -299,6 +323,27 @@
                         <ListBox x:Name="LstBatchLog" FontSize="12" />
                     </DockPanel>
                 </Grid>
+            </TabItem>
+            <TabItem Header="履歷">
+                <!-- 跑片履歷：每片一筆，選一筆看當時配方 -->
+                <DockPanel Margin="8">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,6">
+                        <ComboBox x:Name="CmbHistRange" Width="140" />
+                        <ComboBox x:Name="CmbHistResult" Width="150" />
+                        <TextBox x:Name="TxtHistKey" Width="240" Watermark="晶圓編號 / 配方 / 批次 / 使用者" />
+                        <Button x:Name="BtnHistQuery" Content="查詢" />
+                        <Button x:Name="BtnHistCsv" Content="匯出 CSV" />
+                        <TextBlock x:Name="TxtHistInfo" VerticalAlignment="Center" Foreground="#606060" />
+                    </StackPanel>
+                    <Grid ColumnDefinitions="2*,*">
+                        <ListBox Grid.Column="0" x:Name="LstHist" FontFamily="monospace" />
+                        <Border Grid.Column="1" Margin="8,0,0,0" Padding="8" BorderBrush="#C0C0C0" BorderThickness="1">
+                            <ScrollViewer>
+                                <TextBlock x:Name="TxtHistDetail" TextWrapping="Wrap" FontFamily="monospace" Text="（選一筆看當時的配方）" />
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+                </DockPanel>
             </TabItem>
             <TabItem Header="趨勢">
                 <Grid ColumnDefinitions="230,*" Margin="8">

@@ -34,6 +34,8 @@ public sealed class BatchJob
     /// <summary>第幾片（0 起算），-1 = 還沒開始。</summary>
     public int Current { get; private set; } = -1;
     public event Action<SequencerProgress>? Progress;
+    /// <summary>某一片狀態改變（開始跑、完成、失敗、中止），給跑片履歷記錄用。</summary>
+    public event Action<int, BatchItemResult>? ItemChanged;
 
     public BatchJob(IMachine machine, WaferMap map, TransferConfig transfer, bool loadlockZEnabled, TimeSpan? poll = null)
     {
@@ -190,19 +192,26 @@ public sealed class BatchJob
 
     private void Set(int i, BatchItemState st, DateTime? start, DateTime? end, string msg)
     {
+        BatchItemResult n;
         lock (_results)
         {
             var r = _results[i];
-            _results[i] = r with { State = st, Start = start ?? r.Start, End = end ?? r.End, Message = msg };
+            _results[i] = n = r with { State = st, Start = start ?? r.Start, End = end ?? r.End, Message = msg };
         }
+        ItemChanged?.Invoke(i, n);
     }
 
     private void MarkStopped(BatchItemState st, string msg)
     {
+        var changed = new List<(int, BatchItemResult)>();
         lock (_results)
             for (int i = 0; i < _results.Count; i++)
                 if (_results[i].State == BatchItemState.Running)
+                {
                     _results[i] = _results[i] with { State = st, End = DateTime.Now, Message = msg };
+                    changed.Add((i, _results[i]));
+                }
+        foreach (var (i, r) in changed) ItemChanged?.Invoke(i, r);
     }
 
     private void SetStep(string step) => Report(SequencerState.Running, step, "");
