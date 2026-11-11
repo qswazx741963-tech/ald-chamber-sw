@@ -19,10 +19,10 @@ public sealed class SlotImage
 }
 
 /// <summary>
-/// IPC ↔ 主控板：一條乙太網路線、Modbus TCP、Unit ID 1。
+/// IPC ↔ 主控板：Modbus TCP、Unit ID 1，連本機 ald-ecat（EtherCAT 主站程式，127.0.0.1:502），它再經 EtherCAT 跟主控板交換整張表。
 /// 主控板是唯一的從站；各執行板的資料都在主控板那張表裡，依槽位分區（見 shared/modbus/register-map.md）。
 /// 一個背景執行緒：寫心跳 → 讀主控板 + 各槽 IR → 發出 Updated 事件。
-/// 以後換 EtherCAT，只要另寫一個同樣介面的類別，Core / HMI 不用改。
+/// 斷線（ald-ecat 回例外 0x0B = EtherCAT 掉線）時 Connected=false、全部槽位離線。
 /// </summary>
 public sealed class MainBoardLink : IDisposable
 {
@@ -67,17 +67,11 @@ public sealed class MainBoardLink : IDisposable
     }
 
     /// <summary>
-    /// 把 Loadlock 狀態寫進主控板 HR LL_M_*（鏡像），主控板用它做 PM 側互鎖。
-    /// 由 LoadlockService 每收到一筆新 TLM 呼叫一次；seq 每次 +1，主控板靠它判斷資料是否新鮮。
+    /// 下一個 Loadlock 命令給主控板：一次寫 HR LL_CMD、LL_CMD_ARG（i32，高字在前）、LL_CMD_SEQ。
+    /// 主控板看到 SEQ 改變才執行一次（先過 LL-01~08 互鎖，再經 RS-485 送給 SLK），結果回在 IR LL_CMD_ACK / LL_CMD_RESULT。
     /// </summary>
-    public void WriteLoadlockMirror(SlkTelemetry t, ushort seq)
-    {
-        ushort flags = (ushort)((t.RoughOpen ? 1 : 0) | (t.VentOpen ? 2 : 0) | (t.LidOpen ? 4 : 0));
-        Write(MainBoard.Holding.LlMSeq,
-            seq, (ushort)t.Sv, (ushort)t.Z, (ushort)t.Arm,
-            (ushort)(t.Pos >> 16), (ushort)t.Pos, (ushort)t.Alm, flags,
-            (ushort)(t.PresMTorr >> 16), (ushort)t.PresMTorr);
-    }
+    public void WriteLoadlockCommand(MainBoard.Holding.LlCmdValues cmd, int arg, ushort seq)
+        => Write(MainBoard.Holding.LlCmd, (ushort)cmd, (ushort)(arg >> 16), (ushort)arg, seq);
 
     private void Connect()
     {

@@ -55,8 +55,7 @@ WantedBy=multi-user.target
 
 - 安裝 .NET 8 Runtime：`apt install dotnet-runtime-8.0`（或 Microsoft 套件庫）。
 - 發佈：`dotnet publish ipc/src/Ald.Hmi -c Release -r linux-x64 --self-contained`。
-- `config/machine.json`：`mainBoard.host = 127.0.0.1`、Loadlock 序列埠用 Linux 名稱（例如 `/dev/ttyS1`），
-  執行帳號加入 `dialout` 群組。
+- `config/machine.json`：`mainBoard.host = 127.0.0.1`。Loadlock 的 RS-485 接在主控板，IPC 不需要序列埠設定。
 
 ## 五、出貨注意
 

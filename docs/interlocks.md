@@ -5,14 +5,14 @@
 | 層 | 位置 | 反應時間 | 用途 |
 | --- | --- | --- | --- |
 | 1 硬體 | 背板 SAFE 線、EMO、過溫開關、TRANSFER_PERMIT 繼電器 | 立即 | 人員 / 危險氣體 / 設備損壞，**不靠軟體** |
-| 2 主控板 | `firmware/main_board/app/interlock.c` | < 10 ms | PM 側跨板互鎖（PM-01~03、MON-01），**真正執行**；Loadlock 狀態來自 IPC 鏡像 |
-| 3 IPC | `ipc/src/Ald.Core/Interlocks.cs` | 送命令前 | **Loadlock 側（LL-01~08）的實際執行者**；PM 側先擋、顯示原因 |
+| 2 主控板 | `firmware/main_board/app/interlock.c` | < 10 ms | **全部跨系統互鎖的真正執行者**：Loadlock 側 LL-01~08（命令經主控板 RS-485 送給 SLK）+ PM 側 PM-01~06、MON-01~04 |
+| 3 IPC | `ipc/src/Ald.Core/Interlocks.cs` | 送命令前 | 預檢：送命令前先擋、在畫面顯示原因（主控板仍會再檢查一次） |
 
 板內互鎖（例如真空板 Turbo / vent）在各執行板 `role_*.c`。
 
 **改規則要三處一起改**：本文件、`interlock.c` + `firmware/tests/test_main_board.c`、`Interlocks.cs` + `InterlockTests.cs`。
 
-## 二、Loadlock ↔ PM（SLK 維持全開放不改，Loadlock 命令由 IPC 經 RS-485 送出前檢查）
+## 二、Loadlock ↔ PM（SLK 維持全開放不改，Loadlock 命令由主控板檢查後經 RS-485 送出）
 
 | 編號 | 動作 | 允許條件（全部成立） | 被擋原因位元 |
 | --- | --- | --- | --- |
@@ -42,7 +42,7 @@
 | --- | --- | --- |
 | MON-01 | PM 在跑製程 / RF / vent，但 SV 不是「確定關閉」（含 LL 資料不新鮮） | 立刻停 ALD、關前驅物閥、RF off、關 vent |
 | MON-02 | LL-01 任一條件不成立 | TRANSFER_PERMIT 輸出 OFF（預留，目前不接 Loadlock） |
-| MON-03 | IPC 寫的 Loadlock 鏡像超過 500 ms 沒更新 | 視為 Loadlock 狀態不明 → PM-01~06 全擋，PM 在跑則觸發 MON-01 |
+| MON-03 | 主控板收到的 SLK TLM 超過 IL_LL_STALE_MS（預設 500 ms）沒更新 | 視為 Loadlock 狀態不明 → PM-01~06 全擋，PM 在跑則觸發 MON-01 |
 | MON-04 | Heater module 在動，但手臂不在外面（或 LL 狀態不明） | Heater 軸立刻 STOP |
 
 ## 四、PM 內部
@@ -58,4 +58,3 @@
 
 - **Loadlock 需加 mTorr 級壓力計**：SLK 壓力計下限 1 Torr（低於讀 -1），量不到 50 mTorr 壓差；未加之前 SV 永遠開不了（安全方向）。型號與接在哪一塊板待定。
 - PM 壓力計型號與換算（目前假設 0–10 V = 0–1 Torr），config 將提供型號選單。
-- Loadlock RS-485 接在第 2 階主控板或第 3 階執行板（使用者 2026-11-11 提出，待選）。

@@ -6,7 +6,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 
 | 槽 | 板 | 板型 | IR 範圍 | HR 範圍 |
 | --- | --- | --- | --- | --- |
-| 0 | main | MAIN | 0–45 | 0–154 |
+| 0 | main | MAIN | 0–117 | 0–154 |
 | 1 | process | PROCESS | 200–250 | 200–345 |
 | 2 | heater | HEATER | 400–461 | 400–551 |
 | 3 | vacuum | VACUUM | 600–637 | 600–610 |
@@ -14,7 +14,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 
 ## 槽 0：main
 
-主控板（系統狀態、跨板互鎖、Throttle valve / RF 閘道、Loadlock 狀態鏡像）
+主控板（系統狀態、跨板互鎖、Loadlock / Throttle valve / RF 閘道）
 
 ### Input Register (FC04)
 
@@ -41,6 +41,22 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | IR 40–41 | 40–41 | RF_FWD_W | u16 | 2 |  | W |  |  |
 | IR 42–43 | 42–43 | RF_REF_W | u16 | 2 |  | W |  |  |
 | IR 44–45 | 44–45 | RF_STATUS | u16 | 2 |  |  |  |  |
+| IR 100 | 100 | LL_LINK | u16 | 1 |  |  |  | bits: 0=ONLINE, 1=TLM_FRESH, 2=ONLINE_MODE, 3=IL_BYPASS, 4=PORT_LOCKED |
+| IR 101 | 101 | LL_CHM | u16 | 1 |  |  |  | 腔體狀態 0 IDLE,1 PUMPING,2 VAC_READY,3 SV_OPENING,4 TRANSFER_VAC,5 SV_CLOSING,6 VENTING,7 ATM_READY,99 ERROR |
+| IR 102 | 102 | LL_ARM | u16 | 1 |  |  |  | 手臂狀態 0 IDLE,1 HOMING,2 READY,3 MOVING,4 AT_POS,5 Z_RAISING,6 Z_UP,7 Z_LOWERING,99 ERROR |
+| IR 103 | 103 | LL_SV | u16 | 1 |  |  |  | Slit valve 0 UNKNOWN,1 CLOSED,2 OPENING,3 OPEN,4 CLOSING,5 ERROR |
+| IR 104 | 104 | LL_Z | u16 | 1 |  |  |  | Z 軸 0 UNKNOWN,1 DOWN,2 RAISING,3 UP,4 LOWERING |
+| IR 105 | 105 | LL_WAF | u16 | 1 |  |  |  | Wafer 位置 0 UNKNOWN,1 AT_LL,2 ON_ARM,3 AT_PM |
+| IR 106 | 106 | LL_SEQ | u16 | 1 |  |  |  | 序列步 0-22，0 = 沒在跑 |
+| IR 107 | 107 | LL_FLAGS | u16 | 1 |  |  |  | bits: 0=WAFER_PRESENT, 1=ROUGH_OPEN, 2=VENT_OPEN, 3=LID_OPEN, 4=PRES_UNDER_RANGE |
+| IR 108–109 | 108–109 | LL_PRES | i32 | 1 |  | mTorr |  | SLK 壓力計（0~1000 Torr）；-1 = 低於量測下限 1 Torr |
+| IR 110 | 110 | LL_ALM | u16 | 1 |  |  |  | SLK 警報碼，0 = 正常 |
+| IR 111–112 | 111–112 | LL_POS | i32 | 1 |  | step |  | 手臂位置（36.84 step/mm） |
+| IR 113 | 113 | LL_SPD | u16 | 1 |  | step/s |  |  |
+| IR 114 | 114 | LL_TLM_AGE_MS | u16 | 1 |  | ms |  | 最後一筆 TLM 距今時間 |
+| IR 115 | 115 | LL_CMD_RESULT | u16 | 1 |  |  |  | 值: 0=NONE, 1=SENT, 2=DENIED, 3=DONE, 4=ERROR, 5=BUSY |
+| IR 116 | 116 | LL_CMD_ACK | u16 | 1 |  |  |  | 主控板處理完的 LL_CMD_SEQ |
+| IR 117 | 117 | LL_LAST_EVT | u16 | 1 |  |  |  | 最後一個 SLK 事件代碼（見 docs/loadlock-integration.md） |
 
 ### Holding Register (FC03/FC06/FC16)
 
@@ -55,17 +71,12 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 22 | 22 | TV_SP_PRESSURE | u16 | 1 | 0.001 | Torr | 0–10 |  |
 | HR 30 | 30 | RF_ON | u16 | 1 |  |  |  | bits: 0=RF1, 1=RF2 |
 | HR 31–32 | 31–32 | RF_SP_W | u16 | 2 |  | W | 0–600 | TODO 依 RF 電源規格 |
-| HR 100 | 100 | LL_M_SEQ | u16 | 1 |  |  |  | IPC 每收到一筆新 TLM +1 |
-| HR 101 | 101 | LL_M_SV | u16 | 1 |  |  |  | Slit valve 0 UNKNOWN,1 CLOSED,2 OPENING,3 OPEN,4 CLOSING,5 ERROR |
-| HR 102 | 102 | LL_M_Z | u16 | 1 |  |  |  | Z 軸 0 UNKNOWN,1 DOWN,2 RAISING,3 UP,4 LOWERING |
-| HR 103 | 103 | LL_M_ARM | u16 | 1 |  |  |  | 手臂狀態 0 IDLE,1 HOMING,2 READY,3 MOVING,4 AT_POS,5 Z_RAISING,6 Z_UP,7 Z_LOWERING,99 ERROR |
-| HR 104–105 | 104–105 | LL_M_POS | i32 | 1 |  | step |  | 手臂位置（36.84 step/mm） |
-| HR 106 | 106 | LL_M_ALM | u16 | 1 |  |  |  | SLK 警報碼，0 = 正常 |
-| HR 107 | 107 | LL_M_FLAGS | u16 | 1 |  |  |  | bits: 0=ROUGH_OPEN, 1=VENT_OPEN, 2=LID_OPEN |
-| HR 108–109 | 108–109 | LL_M_PRES | i32 | 1 |  | mTorr |  | -1 = 低於量測下限（1 Torr） |
+| HR 100 | 100 | LL_CMD | u16 | 1 |  |  |  | 值: 0=NONE, 1=STATUS, 2=ESTOP, 3=RESET, 4=RECOVER, 10=PUMP, 11=VENT, 12=LOAD, 13=UNLOAD, 14=ABORT, 15=XFER_DONE, 20=SV_OPEN, 21=SV_CLOSE, 22=ROUGH_ON, 23=ROUGH_OFF, 24=VENT_ON, 25=VENT_OFF, 30=ARM_HOME, 31=ARM_AHOME, 32=ARM_LL, 33=ARM_PM, 34=ARM_GOTO, 35=Z_UP, 36=Z_DOWN |
+| HR 101–102 | 101–102 | LL_CMD_ARG | i32 | 1 |  |  |  | ARM_GOTO 目標步數 |
+| HR 103 | 103 | LL_CMD_SEQ | u16 | 1 |  |  |  | 命令序號，改變才會執行一次（主控板開機時先記下目前值，不會執行舊命令） |
 | HR 150 | 150 | IL_SV_DP_MAX_MTORR | u16 | 1 |  | mTorr | 1–10000 | 開 SV 前 Loadlock 與 PM 壓差上限，預設 50（config 可改） |
 | HR 151 | 151 | IL_LL_Z_ENABLE | u16 | 1 |  |  |  | SLK Z 軸是否啟用；之後取消 Z 軸（改用 PM Wafer lift）時設 DISABLED，Z 相關互鎖就不檢查 值: 0=DISABLED, 1=ENABLED |
-| HR 152 | 152 | IL_LL_STALE_MS | u16 | 1 |  | ms | 100–5000 | LL_M_SEQ 超過此時間沒更新 → 視為 Loadlock 狀態不明，預設 500 |
+| HR 152 | 152 | IL_LL_STALE_MS | u16 | 1 |  | ms | 100–5000 | Loadlock TLM 超過此時間沒更新 → 視為狀態不明，預設 500 |
 | HR 153–154 | 153–154 | IL_ARM_SAFE_POS | i32 | 1 |  | step |  | 手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm） |
 
 ## 槽 1：process

@@ -17,7 +17,7 @@ public enum BoardType : ushort
     Motion = 4,
 }
 
-/// <summary>主控板（系統狀態、跨板互鎖、Throttle valve / RF 閘道、Loadlock 狀態鏡像）（槽 0，位址 = 0 + 區內位址）</summary>
+/// <summary>主控板（系統狀態、跨板互鎖、Loadlock / Throttle valve / RF 閘道）（槽 0，位址 = 0 + 區內位址）</summary>
 public static class MainBoard
 {
     public const int Slot = 0;
@@ -27,7 +27,7 @@ public static class MainBoard
     /// <summary>Input Register (FC04)，以下皆為絕對位址</summary>
     public static class Input
     {
-        public const ushort Size = 46;
+        public const ushort Size = 118;
         /// <summary>板型（見 board_types），與槽位設定不符時主控板拒用該槽</summary>
         public const ushort BoardType = 0;
         /// <summary>例如 0x0102 = v1.2</summary>
@@ -120,6 +120,60 @@ public static class MainBoard
         public const ushort RfRefWCount = 2;
         public const ushort RfStatus = 44;
         public const ushort RfStatusCount = 2;
+        public const ushort LlLink = 100;
+        [System.Flags] public enum LlLinkBits : ushort
+        {
+            Online = 1 << 0,
+            TlmFresh = 1 << 1,
+            OnlineMode = 1 << 2,
+            IlBypass = 1 << 3,
+            PortLocked = 1 << 4,
+        }
+        /// <summary>腔體狀態 0 IDLE,1 PUMPING,2 VAC_READY,3 SV_OPENING,4 TRANSFER_VAC,5 SV_CLOSING,6 VENTING,7 ATM_READY,99 ERROR</summary>
+        public const ushort LlChm = 101;
+        /// <summary>手臂狀態 0 IDLE,1 HOMING,2 READY,3 MOVING,4 AT_POS,5 Z_RAISING,6 Z_UP,7 Z_LOWERING,99 ERROR</summary>
+        public const ushort LlArm = 102;
+        /// <summary>Slit valve 0 UNKNOWN,1 CLOSED,2 OPENING,3 OPEN,4 CLOSING,5 ERROR</summary>
+        public const ushort LlSv = 103;
+        /// <summary>Z 軸 0 UNKNOWN,1 DOWN,2 RAISING,3 UP,4 LOWERING</summary>
+        public const ushort LlZ = 104;
+        /// <summary>Wafer 位置 0 UNKNOWN,1 AT_LL,2 ON_ARM,3 AT_PM</summary>
+        public const ushort LlWaf = 105;
+        /// <summary>序列步 0-22，0 = 沒在跑</summary>
+        public const ushort LlSeq = 106;
+        public const ushort LlFlags = 107;
+        [System.Flags] public enum LlFlagsBits : ushort
+        {
+            WaferPresent = 1 << 0,
+            RoughOpen = 1 << 1,
+            VentOpen = 1 << 2,
+            LidOpen = 1 << 3,
+            PresUnderRange = 1 << 4,
+        }
+        /// <summary>SLK 壓力計（0~1000 Torr）；-1 = 低於量測下限 1 Torr [mTorr]</summary>
+        public const ushort LlPres = 108;
+        /// <summary>SLK 警報碼，0 = 正常</summary>
+        public const ushort LlAlm = 110;
+        /// <summary>手臂位置（36.84 step/mm） [step]</summary>
+        public const ushort LlPos = 111;
+        /// <summary>[step/s]</summary>
+        public const ushort LlSpd = 113;
+        /// <summary>最後一筆 TLM 距今時間 [ms]</summary>
+        public const ushort LlTlmAgeMs = 114;
+        public const ushort LlCmdResult = 115;
+        public enum LlCmdResultValues : ushort
+        {
+            None = 0,
+            Sent = 1,
+            Denied = 2,
+            Done = 3,
+            Error = 4,
+            Busy = 5,
+        }
+        /// <summary>主控板處理完的 LL_CMD_SEQ</summary>
+        public const ushort LlCmdAck = 116;
+        /// <summary>最後一個 SLK 事件代碼（見 docs/loadlock-integration.md）</summary>
+        public const ushort LlLastEvt = 117;
     }
 
     /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
@@ -178,27 +232,38 @@ public static class MainBoard
         public const ushort RfSpWCount = 2;
         public const double RfSpWMin = 0;
         public const double RfSpWMax = 600;
-        /// <summary>IPC 每收到一筆新 TLM +1</summary>
-        public const ushort LlMSeq = 100;
-        /// <summary>Slit valve 0 UNKNOWN,1 CLOSED,2 OPENING,3 OPEN,4 CLOSING,5 ERROR</summary>
-        public const ushort LlMSv = 101;
-        /// <summary>Z 軸 0 UNKNOWN,1 DOWN,2 RAISING,3 UP,4 LOWERING</summary>
-        public const ushort LlMZ = 102;
-        /// <summary>手臂狀態 0 IDLE,1 HOMING,2 READY,3 MOVING,4 AT_POS,5 Z_RAISING,6 Z_UP,7 Z_LOWERING,99 ERROR</summary>
-        public const ushort LlMArm = 103;
-        /// <summary>手臂位置（36.84 step/mm） [step]</summary>
-        public const ushort LlMPos = 104;
-        /// <summary>SLK 警報碼，0 = 正常</summary>
-        public const ushort LlMAlm = 106;
-        public const ushort LlMFlags = 107;
-        [System.Flags] public enum LlMFlagsBits : ushort
+        public const ushort LlCmd = 100;
+        public enum LlCmdValues : ushort
         {
-            RoughOpen = 1 << 0,
-            VentOpen = 1 << 1,
-            LidOpen = 1 << 2,
+            None = 0,
+            Status = 1,
+            Estop = 2,
+            Reset = 3,
+            Recover = 4,
+            Pump = 10,
+            Vent = 11,
+            Load = 12,
+            Unload = 13,
+            Abort = 14,
+            XferDone = 15,
+            SvOpen = 20,
+            SvClose = 21,
+            RoughOn = 22,
+            RoughOff = 23,
+            VentOn = 24,
+            VentOff = 25,
+            ArmHome = 30,
+            ArmAhome = 31,
+            ArmLl = 32,
+            ArmPm = 33,
+            ArmGoto = 34,
+            ZUp = 35,
+            ZDown = 36,
         }
-        /// <summary>-1 = 低於量測下限（1 Torr） [mTorr]</summary>
-        public const ushort LlMPres = 108;
+        /// <summary>ARM_GOTO 目標步數</summary>
+        public const ushort LlCmdArg = 101;
+        /// <summary>命令序號，改變才會執行一次（主控板開機時先記下目前值，不會執行舊命令）</summary>
+        public const ushort LlCmdSeq = 103;
         /// <summary>開 SV 前 Loadlock 與 PM 壓差上限，預設 50（config 可改） [mTorr]</summary>
         public const ushort IlSvDpMaxMtorr = 150;
         public const double IlSvDpMaxMtorrMin = 1;
@@ -210,7 +275,7 @@ public static class MainBoard
             Disabled = 0,
             Enabled = 1,
         }
-        /// <summary>LL_M_SEQ 超過此時間沒更新 → 視為 Loadlock 狀態不明，預設 500 [ms]</summary>
+        /// <summary>Loadlock TLM 超過此時間沒更新 → 視為狀態不明，預設 500 [ms]</summary>
         public const ushort IlLlStaleMs = 152;
         public const double IlLlStaleMsMin = 100;
         public const double IlLlStaleMsMax = 5000;

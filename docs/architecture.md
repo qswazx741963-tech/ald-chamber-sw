@@ -7,14 +7,14 @@
 
 ```
 【第一階】研華 ARK-1222 工業電腦（Debian Linux + PREEMPT_RT）
-   ├─ 人機 AldChamber（C# .NET 8 + Avalonia）：畫面 / Recipe / 資料記錄 / 警報 / Loadlock 互鎖
+   ├─ 人機 AldChamber（C# .NET 8 + Avalonia）：畫面 / Recipe / 資料記錄 / 警報 / 互鎖預檢
    │     │ 本機 Modbus TCP 127.0.0.1:502（位址與主控板相同）
    ├─ ald-ecat（C，IgH EtherLAB 主站，1 ms SCHED_FIFO 即時執行緒）  ipc/ecat-master
-   ├─ COM（RS-485）── Loadlock（SLK 模組，韌體不改、全開放）※ 接點待定（主控板或 IPC）
    └─ LAN2 ── 屏蔽網路線（點對點直連）── EtherCAT
           │                                     LAN1 → 廠務網路（以後 SECS/GEM）
 【第二階】主控板（自製，STM32H743 + LAN9252 EtherCAT 從站 + FreeRTOS）
    ├─ UART：Throttle valve、RF1 / RF2
+   ├─ UART（RS-485）── Loadlock（SLK 模組，韌體不改、全開放；互鎖在這裡做）
    ├─ 硬體輸出：SAFE 線、燈塔、蜂鳴器（TRANSFER_PERMIT 預留，目前不接 Loadlock）
    └─ 背板：CAN FD（5 Mbps）+ SAFE 線 + SYNC 線 + 槽位腳位 SLOT_ID[3:0]
           │
@@ -27,14 +27,14 @@
 ```
 
 > Loadlock 的閥、Slit valve、手臂、Indexer 由 **SLK 模組**自己控制，SLK 維持現狀不改。
-> IPC 經 RS-485 下命令，送出前由 IPC 做互鎖（見 `loadlock-integration.md`）。ALD 的真空板 / 馬達板不接這些點。
+> 主控板經 RS-485 控制 SLK，所有互鎖在主控板做；IPC 透過主控板下 Loadlock 命令（見 `loadlock-integration.md`）。ALD 的真空板 / 馬達板不接這些點。
 
 ## 二、誰負責什麼
 
 | 層 | 負責 | 不做 |
 | --- | --- | --- |
-| IPC | 畫面、Recipe 編輯與下載、資料記錄、警報紀錄、操作權限、**Loadlock 控制與互鎖**、PM 動作先擋並顯示原因、把 Loadlock 狀態鏡像給主控板 | 任何需要 ms 等級反應的事 |
-| 主控板 | PM 跨板互鎖（含「SV 沒關不准製程」，Loadlock 狀態來自 IPC 鏡像）、TV / RF 閘道、兩層看門狗、安全狀態總指揮、把各槽資料整理成一張表 | 直接驅動閥件（交給執行板）、控制 Loadlock |
+| IPC | 畫面、Recipe 編輯與下載、資料記錄、警報紀錄、操作權限、Loadlock 操作畫面、所有動作先預檢並顯示被擋原因 | 任何需要 ms 等級反應的事 |
+| 主控板 | **全部跨系統互鎖**（Loadlock LL-01~08 + PM 側）、**Loadlock RS-485 閘道**、TV / RF 閘道、兩層看門狗、安全狀態總指揮、把各槽資料整理成一張表 | 直接驅動閥件（交給執行板） |
 | 執行板 | 實際 I/O、ALD 閥時序（1 kHz 計時器）、加熱 PID、板內互鎖、自己進安全狀態 | 跨板判斷 |
 
 ## 三、通訊
@@ -44,8 +44,8 @@
 | 人機 ↔ ald-ecat（同一台 IPC） | 本機 Modbus TCP，Unit ID 1，127.0.0.1:502 | 50 ms | 一張表、依槽位分區：絕對位址 = 槽號 × 200 + 區內位址（`shared/modbus/register-map.md`） |
 | ald-ecat ↔ 主控板 | EtherCAT，RxPDO 0x1600 = 所有 HR（162 word）、TxPDO 0x1A00 = 所有 IR（117 word） | 1 ms | 對應表 `pdo_map.h`、從站描述檔 `shared/ethercat/ald_mainboard_esi.xml`，都由 registers.yaml 產生 |
 | 主控板 ↔ 執行板 | CAN FD 背板 | 10 ms | 週期性整份複製 IR / HR，掉一包下一輪補回（`backplane.md`） |
-| IPC ↔ Loadlock | RS-485 115200 ASCII（SLK 端 RS-232 + 轉換器） | 200 ms 輪詢 TLM | `loadlock-integration.md` |
-| IPC → 主控板（Loadlock 鏡像） | HR LL_M_*（經 EtherCAT） | 每筆 TLM | 主控板 PM 側互鎖用 |
+| 主控板 ↔ Loadlock | RS-485 115200 ASCII（SLK 端 RS-232 + 轉換器） | 200 ms 輪詢 TLM | `loadlock-integration.md` |
+| IPC → 主控板（Loadlock 命令） | HR LL_CMD / LL_CMD_ARG / LL_CMD_SEQ → IR LL_*（經 EtherCAT） | 有命令時 | SEQ 改變才執行一次 |
 | 主控板 ↔ TV / RF | RS-232 / RS-485 | TODO | 依設備手冊 |
 
 **IPC 寫的是「請求」，主控板送出去的才算數**：IPC 寫進表裡的命令，主控板會先過互鎖，不准的位元清掉才轉給執行板，

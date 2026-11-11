@@ -4,7 +4,9 @@
 #include "fieldbus_if.h"
 #include "fake_hal.h"
 #include "interlock.h"
-#include "ll_mirror.h"
+#include "ll_gateway.h"
+#include "slk_link.h"
+#include <string.h>
 #include "main_app.h"
 #include "reg_image.h"
 #include "registers_main.h"
@@ -151,37 +153,138 @@ static void test_il_pm_motion_and_gv(void)
     in = ready(); in.ll_fresh = false;           CHECK_EQ(il_check(IL_ACT_PM_TURBO_GV_OPEN, &in), IL_DENY(LL_UNKNOWN));
 }
 
-/* ------------------------------------------------------------ Loadlock 狀態鏡像 */
-static void test_mirror(void)
+/* ------------------------------------------------------------ SLK 協議 + Loadlock 閘道（RS-485 接主控板） */
+static const char *TLM_OK =
+    "TLM:CHM=2,ARM=2,SV=1,Z=1,WAF=1,WPR=1,SEQ=0,RGH=0,VNT=0,BYP=1,PRES=-1,LID=0,ALM=0,POS=0,SPD=0";
+static const char *TLM_40MT =
+    "TLM:CHM=2,ARM=2,SV=1,Z=1,WAF=1,WPR=1,SEQ=0,RGH=0,VNT=0,BYP=1,PRES=40,LID=0,ALM=0,POS=0,SPD=0";
+
+static void test_slk_parse(void)
 {
+    slk_state_t s; slk_init(&s);
+    CHECK_EQ(slk_parse_line(&s, TLM_OK, 100), SLK_LINE_TLM);
+    CHECK_EQ(s.chm, SLK_CH_VAC_READY); CHECK_EQ(s.sv, SLK_SV_CLOSED); CHECK_EQ(s.pres_mtorr, -1);
+    CHECK(slk_tlm_fresh(&s, 500, 500));
+    CHECK(!slk_tlm_fresh(&s, 700, 500));
+    CHECK_EQ(slk_parse_line(&s, "TLM:CHM=2,ARM", 800), SLK_LINE_BAD);
+    CHECK_EQ(s.tlm_ms, 100);                                    /* 破損 TLM 不更新時間 */
+    /* 缺 POS（互鎖要用）→ 整筆不採用，也不能用舊值 / 0 冒充手臂已退出 */
+    CHECK_EQ(slk_parse_line(&s, "TLM:CHM=2,ARM=2,SV=3,Z=1,SEQ=0,RGH=0,VNT=0,PRES=40,LID=0,ALM=0,SPD=0", 850), SLK_LINE_BAD);
+    CHECK_EQ(s.sv, SLK_SV_CLOSED); CHECK_EQ(s.tlm_ms, 100);
+    CHECK_EQ(slk_parse_line(&s, "EVT:VLV:SV_OPEN", 900), SLK_LINE_EVT);
+    CHECK_EQ(s.last_evt, SLK_EVT_SV_OPEN);
+    slk_parse_line(&s, "EVT:SEQ:ERR:LOAD:SV_OPEN_TO", 900);
+    CHECK_EQ(s.last_evt, SLK_EVT_SEQ_ERR);
+    slk_parse_line(&s, "EVT:VLV:VENT_AUTO_OFF", 900);
+    CHECK_EQ(s.last_evt, SLK_EVT_VENT_AUTO_OFF);
+    slk_parse_line(&s, "EVT:SYS:BOOT_OK", 900);                /* SLK 重開機 → 狀態作廢 */
+    CHECK(!s.tlm_valid);
+}
+
+static void test_slk_rx_and_cmd(void)
+{
+    slk_rx_t rx = {0}; const char *line = NULL; int lines = 0;
+    const char *in = "EVT:ARM:HOMED\r\nTLM:x\n";
+    for (const char *p = in; *p; p++) if (slk_rx_feed(&rx, *p, &line)) lines++;
+    CHECK_EQ(lines, 2); CHECK_STR(line, "TLM:x");
+    char buf[40];
+    slk_build_cmd(MAIN_HR_LL_CMD_LOAD, 0, buf, sizeof buf);      CHECK_STR(buf, ">SEQ:LOAD\n");
+    slk_build_cmd(MAIN_HR_LL_CMD_SV_OPEN, 0, buf, sizeof buf);   CHECK_STR(buf, ">VLV:SV:O\n");
+    slk_build_cmd(MAIN_HR_LL_CMD_ARM_GOTO, 5000, buf, sizeof buf); CHECK_STR(buf, ">ARM:GOTO:5000\n");
+    CHECK_EQ(slk_build_cmd(MAIN_HR_LL_CMD_ARM_GOTO, -5, buf, sizeof buf), -1);
+    CHECK_EQ(slk_build_cmd(999, 0, buf, sizeof buf), -1);
+}
+
+static void ipc_cmd(uint16_t *hr, uint16_t cmd, int32_t arg)
+{
+    hr[MAIN_HR_LL_CMD] = cmd;
+    reg_put_i32(&hr[MAIN_HR_LL_CMD_ARG], arg);
+    hr[MAIN_HR_LL_CMD_SEQ]++;
+}
+
+static void pm_ready(il_inputs_t *in)
+{
+    in->pm_slots_ok = true; in->pm_pres_mtorr = 10; in->pm_turbo_gv_closed = true;
+    in->pm_heater_down = true; in->pm_at_transfer = true;
+    in->sv_dp_max_mtorr = 50; in->ll_z_enabled = true; in->arm_safe_pos = 5894;
+}
+
+static void test_gateway(void)
+{
+    fake_reset();
     reg_image_init();
-    uint16_t *hr = hr_slot(0);
-    ll_mirror_t m; ll_mirror_init(&m);
+    ll_gateway_t g; ll_gateway_init(&g);
+    uint16_t *ir = ir_slot(0), *hr = hr_slot(0);
     il_inputs_t in = {0};
 
-    ll_mirror_fill(&m, hr, &in, 1000);
-    CHECK(!in.ll_fresh);                           /* IPC 還沒寫過 → 不明 */
+    /* 主控板開機時 HR 裡已有舊命令（SEQ=7）→ 只記下，不執行 */
+    fake_now = 900;
+    hr[MAIN_HR_LL_CMD] = MAIN_HR_LL_CMD_LOAD; hr[MAIN_HR_LL_CMD_SEQ] = 7;
+    ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK(strstr(fake_uart_tx, ">SEQ:LOAD") == NULL);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_ACK], 7);
 
-    hr[MAIN_HR_LL_M_SV] = SLK_SV_CLOSED;
-    reg_put_i32(&hr[MAIN_HR_LL_M_POS], 100);
-    reg_put_i32(&hr[MAIN_HR_LL_M_PRES], -1);
-    hr[MAIN_HR_LL_M_FLAGS] = 1u << MAIN_HR_LL_M_FLAGS_BIT_VENT_OPEN;
-    hr[MAIN_HR_LL_M_SEQ] = 1;
-    ll_mirror_fill(&m, hr, &in, 1100);
-    CHECK(in.ll_fresh);
-    CHECK_EQ(in.ll_sv, SLK_SV_CLOSED); CHECK_EQ(in.ll_pos, 100); CHECK_EQ(in.ll_pres_mtorr, -1);
-    CHECK(in.ll_vent_open); CHECK(!in.ll_rough_open);
+    /* SLK 還沒回 TLM → 開 SV 被擋，原因 LL_UNKNOWN，而且沒送出 */
+    fake_now = 1000;
+    ll_fill_inputs(&g, &in, fake_now, 500); pm_ready(&in);
+    ipc_cmd(hr, MAIN_HR_LL_CMD_SV_OPEN, 0);
+    ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_DENIED);
+    CHECK_EQ(ir[MAIN_IR_IL_DENY], IL_DENY(LL_UNKNOWN));
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_ACK], hr[MAIN_HR_LL_CMD_SEQ]);
+    CHECK(strstr(fake_uart_tx, ">SYS:ST\n") != NULL);          /* 有在輪詢 */
+    CHECK(strstr(fake_uart_tx, ">VLV:SV:O") == NULL);
 
-    ll_mirror_fill(&m, hr, &in, 1500);  CHECK(in.ll_fresh);     /* 400 ms 沒更新還算新鮮 */
-    ll_mirror_fill(&m, hr, &in, 1700);  CHECK(!in.ll_fresh);    /* 600 ms 沒更新 → 不明 */
-    hr[MAIN_HR_LL_M_SEQ] = 2;
-    ll_mirror_fill(&m, hr, &in, 1710);  CHECK(in.ll_fresh);
+    /* SLK 壓力計低於 1 Torr（-1）→ 量不到壓差 → 擋 */
+    fake_uart_rx_push(TLM_OK); fake_uart_rx_push("\n");
+    fake_now = 1100;
+    ll_gateway_rx(&g, ir, fake_now);
+    ll_fill_inputs(&g, &in, fake_now, 500); pm_ready(&in);
+    ipc_cmd(hr, MAIN_HR_LL_CMD_SV_OPEN, 0);
+    ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_DENIED);
+    CHECK(ir[MAIN_IR_IL_DENY] & IL_DENY(PRESSURE_UNKNOWN));
+    CHECK(ir[MAIN_IR_LL_FLAGS] & (1u << MAIN_IR_LL_FLAGS_BIT_PRES_UNDER_RANGE));
 
-    /* 鏡像說 SV 開著 → PM 不准開始製程 */
-    hr[MAIN_HR_LL_M_SV] = SLK_SV_OPEN;
-    ll_mirror_fill(&m, hr, &in, 1720);
-    in.pm_slots_ok = true; in.arm_safe_pos = 5894;
-    CHECK(il_check(IL_ACT_PM_PROCESS, &in) & IL_DENY(SV_NOT_CLOSED));
+    /* 壓差 30 mTorr → 送出 → 等完成事件 */
+    fake_uart_rx_push(TLM_40MT); fake_uart_rx_push("\n");
+    fake_now = 1200;
+    ll_gateway_rx(&g, ir, fake_now);
+    ll_fill_inputs(&g, &in, fake_now, 500); pm_ready(&in);
+    ipc_cmd(hr, MAIN_HR_LL_CMD_SV_OPEN, 0);
+    ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_SENT);
+    CHECK(strstr(fake_uart_tx, ">VLV:SV:O\n") != NULL);
+    CHECK_EQ(ir[MAIN_IR_LL_SV], SLK_SV_CLOSED);
+    CHECK_EQ(reg_get_i32(&ir[MAIN_IR_LL_PRES]), 40);
+
+    /* Turbo GV 開著 → 開 SV 被擋（IL_DENY2） */
+    in.pm_turbo_gv_closed = false;
+    CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY2(TURBO_GV_OPEN));
+    in.pm_turbo_gv_closed = true;
+
+    /* 上一個沒完成又下新命令 → BUSY；ESTOP 不受影響 */
+    ipc_cmd(hr, MAIN_HR_LL_CMD_ARM_HOME, 0);
+    ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_BUSY);
+
+    fake_uart_rx_push("EVT:VLV:SV_OPEN\n");
+    ll_gateway_rx(&g, ir, fake_now);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_DONE);
+
+    ipc_cmd(hr, MAIN_HR_LL_CMD_ESTOP, 0);
+    ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK(strstr(fake_uart_tx, ">SYS:ES\n") != NULL);
+
+    /* GOTO 超過安全位置 → 視為伸進 PM */
+    CHECK_EQ(ll_cmd_action(MAIN_HR_LL_CMD_ARM_GOTO, 9000, 5894), IL_ACT_ARM_INTO_PM);
+    CHECK_EQ(ll_cmd_action(MAIN_HR_LL_CMD_ARM_GOTO, 100, 5894), IL_ACT_ARM_LL_SIDE);
+    CHECK_EQ(ll_cmd_action(MAIN_HR_LL_CMD_ABORT, 0, 5894), IL_ACT_NONE);
+
+    /* TLM 超過 500 ms 沒更新 → 狀態不明 → PM 製程被擋 */
+    fake_now = 1800;
+    ll_fill_inputs(&g, &in, fake_now, 500); pm_ready(&in);
+    CHECK(il_check(IL_ACT_PM_PROCESS, &in) & IL_DENY(LL_UNKNOWN));
 }
 
 /* ------------------------------------------------------------ EtherCAT PDO */
@@ -261,7 +364,9 @@ int main(void)
     RUN(test_il_pump_vent);
     RUN(test_il_pm_side);
     RUN(test_il_pm_motion_and_gv);
-    RUN(test_mirror);
+    RUN(test_slk_parse);
+    RUN(test_slk_rx_and_cmd);
+    RUN(test_gateway);
     RUN(test_ecat_pdo);
     RUN(test_main_loop_safe_without_ipc);
     printf("主控板：%d 項檢查，%d 項失敗\n", g_checks, g_fail);

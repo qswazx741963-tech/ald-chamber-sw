@@ -1,6 +1,6 @@
 namespace Ald.Core;
 
-/// <summary>IPC 可以下給 Loadlock（SLK 模組）的命令。對應的 SLK ASCII 指令見 Ald.Comm/SlkProtocol.cs。</summary>
+/// <summary>IPC 可以下給 Loadlock（SLK 模組）的命令。經主控板 HR LL_CMD 下達（對應見 Ald.Comm/LoadlockService.ToRegister），主控板再轉成 SLK ASCII 指令（firmware/main_board/app/slk_link.c）。</summary>
 public enum LoadlockCommand
 {
     Status, EStop, Reset, Recover,

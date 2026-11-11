@@ -28,9 +28,9 @@ public sealed record InterlockResult(bool Allowed, string Reason)
 
 /// <summary>
 /// IPC 端互鎖。
-/// - Loadlock 側（LL-01~08）：Loadlock 由 IPC 經 RS-485 直接控制、SLK 韌體不做互鎖，
-///   所以**這裡就是 Loadlock 的實際互鎖**，每個命令送出前由 LoadlockService 呼叫。
-/// - PM 側（PM-01~03）：這裡先擋、顯示原因；主控板（firmware/main_board/app/interlock.c）再用 Loadlock 狀態鏡像真正執行。
+/// - 實際互鎖全部在主控板（firmware/main_board/app/interlock.c）：Loadlock 經主控板 RS-485 控制、SLK 韌體不做互鎖，
+///   所以 LL-01~08 與 PM 側規則都由主控板執行。
+/// - 這裡是 IPC 的預檢：命令送出前先擋、立刻在畫面顯示原因（LoadlockService.Execute 會呼叫）。
 /// 規則編號見 docs/interlocks.md，改一邊就要改另一邊，並補單元測試。
 /// TODO 規則依製程確認
 /// </summary>

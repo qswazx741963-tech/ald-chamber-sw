@@ -5,7 +5,7 @@
  *   1. 通訊層收發（IPC 讀寫 g_ir / g_hr）
  *   2. 收背板：各槽 IR、HELLO
  *   3. 兩層看門狗：IPC → 主控板；各槽 → 主控板
- *   4. 互鎖：組 il_inputs（Loadlock 狀態來自 IPC 寫的鏡像）→ PM 命令過濾 → 持續監看
+ *   4. Loadlock：收 SLK（UART / RS-485）→ 組 il_inputs → Loadlock 命令閘道（過互鎖才送）→ PM 命令過濾 → 持續監看
  *   5. 送背板：SYNC + 「核准後」的 HR（IPC 寫的是請求，主控板送出去的才算數）
  *   6. 輸出 TRANSFER_PERMIT、SAFE 線，踢硬體看門狗
  */
@@ -13,7 +13,7 @@
 #include "bp_proto.h"
 #include "hal_port.h"
 #include "interlock.h"
-#include "ll_mirror.h"
+#include "ll_gateway.h"
 #include "reg_image.h"
 #include "registers_heater.h"
 #include "registers_main.h"
@@ -41,7 +41,7 @@ static uint16_t s_hr_out[ALD_SLOT_STRIDE];
 static uint16_t s_ipc_hb, s_bp_hb;
 static uint32_t s_ipc_hb_ms, s_last_sync_ms;
 static bool     s_ipc_seen, s_safe = true;
-static ll_mirror_t s_ll;
+static ll_gateway_t s_llg;
 static uint16_t s_lift_out;   /* 上一次核准送出的 Wafer lift 氣缸命令 */
 
 static const ald_slot_def_t *slot_def(uint8_t slot)
@@ -101,7 +101,8 @@ static void build_inputs(il_inputs_t *in, uint32_t now)
     in->safe_active = s_safe;
     in->pm_slots_ok = slot_online(PROC_DEFAULT_SLOT, now) && slot_online(VAC_DEFAULT_SLOT, now)
                    && slot_online(MOT_DEFAULT_SLOT, now);
-    ll_mirror_fill(&s_ll, hr0, in, now);
+    uint32_t stale = hr0[MAIN_HR_IL_LL_STALE_MS] ? hr0[MAIN_HR_IL_LL_STALE_MS] : 500u;
+    ll_fill_inputs(&s_llg, in, now, stale);
 
     in->pm_pres_mtorr = pm_pressure_mtorr(now);
     in->pm_process_running = (proc[COM_IR_STATUS] & (1u << COM_IR_STATUS_BIT_RUNNING))
@@ -244,7 +245,7 @@ void main_app_init(const fieldbus_ops_t *bus)
 {
     s_bus = bus;
     reg_image_init();
-    ll_mirror_init(&s_ll);
+    ll_gateway_init(&s_llg);
     hal_do_write(DO_TRANSFER_PERMIT, false);   /* 開機先拉掉傳送許可 */
     uint16_t *ir0 = ir_slot(0);
     ir0[COM_IR_BOARD_TYPE] = MAIN_BOARD_TYPE;
@@ -263,8 +264,10 @@ void main_app_loop(void)
     bp_receive(now);
     ipc_watchdog(now);
 
+    ll_gateway_rx(&s_llg, ir0, now);
     il_inputs_t in;
     build_inputs(&in, now);
+    ll_gateway_step(&s_llg, ir0, hr_slot(0), &in, now);
     uint8_t react = il_monitor(&in);
 
     bool permit = !(react & IL_REACT_PERMIT_OFF);

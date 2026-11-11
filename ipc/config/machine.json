@@ -15,14 +15,12 @@
     { "slot": 4, "type": "Motion" }
   ],
   "loadlock": {
-    "_comment": "SLK 模組，IPC 經 RS-485 直接控制（SLK 端 RS-232，中間接自動收發 RS-232↔RS-485 轉換器）。SLK 韌體不改",
-    "port": "/dev/ttyS1",
-    "baud": 115200,
-    "pollMs": 200
+    "_comment": "SLK 模組接在主控板 UART（RS-485，SLK 端 RS-232 經自動收發轉換器）。IPC 透過主控板 HR LL_CMD 下命令，鮑率 / 輪詢週期寫在主控板韌體（slk_link.h）。SLK 韌體不改",
+    "commandTimeoutMs": 75000
   },
   "watchdogMs": 1000,
   "interlock": {
-    "_comment": "Loadlock 互鎖由 IPC 執行；這些值也會寫進主控板 HR IL_*，主控板用來做 PM 側互鎖",
+    "_comment": "互鎖由主控板執行（Loadlock LL-01~08 + PM 側）；這些值寫進主控板 HR IL_*，IPC 只做預檢顯示",
     "svMaxDiffMtorr": 50,
     "_svMaxDiffMtorr": "開 SV 條件：Loadlock 與 PM 壓差 ≤ 此值（mTorr）。SLK 壓力計下限 1 Torr，需加 mTorr 級壓力計才量得到",
     "loadlockZEnabled": true,
