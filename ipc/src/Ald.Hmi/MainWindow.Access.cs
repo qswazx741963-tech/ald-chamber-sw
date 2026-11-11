@@ -20,6 +20,8 @@ public partial class MainWindow
 
     private TimeSpan IdleLogout => TimeSpan.FromMinutes(_m?.Config.Hmi.IdleLogoutMinutes ?? 30);
     private bool Can(Permission p) => Access.Can(_role, p);
+    /// <summary>選單的「登入 / 登出」。</summary>
+    private Action LoginClicked = () => { };
     private string OpSource => $"操作:{_user ?? "未登入"}";
 
     private void WireAccess()
@@ -29,7 +31,7 @@ public partial class MainWindow
         _defaultPw = _users?.DefaultPasswordInUse ?? false;
 
         var panel = C<Border>("PnlLogin");
-        C<Button>("BtnLogin").Click += (_, _) =>
+        LoginClicked = () =>
         {
             if (_user is not null) { Logout("登出"); return; }
             C<TextBox>("TxtLoginName").Text = "";
@@ -136,7 +138,6 @@ public partial class MainWindow
         if (_user is not null && DateTime.Now - _lastInput > IdleLogout) Logout($"{IdleLogout.TotalMinutes:0} 分鐘沒有操作，自動登出");
 
         C<TextBlock>("TxtUser").Text = _user is null ? "未登入（檢視）" : $"{_user}（{Access.Text(_role)}）";
-        C<Button>("BtnLogin").Content = _user is null ? "登入" : "登出";
         C<Button>("BtnReset").IsEnabled = Can(Permission.Reset);
         C<Button>("BtnPump").IsEnabled = Can(Permission.RunRecipe) && !Busy;
         C<Button>("BtnVent").IsEnabled = Can(Permission.RunRecipe) && !Busy;

@@ -6,49 +6,11 @@ using Avalonia.Media;
 namespace Ald.Hmi;
 
 /// <summary>
-/// 總覽（俯視圖 + 兩側資訊卡）、頂部狀態 / 最近訊息、底部導覽列。
-/// 導覽列按鈕依分頁自動產生（分頁標題改了會跟著變，例如「保養 ⚠2」）；警報頁有警報時按鈕變紅。
+/// 總覽（俯視圖 + 兩側資訊卡）。頂部列在 MainWindow.Header.cs。
 /// </summary>
 public partial class MainWindow
 {
-    private readonly List<(Button Btn, TabItem Tab)> _nav = new();
     private DateTime? _busySince;
-    private DateTime _recentAt = DateTime.MinValue;
-
-    private static readonly IBrush NavAlarm = new SolidColorBrush(Color.Parse("#B03030"));
-
-    private void WireNav()
-    {
-        var tabs = C<TabControl>("Tabs");
-        var panel = C<StackPanel>("PnlNav");
-        foreach (var t in tabs.Items.OfType<TabItem>())
-        {
-            var b = new Button { Content = t.Header?.ToString(), Classes = { "nav" } };
-            var tab = t;
-            b.Click += (_, _) => tabs.SelectedItem = tab;
-            panel.Children.Add(b);
-            _nav.Add((b, t));
-        }
-        tabs.SelectionChanged += (_, _) => SyncNav();
-        SyncNav();
-    }
-
-    private void SyncNav()
-    {
-        var sel = C<TabControl>("Tabs").SelectedItem;
-        foreach (var (b, t) in _nav) b.Classes.Set("sel", t == sel);
-    }
-
-    private void RenderNav()
-    {
-        bool alarm = _m is not null && (_m.Alarms.AnyAlarm || _m.Alarms.UnackedAlarm || _seqFault);
-        foreach (var (b, t) in _nav)
-        {
-            var h = t.Header?.ToString();
-            if (!Equals(b.Content, h)) b.Content = h;
-            if (h == "警報") b.Background = alarm ? NavAlarm : null;
-        }
-    }
 
     private string RunningText(out string step)
     {
@@ -63,19 +25,10 @@ public partial class MainWindow
     private void RenderOverview(MachineSnapshot s)
     {
         var m = _m!;
-        C<TextBlock>("TxtLink").Text = s.Connected ? "主控板 連線" : "主控板 未連線";
         string run = RunningText(out var step);
         C<TextBlock>("TxtState").Text = !s.Connected ? "未連線" : s.SafeState ? "安全狀態（需 Reset）"
             : run.Length > 0 ? $"執行中：{run}" : $"待機（{s.SysState}）";
-        C<TextBlock>("TxtSlots").Text = "控制板 " + string.Join(" ", s.SlotOnline.Select((o, i) => $"{i}{(o ? "●" : "○")}"));
-        C<TextBlock>("TxtLl").Text = s.LoadlockFresh ? $"Loadlock SV {SvText[(int)s.SlitValve % 6]}" : "Loadlock 未連線";
-
-        if (_alarmLog is not null && DateTime.Now - _recentAt > TimeSpan.FromSeconds(1))
-        {
-            _recentAt = DateTime.Now;
-            C<TextBlock>("TxtRecent").Text = string.Join("\n", _alarmLog.Recent(3).Select(r =>
-                $"{r.Time:HH:mm:ss} {(r.Level == "Alarm" ? "異常" : r.Level == "Warning" ? "警告" : "訊息")} {r.Source}：{r.Message}"));
-        }
+        RenderHeader(s);
 
         // 經過時間
         if (Busy) _busySince ??= DateTime.Now; else _busySince = null;
@@ -145,6 +98,5 @@ public partial class MainWindow
             llId, pmId,
             s.AldRunning || s.SysState == SystemState.Process, m.Config.Transfer.ArmPmSteps,
             mfc.Select(c => c.Name).ToArray()));
-        RenderNav();
     }
 }

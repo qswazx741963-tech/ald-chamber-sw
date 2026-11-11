@@ -47,7 +47,7 @@ public partial class MainWindow : Window
         WireEvents();
         WireHeater();
         WireHistory();
-        WireNav();
+        WireHeader();
         _timer.Tick += (_, _) => Render();
         _timer.Start();
         Closed += (_, _) => _timer.Stop();
@@ -147,7 +147,7 @@ public partial class MainWindow : Window
     private void Render()
     {
         C<TextBlock>("TxtClock").Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-        if (_m is null) { C<TextBlock>("TxtLink").Text = "主控板：未設定"; return; }
+        if (_m is null) { C<TextBlock>("TxtState").Text = "未設定主控板"; return; }
         var s = _m.Snapshot;
         RenderOverview(s);
 

@@ -26,63 +26,45 @@
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Margin" Value="8,6" />
         </Style>
-        <Style Selector="Button.nav">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#E6ECF2" />
-            <Setter Property="FontSize" Value="15" />
-            <Setter Property="Padding" Value="16,10" />
-            <Setter Property="CornerRadius" Value="0" />
-            <Setter Property="BorderThickness" Value="0,0,0,3" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-        </Style>
-        <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="#34475B" />
-            <Setter Property="Foreground" Value="White" />
-        </Style>
-        <Style Selector="Button.nav.sel">
-            <Setter Property="Background" Value="#3D5A78" />
-            <Setter Property="BorderBrush" Value="#F2D22E" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="FontWeight" Value="Bold" />
-        </Style>
     </Window.Styles>
     <!-- 底層版主畫面：狀態一覽 + 基本操作。完整的手動操作頁、Recipe 編輯、趨勢圖、權限之後再加。 -->
     <Grid>
     <DockPanel>
-        <!-- 頂部：連線 / 系統狀態 / 系統操作 -->
-        <Border DockPanel.Dock="Top" Padding="10,6" Background="#20303F">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
-                    <StackPanel x:Name="PnlTower" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" ToolTip.Tip="燈塔實際輸出：紅 異常 / 黃 警告或待機 / 綠 執行中 / 藍 需要人員處理">
-                        <Ellipse x:Name="LmpRed" Width="16" Height="16" />
-                        <Ellipse x:Name="LmpYellow" Width="16" Height="16" />
-                        <Ellipse x:Name="LmpGreen" Width="16" Height="16" />
-                        <Ellipse x:Name="LmpBlue" Width="16" Height="16" />
-                        <TextBlock x:Name="TxtBuzzer" Foreground="White" Width="20" Text="" />
+        <!-- 頂部：執行狀態 / 燈塔 + 消音 / 連線燈號（可點開狀態視窗） / Reset / 安全停止 / 選單；第二列：最近兩筆訊息 -->
+        <Border DockPanel.Dock="Top" Background="#20303F">
+            <StackPanel>
+                <DockPanel Margin="10,6,10,4">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button x:Name="BtnReset" Content="Reset" Background="#E0E0E0" Foreground="Black" ToolTip.Tip="解除安全狀態" />
+                        <Button x:Name="BtnSafe" Content="安全停止" Background="#B03030" Foreground="White" FontWeight="Bold" />
+                        <Button x:Name="BtnMenu" Background="#3D5A78" Foreground="White" MinWidth="130" HorizontalContentAlignment="Left" />
                     </StackPanel>
-                    <Button x:Name="BtnAck" Content="確認 / 消音" Background="#E0E0E0" Foreground="Black" />
-                    <TextBlock x:Name="TxtUser" Foreground="White" VerticalAlignment="Center" Text="未登入（檢視）" />
-                    <Button x:Name="BtnLogin" Content="登入" Background="#E0E0E0" Foreground="Black" />
-                    <Button x:Name="BtnReset" Content="Reset（解除安全狀態）" Background="#E0E0E0" Foreground="Black" />
-                    <Button x:Name="BtnSafe" Content="安全停止" Background="#B03030" Foreground="White" />
-                </StackPanel>
-                <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
-                    <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal" Spacing="16">
-                            <TextBlock x:Name="TxtState" Foreground="White" FontWeight="Bold" FontSize="16" Text="狀態：-" />
-                            <TextBlock x:Name="TxtClock" Foreground="#C8D3DE" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" Spacing="18" VerticalAlignment="Center">
+                        <StackPanel VerticalAlignment="Center" MinWidth="260">
+                            <TextBlock x:Name="TxtState" Foreground="White" FontWeight="Bold" FontSize="17" Text="狀態：-" />
+                            <TextBlock x:Name="TxtUser" Foreground="#AFC0D0" FontSize="12" Text="未登入（檢視）" />
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <TextBlock x:Name="TxtLink" Foreground="#C8D3DE" FontSize="12" Text="主控板：未連線" />
-                            <TextBlock x:Name="TxtSlots" Foreground="#C8D3DE" FontSize="12" Text="控制板：-" />
-                            <TextBlock x:Name="TxtLl" Foreground="#C8D3DE" FontSize="12" Text="Loadlock：-" />
-                        </StackPanel>
+                        <Border Background="#2B3D50" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                            <StackPanel x:Name="PnlTower" Orientation="Horizontal" Spacing="5" ToolTip.Tip="燈塔實際輸出：紅 異常 / 黃 警告或待機 / 綠 執行中 / 藍 需要人員處理">
+                                <Ellipse x:Name="LmpRed" Width="18" Height="18" VerticalAlignment="Center" />
+                                <Ellipse x:Name="LmpYellow" Width="18" Height="18" VerticalAlignment="Center" />
+                                <Ellipse x:Name="LmpGreen" Width="18" Height="18" VerticalAlignment="Center" />
+                                <Ellipse x:Name="LmpBlue" Width="18" Height="18" VerticalAlignment="Center" />
+                                <Button x:Name="BtnAck" Content="🔕" FontSize="16" Padding="8,1" Margin="6,0,0,0" Background="#E0E0E0" Foreground="Black" ToolTip.Tip="確認 / 消音（任何人都能按）" />
+                            </StackPanel>
+                        </Border>
+                        <Button x:Name="BtnLinks" Background="#2B3D50" Padding="10,6" ToolTip.Tip="點一下看各模組狀態與警報">
+                            <StackPanel x:Name="PnlLinks" Orientation="Horizontal" Spacing="12" />
+                        </Button>
                     </StackPanel>
-                    <Border Grid.Column="1" Background="#2B3D50" CornerRadius="3" Padding="8,2">
-                        <TextBlock x:Name="TxtRecent" Foreground="#E6ECF2" FontSize="12" FontFamily="monospace" MaxLines="3" TextTrimming="CharacterEllipsis" />
-                    </Border>
-                </Grid>
-            </DockPanel>
+                </DockPanel>
+                <Border Background="#2B3D50" Padding="10,3">
+                    <DockPanel>
+                        <Button x:Name="BtnLogClear" DockPanel.Dock="Right" Content="清除" FontSize="12" Padding="10,2" VerticalAlignment="Center" Background="#46607A" Foreground="White" ToolTip.Tip="只清畫面上這兩行，事件記錄不會刪" />
+                        <TextBlock x:Name="TxtRecent" Foreground="#E6ECF2" FontSize="13" FontFamily="monospace" MaxLines="2" Height="36" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </DockPanel>
+                </Border>
+            </StackPanel>
         </Border>
 
         <!-- 加熱常駐設定跟加熱板不一致（斷電 / 主站重開）：人員確認後才恢復加熱 -->
@@ -96,12 +78,12 @@
             </DockPanel>
         </Border>
 
-        <!-- 底部：最後訊息 + 導覽列（按鈕在程式裡依分頁產生） -->
-        <Border DockPanel.Dock="Bottom" Padding="10,3" Background="#EEEEEE">
-            <TextBlock x:Name="TxtStatusBar" Text="" />
-        </Border>
-        <Border DockPanel.Dock="Bottom" Background="#20303F">
-            <StackPanel x:Name="PnlNav" Orientation="Horizontal" />
+        <!-- 底部：時間 + 最後訊息 -->
+        <Border DockPanel.Dock="Bottom" Padding="10,3" Background="#E2E7ED">
+            <DockPanel>
+                <TextBlock x:Name="TxtClock" DockPanel.Dock="Left" FontFamily="monospace" Margin="0,0,16,0" Foreground="#3A4654" />
+                <TextBlock x:Name="TxtStatusBar" Text="" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
         </Border>
 
         <TabControl x:Name="Tabs" Padding="0">
@@ -523,6 +505,21 @@
             </TabItem>
         </TabControl>
     </DockPanel>
+    <!-- 狀態視窗：點連線燈號跳出，看哪個模組有問題 -->
+    <Border x:Name="PnlStatus" IsVisible="False" Background="#80000000">
+        <Border Background="White" Padding="20" CornerRadius="6" HorizontalAlignment="Center" VerticalAlignment="Center" Width="640" MaxHeight="560">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="機台狀態" FontSize="20" FontWeight="Bold" Margin="0,0,0,8" />
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,10,0,0">
+                    <Button x:Name="BtnStatusAlarm" Content="到警報頁" />
+                    <Button x:Name="BtnStatusClose" Content="關閉" IsCancel="True" />
+                </StackPanel>
+                <ScrollViewer>
+                    <StackPanel x:Name="PnlStatusRows" Spacing="6" />
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Border>
     <!-- 登入視窗（蓋在畫面上） -->
     <Border x:Name="PnlLogin" IsVisible="False" Background="#80000000">
         <Border Background="White" Padding="24" CornerRadius="6" HorizontalAlignment="Center" VerticalAlignment="Center" Width="360">

@@ -63,7 +63,7 @@ public partial class MainWindow
 
         var fb = s.Connected ? s.Tower : TowerLamp.None;
         foreach (var (name, bit, on) in Lamps) C<Ellipse>(name).Fill = fb.HasFlag(bit) ? on : Off;
-        C<TextBlock>("TxtBuzzer").Text = fb.HasFlag(TowerLamp.Buzzer) ? "🔔" : "";
+        C<Button>("BtnAck").Content = fb.HasFlag(TowerLamp.Buzzer) ? "🔔" : "🔕";
         C<Button>("BtnAck").Background = input.UnackedAlarm || input.UnackedWarning || _needOp
             ? (Tower.BlinkOn(DateTime.Now, cfg) ? Brushes.Orange : Brushes.LightGray) : new SolidColorBrush(Color.Parse("#E0E0E0"));
     }
