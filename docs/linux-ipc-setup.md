@@ -23,39 +23,42 @@
 4. `/etc/ethercat.conf`：`MASTER0_DEVICE="<LAN2 的 MAC>"`、`DEVICE_MODULES="igb"`，`systemctl enable --now ethercat`。
 5. 確認：`ethercat slaves` 應看到主控板（ALD-MAIN）。
 
-## 三、ald-ecat 主站程式
+## 三、安裝包（ald-ecat + 人機）
+
+在開發機（Linux，裝好 .NET 8 SDK；正式版另需 IgH）產生安裝包：
 
 ```
-make -C ipc/ecat-master IGH=/opt/etherlab
-sudo install -m 755 ipc/ecat-master/ald-ecat /usr/local/bin/
+deploy/build-package.sh                      # 只有模擬（展示 / 教育訓練用）
+IGH=/opt/etherlab deploy/build-package.sh    # 正式（連結 IgH libethercat）
 ```
 
-systemd 服務（`/etc/systemd/system/ald-ecat.service`）：
+產出 `dist/ald-ipc-<版本>.tar.gz`（約 40 MB；人機是 self-contained，**IPC 不用另裝 .NET**）。
+複製到 IPC 後：
+
 ```
-[Unit]
-Description=ALD EtherCAT master
-After=ethercat.service
-Requires=ethercat.service
-
-[Service]
-ExecStart=/usr/local/bin/ald-ecat
-Restart=always
-RestartSec=1
-CPUAffinity=3
-LimitMEMLOCK=infinity
-LimitRTPRIO=99
-
-[Install]
-WantedBy=multi-user.target
+tar xzf ald-ipc-<版本>.tar.gz && cd ald-ipc-<版本>
+sudo ./install.sh          # 正式
+sudo ./install.sh --sim    # 沒有主控板時：ald-ecat 跑虛擬機台
 ```
 
-沒有主控板時開發人機：`ald-ecat --sim`（模擬心跳回應與表頭）。
+| 位置 | 內容 | 更新時 |
+| --- | --- | --- |
+| `/opt/ald/bin`、`/opt/ald/hmi` | ald-ecat、人機、啟動器 | 覆蓋 |
+| `/etc/ald/machine.json` | 機台設定（資料路徑已改成 `/var/lib/ald`） | **保留**，新版預設值另存 `machine.json.new` |
+| `/var/lib/ald` | `ald.db`（警報 / 趨勢 / 帳號）、`wafer.json`、`recipes/`、`log/hmi.log`、`export/` | 不動（配方只補新檔） |
 
-## 四、人機
+開機自動啟動：
+- `ald-ecat.service`（systemd，root、鎖記憶體、SCHED_FIFO、CPU 3），當掉 1 秒後重啟；記錄 `journalctl -u ald-ecat`。
+- 人機：`/etc/xdg/autostart/ald-hmi.desktop` → 桌面登入後執行 `/opt/ald/bin/ald-hmi.sh`，被關掉 / 當掉 3 秒後重開。
+  建議操作帳號設**自動登入**（Debian GNOME：設定 → 使用者 → 自動登入），開機直接進人機。
+- 用 `sudo ./install.sh` 的那個帳號會取得 `/var/lib/ald` 的寫入權（人機用桌面登入帳號執行）。
 
-- 安裝 .NET 8 Runtime：`apt install dotnet-runtime-8.0`（或 Microsoft 套件庫）。
-- 發佈：`dotnet publish ipc/src/Ald.Hmi -c Release -r linux-x64 --self-contained`。
+測試安裝腳本（不碰 systemd）：`ROOT=/tmp/x ./install.sh`。
+
+## 四、人機設定
+
 - `config/machine.json`：`mainBoard.host = 127.0.0.1`。Loadlock 的 RS-485 接在主控板，IPC 不需要序列埠設定。
+- 出廠 admin 密碼：`hmi.defaultAdminPasswordHash`（`/opt/ald/hmi/AldChamber --hash-password 新密碼` 產生）。
 
 ## 五、出貨注意
 

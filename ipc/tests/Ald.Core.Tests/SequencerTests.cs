@@ -28,6 +28,7 @@ internal sealed class FakeMachine : IMachine
     public LoadlockSv Sv = LoadlockSv.Closed;
     public int ArmPos;
     public LoadlockCommand? FailLl;
+    public int HeaterBroken = -1;   // 這一組加熱升不上去
 
     public MachineSnapshot Snapshot
     {
@@ -36,7 +37,7 @@ internal sealed class FakeMachine : IMachine
             // 每讀一次推進一點「物理」
             var s = _s;
             var t = s.TempC.ToArray();
-            for (int i = 0; i < 16; i++) t[i] = HeaterOn[i] ? HeaterSp[i] : 25;
+            for (int i = 0; i < 16; i++) t[i] = HeaterOn[i] && i != HeaterBroken ? HeaterSp[i] : 25;
             double p = s.ChamberPressureTorr;
             var o = VacuumCommand;
             if (o.HasFlag(VacuumOutputs.ChamberVent)) p = Math.Min(760, p * 4 + 10);
@@ -81,6 +82,7 @@ internal sealed class FakeMachine : IMachine
             case LoadlockCommand.ArmToPm: ArmPos = 18420; break;
             case LoadlockCommand.ArmToLoadlock: ArmPos = 0; break;
             case LoadlockCommand.RoughOff: _s = _s with { LoadlockRoughOpen = false }; break;
+            case LoadlockCommand.Pump: _s = _s with { LoadlockPressureUnderRange = true, LoadlockRoughOpen = true }; break;
         }
         return Task.FromResult(true);
     }

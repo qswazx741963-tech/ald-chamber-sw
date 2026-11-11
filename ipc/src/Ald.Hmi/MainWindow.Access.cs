@@ -140,7 +140,7 @@ public partial class MainWindow
         C<Button>("BtnReset").IsEnabled = Can(Permission.Reset);
         C<Button>("BtnPump").IsEnabled = Can(Permission.RunRecipe) && !Busy;
         C<Button>("BtnVent").IsEnabled = Can(Permission.RunRecipe) && !Busy;
-        foreach (var b in new[] { "BtnLlPump", "BtnLlVent", "BtnSvOpen", "BtnSvClose" }) C<Button>(b).IsEnabled = Can(Permission.Loadlock) && !XferRunning;
+        foreach (var b in new[] { "BtnLlPump", "BtnLlVent", "BtnSvOpen", "BtnSvClose" }) C<Button>(b).IsEnabled = Can(Permission.Loadlock) && !XferRunning && _auto?.State != SequencerState.Running;
         C<StackPanel>("PnlUsers").IsEnabled = Can(Permission.ManageUsers);
         C<Button>("BtnMyPw").IsEnabled = _user is not null;
         C<TextBlock>("TxtMe").Text = _user is null ? "請先登入" : $"目前登入：{_user}（{Access.Text(_role)}）"

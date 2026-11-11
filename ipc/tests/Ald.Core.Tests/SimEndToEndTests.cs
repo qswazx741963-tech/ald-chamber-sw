@@ -150,4 +150,29 @@ public sealed class SimEndToEndTests : IDisposable
         Assert.True(m.Snapshot.HeaterDown);
         Assert.DoesNotContain(m.Alarms.Active, a => a.Info.Level == AlarmLevel.Alarm);
     }
+
+    [Fact]
+    public async Task AutoRun_FromAtmosphere_OnVirtualMachine()
+    {
+        if (_ecat is null) { _out.WriteLine("略過：ald-ecat 沒有編譯"); return; }
+        using var m = NewService();
+        m.Start();
+        Assert.True(await Until(() => m.Snapshot.AllOnline && m.Snapshot.LoadlockFresh, 10), "連線 / 各槽上線");
+        await m.ResetAsync();
+        Assert.True(await Until(() => !m.Snapshot.SafeState && m.Snapshot.SlotStatus.Skip(1).All(st => (st & 4) == 0), 5), "Reset");
+        Assert.True(await m.LoadlockAsync(LoadlockCommand.ArmHome, 0, TimeSpan.FromSeconds(10), default));
+
+        var r = RecipeFile.Load(Path.Combine(Repo.Root, "recipes", "sim_quick_test.json"));
+        var map = new WaferMap();
+        map.Set(true, false, "測試");
+        var job = new AutoRunJob(m, map, m.Config.Transfer with { LoadlockStepTimeoutS = 20, HeaterTimeoutS = 20 },
+                                 m.Config.Interlock.LoadlockZEnabled, TimeSpan.FromMilliseconds(50));
+        job.Progress += p => _out.WriteLine($"{p.Time:HH:mm:ss.fff} {p.State} {p.Step} {p.Message}");
+        Assert.Equal(SequencerState.Done, await job.RunAsync(r));
+        Assert.Equal((true, false), (map.Loadlock, map.Pm));
+        Assert.Equal(20, m.Snapshot.AldCycle);
+        Assert.True(m.Snapshot.ManometerTorr > 700, "回填");
+        Assert.True(m.Snapshot.SlitClosed);
+        Assert.DoesNotContain(m.Alarms.Active, a => a.Info.Level == AlarmLevel.Alarm);
+    }
 }

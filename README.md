@@ -19,6 +19,7 @@ ALD 真空製程腔體設備控制軟體。三階架構（2026-11-10 方案 A）
 | `ipc/` | C# .NET 8 方案（Core / Comm / Data / Hmi）+ `ecat-master/`（ald-ecat EtherCAT 主站程式） |
 | `sim/` | 整機模擬器：正式韌體 + 物理模型 + SLK 模擬，`ald-ecat --sim` 使用（見 `docs/ipc-software.md`） |
 | `recipes/` | 範例 Recipe |
+| `deploy/` | IPC 安裝包（`build-package.sh`、`install.sh`、systemd / 自動啟動） |
 | `docs/` | 架構、背板、互鎖、安全狀態、Loadlock 對接 |
 
 ## 開發環境（VS Code）

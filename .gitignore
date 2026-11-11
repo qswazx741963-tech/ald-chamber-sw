@@ -13,3 +13,6 @@ __pycache__/
 # IPC 本機資料
 ipc/data/
 *.db
+
+# 安裝包
+dist/

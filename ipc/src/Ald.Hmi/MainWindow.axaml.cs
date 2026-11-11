@@ -50,10 +50,10 @@ public partial class MainWindow : Window
     {
         if (_m is null) return;
         C<Button>("BtnReset").Click += async (_, _) => await Do("Reset", () => _m.ResetAsync());
-        C<Button>("BtnSafe").Click += (_, _) => _ = Do("安全停止", () => { _seq?.Abort(); _m.EnterSafe(); return Task.CompletedTask; });
+        C<Button>("BtnSafe").Click += (_, _) => _ = Do("安全停止", () => { AbortAll(); _m.EnterSafe(); return Task.CompletedTask; });
         C<Button>("BtnPump").Click += (_, _) => RunRecipe(new ProcessRecipe { Name = "抽真空" });
         C<Button>("BtnVent").Click += (_, _) => RunRecipe(new ProcessRecipe { Name = "回填大氣", PumpDown = false, VentAfter = true });
-        C<Button>("BtnAbort").Click += (_, _) => _seq?.Abort();
+        C<Button>("BtnAbort").Click += (_, _) => AbortAll();
         C<Button>("BtnLlPump").Click += (_, _) => Ll(LoadlockCommand.Pump);
         C<Button>("BtnLlVent").Click += (_, _) => Ll(LoadlockCommand.Vent);
         C<Button>("BtnSvOpen").Click += (_, _) => Ll(LoadlockCommand.SvOpen);
@@ -74,20 +74,43 @@ public partial class MainWindow : Window
         _alarmLog?.Add(OpSource, "Info", _status, evt: "OPERATOR");
     }
 
-    private bool SequenceRunning => _seq?.State == SequencerState.Running;
+    private AutoRunJob? _auto;
+    private bool _runIsAuto;
+    private bool SequenceRunning => _seq?.State == SequencerState.Running || _auto?.State == SequencerState.Running;
+    private SequencerState? RunState => _runIsAuto ? _auto?.State : _seq?.State;
+    private string RunStep => (_runIsAuto ? _auto?.Step : _seq?.Step) ?? "";
+
+    /// <summary>中止所有流程（安全停止、中止按鈕）。</summary>
+    private void AbortAll() { _seq?.Abort(); _auto?.Abort(); _xfer?.Abort(); }
+
+    private void LogRun(string name, SequencerProgress p)
+    {
+        _status = $"{name}：{p.Step} {p.Message}";
+        lock (_runLog) _runLog.Insert(0, $"{p.Time:HH:mm:ss} {p.Step} {p.Message}".TrimEnd());
+        _alarmLog?.Add("流程", p.State == SequencerState.Failed ? "Alarm" : "Info", $"{name}：{p.Step} {p.Message}".Trim(), evt: "STEP");
+    }
+
+    /// <summary>自動跑片：送片 → 製程 → 取片 →（配方要求）回填。</summary>
+    private async void RunAuto(ProcessRecipe r)
+    {
+        if (_m is null || _wafers is null || Busy) { _status = "已有流程在執行"; return; }
+        _auto = new AutoRunJob(_m, _wafers, _m.Config.Transfer, _m.Config.Interlock.LoadlockZEnabled);
+        _runIsAuto = true;
+        _runName = $"自動跑片 {r.Name}";
+        lock (_runLog) _runLog.Clear();
+        _auto.Progress += p => LogRun(_runName, p);
+        _alarmLog?.Add(OpSource, "Info", _runName, evt: "OPERATOR");
+        await _auto.RunAsync(r);
+    }
 
     private async void RunRecipe(ProcessRecipe r)
     {
         if (_m is null || Busy) { _status = "已有流程在執行"; return; }
         _seq = new ProcessSequencer(_m);
+        _runIsAuto = false;
         _runName = r.Name;
         lock (_runLog) _runLog.Clear();
-        _seq.Progress += p =>
-        {
-            _status = $"流程 {r.Name}：{p.Step} {p.Message}";
-            lock (_runLog) _runLog.Insert(0, $"{p.Time:HH:mm:ss} {p.Step} {p.Message}".TrimEnd());
-            _alarmLog?.Add("流程", p.State == SequencerState.Failed ? "Alarm" : "Info", $"{r.Name}：{p.Step} {p.Message}".Trim(), evt: "STEP");
-        };
+        _seq.Progress += p => LogRun($"流程 {r.Name}", p);
         await _seq.RunAsync(r);
     }
 

@@ -79,6 +79,12 @@ dotnet run --project ipc/src/Ald.Hmi -- --port 1502
 - 晶圓位置存 `transfer.waferMapPath`（JSON，重開機讀回）。目前沒有晶圓感測器（WAFER_PRESENT 待接）。
 - Heater module Process 位置 `transfer.heaterProcessSteps`（預設 20000 step，**實機待確認**），到位以 HEATER_PROCESS 感測器為準。
 
+## 3c. 自動跑片（`AutoRunJob`）
+
+Recipe 頁「自動跑片」：準備（LL 抽氣、PM 抽到 base）→ 送片 → 製程（不 vent）→ 取片 →（勾「結束後回填」時）PM 回填。
+任一段失敗 / 中止就整個停下，停在該段的安全處理，**不會自動取片或 vent**（片在哪由晶圓位置記錄顯示）。
+需要：Loadlock 手臂上有片、PM 無片。「只跑製程」給片已在 PM 或空跑時用。
+
 ## 4. 人機（Ald.Hmi）
 
 - **總覽**：真空、Loadlock、16 組加熱、8 路 MFC、PM 機構 / ALD 一頁看完。
@@ -123,7 +129,7 @@ dotnet run --project ipc/src/Ald.Hmi -- --port 1502
 | `make -C firmware/tests` | 韌體邏輯單元測試（主控板 186、執行板 40） |
 | `make -C sim` | 整機模擬整合測試 42 項：開機上線、Reset、抽真空、開 SV 互鎖、Turbo GV 聯動、加熱上限、馬達、心跳中斷 |
 | `make -C ipc/ecat-master test` | ald-ecat bridge（含 HR 預設值） |
-| `cd ipc && dotnet test` | C# 91 項（含配方檔、帳號 / 權限、趨勢、傳片），含**端到端**：MachineService ↔ ald-ecat --sim（20 倍速）跑完整段配方、送片 + 取片、心跳中斷進安全狀態 |
+| `cd ipc && dotnet test` | C# 96 項（含配方檔、帳號 / 權限、趨勢、傳片、自動跑片），含**端到端**：MachineService ↔ ald-ecat --sim（20 倍速）跑完整段配方、送片 + 取片、從大氣自動跑片、心跳中斷進安全狀態 |
 
 ## 待做
 

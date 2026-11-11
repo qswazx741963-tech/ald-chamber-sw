@@ -1,0 +1,18 @@
+# EtherCAT 主站 + 本機 Modbus TCP 橋接（127.0.0.1:502）。開機自動啟動，當掉 1 秒後重啟。
+# ald-ecat 停掉 → 主控板收不到心跳 → 看門狗讓全機進安全狀態（不靠這支程式保護）。
+[Unit]
+Description=ALD EtherCAT master (ald-ecat)
+After=ethercat.service
+Wants=ethercat.service
+
+[Service]
+ExecStart=/opt/ald/bin/ald-ecat @ECAT_ARGS@
+Restart=always
+RestartSec=1
+# 即時：鎖記憶體、SCHED_FIFO；CPU 3 由開機參數 isolcpus=3 保留給它（核心數確認後調整）
+LimitMEMLOCK=infinity
+LimitRTPRIO=99
+CPUAffinity=3
+
+[Install]
+WantedBy=multi-user.target

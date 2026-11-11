@@ -233,7 +233,8 @@
                         <StackPanel DockPanel.Dock="Top" Spacing="6">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <Button x:Name="BtnRecipeCheck" Content="檢查" />
-                                <Button x:Name="BtnRecipeRun" Content="執行" Background="#2E7D32" Foreground="White" />
+                                <Button x:Name="BtnRecipeRun" Content="只跑製程" Background="#2E7D32" Foreground="White" ToolTip.Tip="片已經在 PM（或空跑）時用" />
+                                <Button x:Name="BtnRecipeAuto" Content="自動跑片" Background="#1565C0" Foreground="White" ToolTip.Tip="送片 → 製程 → 取片 →（勾選時）回填" />
                                 <Button x:Name="BtnRecipeAbort" Content="中止" Background="#B03030" Foreground="White" />
                             </StackPanel>
                             <TextBlock x:Name="TxtRunState" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />

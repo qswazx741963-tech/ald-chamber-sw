@@ -57,7 +57,15 @@ public partial class MainWindow
             Msg("");
             RunRecipe(r);
         };
-        C<Button>("BtnRecipeAbort").Click += (_, _) => _seq?.Abort();
+        C<Button>("BtnRecipeAuto").Click += (_, _) =>
+        {
+            if (_m is null || _wafers is null || !TryReadForm(out var r)) return;
+            var e = Check(r).Concat(AutoRunJob.Precheck(r, _m.Snapshot, _wafers)).Distinct().ToList();
+            if (e.Count > 0) { Msg("不能自動跑片：\n" + string.Join("\n", e)); return; }
+            Msg("");
+            RunAuto(r);
+        };
+        C<Button>("BtnRecipeAbort").Click += (_, _) => AbortAll();
 
         FillForm(_recipe);
         ReloadRecipeList(null);
@@ -184,7 +192,8 @@ public partial class MainWindow
         C<Button>("BtnRecipeSave").IsEnabled = edit;
         C<Button>("BtnRecipeNew").IsEnabled = edit;
         C<Button>("BtnRecipeAbort").IsEnabled = running;
-        C<TextBlock>("TxtRunState").Text = _seq is null ? "待機" : _seq.State switch
+        C<Button>("BtnRecipeAuto").IsEnabled = _m is not null && !Busy && Can(Permission.RunRecipe) && Can(Permission.Transfer);
+        C<TextBlock>("TxtRunState").Text = RunState switch
         {
             SequencerState.Running => $"執行中：{_runName}",
             SequencerState.Done => $"完成：{_runName}",
@@ -192,7 +201,7 @@ public partial class MainWindow
             SequencerState.Failed => $"失敗：{_runName}",
             _ => "待機",
         };
-        C<TextBlock>("TxtRunStep").Text = _seq?.Step ?? "";
+        C<TextBlock>("TxtRunStep").Text = RunStep;
 
         try
         {
