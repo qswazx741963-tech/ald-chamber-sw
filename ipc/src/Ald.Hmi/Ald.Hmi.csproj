@@ -1,10 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- 人機介面：Avalonia（MIT 授權，Linux / Windows 都能跑）。2026-11-11 方案 B 由 WPF 改過來，IPC 改用 Linux -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
+    <TargetFramework>net8.0</TargetFramework>
     <AssemblyName>AldChamber</AssemblyName>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.1.3" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Ald.Core\Ald.Core.csproj" />
     <ProjectReference Include="..\Ald.Comm\Ald.Comm.csproj" />

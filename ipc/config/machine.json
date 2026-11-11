@@ -16,7 +16,7 @@
   ],
   "loadlock": {
     "_comment": "SLK 模組，IPC 經 RS-485 直接控制（SLK 端 RS-232，中間接自動收發 RS-232↔RS-485 轉換器）。SLK 韌體不改",
-    "port": "COM1",
+    "port": "/dev/ttyS1",
     "baud": 115200,
     "pollMs": 200
   },

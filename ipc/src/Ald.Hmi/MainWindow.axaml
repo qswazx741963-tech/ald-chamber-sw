@@ -1,12 +1,12 @@
-<Window x:Class="Ald.Hmi.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Ald.Hmi.MainWindow"
         Title="ALD Chamber" Width="1280" Height="800">
     <DockPanel>
         <!-- TODO 畫面：設備總覽、手動操作、Recipe、警報、趨勢、權限 -->
-        <StatusBar DockPanel.Dock="Bottom">
+        <Border DockPanel.Dock="Bottom" Padding="8,4" Background="#EEEEEE">
             <TextBlock x:Name="LinkStatus" Text="主控板：未連線" />
-        </StatusBar>
+        </Border>
         <TabControl>
             <TabItem Header="總覽" />
             <TabItem Header="手動操作" />

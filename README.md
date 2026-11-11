@@ -3,8 +3,8 @@
 ALD 真空製程腔體設備控制軟體。三階架構（2026-11-10 方案 A）：
 
 ```
-研華 ARK-1222（C# / WPF）
-   ├─ Modbus TCP ─► 主控板（STM32H743）─ CAN FD 背板 ─► 執行板 ×N（STM32G474）
+研華 ARK-1222（Linux：C# / Avalonia 人機 + ald-ecat IgH 主站）
+   ├─ EtherCAT ─► 主控板（STM32H743 + LAN9252）─ CAN FD 背板 ─► 執行板 ×8（STM32G474）
    │                   └─ UART ─► Throttle valve、RF
    └─ RS-485 ─► Loadlock（SLK 模組，韌體不改；互鎖在 IPC 做）
 ```
@@ -22,7 +22,7 @@ ALD 真空製程腔體設備控制軟體。三階架構（2026-11-10 方案 A）
 
 ## 開發環境（VS Code）
 - 擴充套件：C/C++、C# Dev Kit、Python、Claude Code
-- 安裝 .NET 8 SDK、Python 3.11+、gcc（Windows 可用 MSYS2）、STM32CubeIDE
+- 安裝 .NET 8 SDK、Python 3.11+、gcc、STM32CubeIDE；IPC 端見 `docs/linux-ipc-setup.md`
 
 ## 常用指令
 ```bash
