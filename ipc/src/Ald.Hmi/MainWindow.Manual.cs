@@ -137,12 +137,13 @@ public partial class MainWindow
     {
         if (_m is null) return;
         bool allowed = Can(Permission.ManualControl);
-        bool locked = !s.Connected || SequenceRunning || !allowed;
+        bool locked = !s.Connected || Busy || !allowed;
         C<Grid>("PnlManual").IsEnabled = !locked;
         C<TextBlock>("TxtManualLock").Text =
             !allowed ? "手動操作需要工程師以上權限，請先登入" :
             !s.Connected ? "主控板未連線" :
             SequenceRunning ? $"流程「{_runName}」執行中，手動操作已鎖住（要操作請先中止流程）" :
+            XferRunning ? "傳片執行中，手動操作已鎖住" :
             s.SafeState ? "系統在安全狀態：執行板會擋下大部分輸出，請先按 Reset" : "";
 
         var cmd = _m.VacuumCommand;

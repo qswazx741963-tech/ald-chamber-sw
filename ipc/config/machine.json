@@ -208,6 +208,15 @@
     "intervalMs": 1000,
     "keepDays": 90
   },
+  "transfer": {
+    "_heaterProcessSteps": "Heater module Process 位置（step，原點 = 下位）。實機待確認；到位以 HEATER_PROCESS 感測器為準。",
+    "heaterProcessSteps": 20000,
+    "heaterSpeedSps": 2000,
+    "heaterTimeoutS": 60,
+    "liftTimeoutS": 10,
+    "loadlockStepTimeoutS": 60,
+    "waferMapPath": "data/wafer.json"
+  },
   "hmi": {
     "_defaultAdminPasswordHash": "帳號資料庫是空的（第一次開機）時建立 admin 帳號用的出廠密碼，只存雜湊不存明碼。換密碼：AldChamber --hash-password 新密碼，把輸出貼到這裡。已建立的帳號請在「使用者」頁改。",
     "defaultAdminPasswordHash": "pbkdf2-sha256$100000$vRbIMHBnZj5hC9f3I7CnTQ==$ot7KNS5i82EhHIJwoGVaGuefWUEcvxGMlOJgoAtJ5do=",

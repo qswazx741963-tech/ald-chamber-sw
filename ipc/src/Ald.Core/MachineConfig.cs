@@ -19,6 +19,7 @@ public sealed record MachineConfig
     public HeatersConfig Heaters { get; init; } = new();
     public DataLogConfig DataLog { get; init; } = new();
     public HmiConfig Hmi { get; init; } = new();
+    public TransferConfig Transfer { get; init; } = new();
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -47,6 +48,8 @@ public sealed record MachineConfig
         if (Heaters.Channels.Count != 16) yield return "heaters.channels 需 16 組";
         if (Hmi.DefaultAdminPasswordHash.Length > 0 && Hmi.DefaultAdminPasswordHash.Split('$') is not ["pbkdf2-sha256", _, _, _])
             yield return "hmi.defaultAdminPasswordHash 格式需為 pbkdf2-sha256$次數$salt$hash（用 --hash-password 產生）";
+        if (Transfer.HeaterProcessSteps is < 0 or > 2_000_000) yield return "transfer.heaterProcessSteps 需在 0–2000000";
+        if (Transfer.HeaterSpeedSps is < 1 or > 20000) yield return "transfer.heaterSpeedSps 需在 1–20000";
         if (Hmi.IdleLogoutMinutes is < 1 or > 1440) yield return "hmi.idleLogoutMinutes 需在 1–1440";
         foreach (var (h, i) in Heaters.Channels.Select((h, i) => (h, i)))
             if (h.LimitDegC is < 0 or > 650) yield return $"heaters.channels[{i}].limitDegC 需在 0–650";
@@ -147,6 +150,20 @@ public sealed record HeaterChannelConfig
 public sealed record HeatersConfig
 {
     public List<HeaterChannelConfig> Channels { get; init; } = new();
+}
+
+/// <summary>傳片流程（TransferSequencer）。</summary>
+public sealed record TransferConfig
+{
+    /// <summary>Heater module Process 位置（step，原點 = 下位）。實機位置待確認。</summary>
+    public int HeaterProcessSteps { get; init; } = 20000;
+    public ushort HeaterSpeedSps { get; init; } = 2000;
+    public double HeaterTimeoutS { get; init; } = 60;
+    public double LiftTimeoutS { get; init; } = 10;
+    /// <summary>每個 SLK 動作（SV、手臂、Z）的逾時。</summary>
+    public double LoadlockStepTimeoutS { get; init; } = 60;
+    /// <summary>晶圓位置檔（重開機讀回）。</summary>
+    public string WaferMapPath { get; init; } = "data/wafer.json";
 }
 
 /// <summary>人機設定。</summary>

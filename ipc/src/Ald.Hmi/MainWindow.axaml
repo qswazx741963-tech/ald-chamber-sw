@@ -140,6 +140,47 @@
                     </Grid>
                 </DockPanel>
             </TabItem>
+            <TabItem Header="傳片">
+                <Grid ColumnDefinitions="*,*" Margin="8">
+                    <StackPanel Grid.Column="0" Spacing="8" Margin="4">
+                        <TextBlock Text="晶圓位置" FontSize="18" FontWeight="Bold" />
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <Border x:Name="BoxLl" Width="200" Height="90" CornerRadius="6" BorderBrush="#555" BorderThickness="2">
+                                <TextBlock x:Name="TxtWaferLl" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" FontSize="16" />
+                            </Border>
+                            <TextBlock Text="⇄ SV" VerticalAlignment="Center" FontSize="18" x:Name="TxtWaferSv" />
+                            <Border x:Name="BoxPm" Width="200" Height="90" CornerRadius="6" BorderBrush="#555" BorderThickness="2">
+                                <TextBlock x:Name="TxtWaferPm" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" FontSize="16" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="TxtWaferNote" Foreground="Gray" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button x:Name="BtnXferLoad" Content="送片 LL → PM" Background="#2E7D32" Foreground="White" />
+                            <Button x:Name="BtnXferUnload" Content="取片 PM → LL" Background="#2E7D32" Foreground="White" />
+                            <Button x:Name="BtnXferAbort" Content="中止" Background="#B03030" Foreground="White" />
+                        </StackPanel>
+                        <TextBlock x:Name="TxtXferWhy" Foreground="#B03030" TextWrapping="Wrap" />
+                        <TextBlock x:Name="TxtXferState" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="步驟記錄" FontWeight="Bold" />
+                        <ListBox x:Name="LstXferLog" FontFamily="monospace" Height="300" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="8" Margin="16,4,4,4">
+                        <TextBlock Text="PM / Loadlock 狀態" FontSize="18" FontWeight="Bold" />
+                        <TextBlock x:Name="TxtXferStatus" FontFamily="monospace" />
+                        <TextBlock Text="修正晶圓位置（工程師，確認實物後）" FontSize="18" FontWeight="Bold" Margin="0,16,0,0" />
+                        <TextBlock Text="目前沒有晶圓感測器，位置靠流程記錄。流程中途失敗會變「不明」，看過實物後在這裡設定。" TextWrapping="Wrap" Foreground="Gray" />
+                        <StackPanel x:Name="PnlWaferEdit" Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Loadlock 手臂" Width="110" VerticalAlignment="Center" />
+                                <ComboBox x:Name="CmbWaferLl" Width="120" />
+                                <TextBlock Text="PM" Width="40" VerticalAlignment="Center" Margin="16,0,0,0" />
+                                <ComboBox x:Name="CmbWaferPm" Width="120" />
+                            </StackPanel>
+                            <Button x:Name="BtnWaferSet" Content="設定晶圓位置" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
             <TabItem Header="Recipe">
                 <Grid ColumnDefinitions="3*,2*" Margin="8">
                     <!-- 左：選檔 + 編輯 -->
@@ -236,7 +277,7 @@
                         <TextBox x:Name="TxtMyNew2" PasswordChar="●" Watermark="再輸入一次新密碼" Width="260" HorizontalAlignment="Left" />
                         <Button x:Name="BtnMyPw" Content="變更密碼" />
                         <TextBlock Text="權限說明" FontSize="18" FontWeight="Bold" Margin="0,16,0,0" />
-                        <TextBlock FontFamily="monospace" Text="檢視（未登入）：看畫面、安全停止、中止流程&#10;操作員：+ Reset、執行配方、抽真空 / 回填、Loadlock&#10;工程師：+ 手動操作、編輯 / 存檔配方&#10;管理員：+ 使用者管理&#10;一段時間沒有操作自動登出（config hmi.idleLogoutMinutes）" />
+                        <TextBlock FontFamily="monospace" Text="檢視（未登入）：看畫面、安全停止、中止流程&#10;操作員：+ Reset、執行配方、抽真空 / 回填、Loadlock&#10;工程師：+ 手動操作、編輯 / 存檔配方&#10;管理員：+ 使用者管理&#10;（傳片：操作員；修正晶圓位置：工程師）&#10;一段時間沒有操作自動登出（config hmi.idleLogoutMinutes）" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" x:Name="PnlUsers" Spacing="6" Margin="4">
                         <TextBlock Text="使用者管理（管理員）" FontSize="18" FontWeight="Bold" />

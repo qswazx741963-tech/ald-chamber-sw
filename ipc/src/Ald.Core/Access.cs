@@ -14,6 +14,10 @@ public enum Permission
     RunRecipe,
     /// <summary>Loadlock 抽氣 / 洩壓 / 開關 SV。</summary>
     Loadlock,
+    /// <summary>傳片（送片 / 取片流程）。</summary>
+    Transfer,
+    /// <summary>手動修改晶圓位置記錄（確認實物後）。</summary>
+    EditWaferMap,
     /// <summary>手動操作頁（各閥、加熱、MFC、馬達）。</summary>
     ManualControl,
     /// <summary>編輯 / 存檔配方。</summary>
@@ -28,8 +32,8 @@ public static class Access
     public static UserRole Required(Permission p) => p switch
     {
         Permission.Stop => UserRole.Viewer,
-        Permission.Reset or Permission.RunRecipe or Permission.Loadlock => UserRole.Operator,
-        Permission.ManualControl or Permission.EditRecipe => UserRole.Engineer,
+        Permission.Reset or Permission.RunRecipe or Permission.Loadlock or Permission.Transfer => UserRole.Operator,
+        Permission.ManualControl or Permission.EditRecipe or Permission.EditWaferMap => UserRole.Engineer,
         Permission.ManageUsers => UserRole.Admin,
         _ => UserRole.Admin,
     };

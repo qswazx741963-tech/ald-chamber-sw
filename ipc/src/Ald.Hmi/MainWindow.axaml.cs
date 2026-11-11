@@ -36,6 +36,7 @@ public partial class MainWindow : Window
         Wire();
         WireAccess();
         WireTrend();
+        WireTransfer();
         WireManual();
         WireRecipe();
         _timer.Tick += (_, _) => Render();
@@ -77,7 +78,7 @@ public partial class MainWindow : Window
 
     private async void RunRecipe(ProcessRecipe r)
     {
-        if (_m is null || SequenceRunning) { _status = "已有流程在執行"; return; }
+        if (_m is null || Busy) { _status = "已有流程在執行"; return; }
         _seq = new ProcessSequencer(_m);
         _runName = r.Name;
         lock (_runLog) _runLog.Clear();
@@ -152,5 +153,6 @@ public partial class MainWindow : Window
         RenderRecipe();
         RenderAccess();
         RenderTrend();
+        RenderTransfer(s);
     }
 }

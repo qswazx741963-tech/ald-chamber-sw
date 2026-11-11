@@ -118,4 +118,36 @@ public sealed class SimEndToEndTests : IDisposable
         Assert.True(m2.Snapshot.SafeState, "心跳中斷後應在安全狀態");
         Assert.Contains(m2.Alarms.Active, a => a.Info.Code == "SAFE");
     }
+
+    [Fact]
+    public async Task WaferTransfer_LoadThenUnload_OnVirtualMachine()
+    {
+        if (_ecat is null) { _out.WriteLine("略過：ald-ecat 沒有編譯"); return; }
+        using var m = NewService();
+        m.Start();
+        Assert.True(await Until(() => m.Snapshot.AllOnline && m.Snapshot.LoadlockFresh, 10), "連線 / 各槽上線");
+        await m.ResetAsync();
+        Assert.True(await Until(() => !m.Snapshot.SafeState && m.Snapshot.SlotStatus.Skip(1).All(st => (st & 4) == 0), 5), "Reset");
+
+        Assert.True(await m.LoadlockAsync(LoadlockCommand.Pump, 0, TimeSpan.FromSeconds(30), default), "LL 抽氣");
+        Assert.True(await m.LoadlockAsync(LoadlockCommand.RoughOff, 0, TimeSpan.FromSeconds(5), default));
+        Assert.True(await m.LoadlockAsync(LoadlockCommand.ArmHome, 0, TimeSpan.FromSeconds(10), default));
+        var pump = new ProcessRecipe { Name = "抽真空", BaseTorr = 5e-3, PumpTimeoutS = 30, TurboSpinUpTimeoutS = 30 };
+        Assert.Equal(SequencerState.Done, await new ProcessSequencer(m, TimeSpan.FromMilliseconds(50)).RunAsync(pump));
+
+        var map = new WaferMap();
+        map.Set(true, false, "測試：手臂上放一片");
+        var cfg = m.Config.Transfer with { LoadlockStepTimeoutS = 20, HeaterTimeoutS = 20 };
+        foreach (var dir in new[] { TransferDirection.LoadToPm, TransferDirection.UnloadToLoadlock })
+        {
+            var x = new TransferSequencer(m, map, cfg, m.Config.Interlock.LoadlockZEnabled, TimeSpan.FromMilliseconds(50));
+            x.Progress += p => _out.WriteLine($"{p.Time:HH:mm:ss.fff} {p.State} {p.Step} {p.Message}");
+            Assert.Equal(SequencerState.Done, await x.RunAsync(dir));
+            Assert.True(m.Snapshot.SlitClosed && m.Snapshot.ArmClearOfSv);
+            Assert.True(await Until(() => m.Snapshot.TurboGateOpened, 5), "GV 恢復");
+        }
+        Assert.Equal((true, false), (map.Loadlock, map.Pm));
+        Assert.True(m.Snapshot.HeaterDown);
+        Assert.DoesNotContain(m.Alarms.Active, a => a.Info.Level == AlarmLevel.Alarm);
+    }
 }

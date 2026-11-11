@@ -178,7 +178,7 @@ public partial class MainWindow
     private void RenderRecipe()
     {
         bool running = SequenceRunning;
-        C<Button>("BtnRecipeRun").IsEnabled = _m is not null && !running && Can(Permission.RunRecipe);
+        C<Button>("BtnRecipeRun").IsEnabled = _m is not null && !Busy && Can(Permission.RunRecipe);
         bool edit = Can(Permission.EditRecipe);
         C<StackPanel>("PnlRecipeForm").IsEnabled = edit;
         C<Button>("BtnRecipeSave").IsEnabled = edit;

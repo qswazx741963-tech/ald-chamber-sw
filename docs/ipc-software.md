@@ -61,6 +61,24 @@ dotnet run --project ipc/src/Ald.Hmi -- --port 1502
 - 每一步都有逾時；失敗 / 中止 / 進安全狀態 → 停 ALD、關前驅物閥與 MFC，**不自動 vent**，加熱與真空維持。
 - 保護不靠流程引擎：主控板與執行板的互鎖一直有效，IPC 當掉也一樣。
 
+## 3b. 傳片流程（`TransferSequencer`）與晶圓位置（`WaferMap`）
+
+用 SLK 單步命令組成，每一步等狀態回來（不用 SLK 的 `SEQ:LOAD`：它在 PM 內固定等 2 秒就退手臂，沒跟 Wafer lift 交握）。
+
+| 送片 LL→PM | 取片 PM→LL |
+| --- | --- |
+| Heater module 回下位、Wafer lift 下 | Heater module 回下位（片落回 lift pin）、Wafer lift 上 |
+| （Z 啟用時）LL Z 下降 → 關 Turbo GV → 關 LL 粗抽閥 → 開 SV → 手臂進 PM | 同左 |
+| **Wafer lift 上（從手臂接片）** → 記錄：片在 PM | **Wafer lift 下（片放到手臂）** → 記錄：片在 LL |
+| 手臂退回 → 關 SV → 恢復 Turbo GV（原本開著才開）→ Heater module 到 Process 位 | 手臂退回 → 關 SV → 恢復 Turbo GV |
+
+- 執行前檢查：各板在線、非安全狀態、沒在跑 ALD / LL 序列、晶圓位置符合（送片要 LL 有片 + PM 無片）、PM 與 LL 都 < 1 Torr、LL 洩壓閥 / 艙蓋關。
+- 每步逾時（config `transfer.*`）；被互鎖擋下會顯示主控板的原因。
+- 失敗 / 中止：SLK ABORT 停手臂，**不自動往回動**；交接途中（手臂在 PM 內）停下時晶圓位置設為「不明」，
+  要工程師看過實物在畫面設定後才能再傳片。
+- 晶圓位置存 `transfer.waferMapPath`（JSON，重開機讀回）。目前沒有晶圓感測器（WAFER_PRESENT 待接）。
+- Heater module Process 位置 `transfer.heaterProcessSteps`（預設 20000 step，**實機待確認**），到位以 HEATER_PROCESS 感測器為準。
+
 ## 4. 人機（Ald.Hmi）
 
 - **總覽**：真空、Loadlock、16 組加熱、8 路 MFC、PM 機構 / ALD 一頁看完。
@@ -68,6 +86,8 @@ dotnet run --project ipc/src/Ald.Hmi -- --port 1502
 - **手動操作**：真空閥 / 泵（勾選＝命令，命令與實際不同或被真空板擋下會列出來）、ALD V1~V7、
   加熱（單組設定 / 升溫速率，數字框上限 = config `limitDegC`）、MFC（含上游閥）、Heater module 移動 / 原點、Wafer lift。
   命令被拒會在狀態列顯示原因；主控板最後擋下的原因也會顯示。**流程執行中整頁鎖住**。
+- **傳片**：LL / PM 有沒有片（綠 = 有、灰 = 無、橘 = 不明）、送片 / 取片 / 中止、不能按時列出原因、步驟記錄；
+  工程師可在確認實物後修正晶圓位置。傳片與配方流程互斥，傳片中手動操作頁與 Loadlock 按鈕鎖住。
 - **Recipe**：從配方資料夾（`--recipes`，預設程式旁 `recipes/`）選檔 → 表單編常用欄位 → 檢查 / 存檔 / 執行 / 中止，
   右邊顯示步驟記錄。ALD 步驟一行一步：`名稱, 閥, ms`，閥寫 `V1+V3`、`-`（全關）或數字。
   逾時等進階欄位直接改 JSON，存檔會保留。存檔先寫暫存檔再取代（斷電不壞原檔）。
@@ -79,8 +99,8 @@ dotnet run --project ipc/src/Ald.Hmi -- --port 1502
   | 等級 | 可以做 |
   | --- | --- |
   | 檢視（未登入） | 看畫面、**安全停止 / 中止流程（永遠不鎖）** |
-  | 操作員 | + Reset、執行配方、抽真空 / 回填、Loadlock |
-  | 工程師 | + 手動操作、編輯 / 存檔配方 |
+  | 操作員 | + Reset、執行配方、抽真空 / 回填、Loadlock、傳片 |
+  | 工程師 | + 手動操作、編輯 / 存檔配方、修正晶圓位置 |
   | 管理員 | + 使用者管理 |
 
   密碼只存 PBKDF2-SHA256 雜湊。第一次開機建立 `admin`，出廠密碼由 config `hmi.defaultAdminPasswordHash` 決定
@@ -103,10 +123,10 @@ dotnet run --project ipc/src/Ald.Hmi -- --port 1502
 | `make -C firmware/tests` | 韌體邏輯單元測試（主控板 186、執行板 40） |
 | `make -C sim` | 整機模擬整合測試 42 項：開機上線、Reset、抽真空、開 SV 互鎖、Turbo GV 聯動、加熱上限、馬達、心跳中斷 |
 | `make -C ipc/ecat-master test` | ald-ecat bridge（含 HR 預設值） |
-| `cd ipc && dotnet test` | C# 80 項（含配方檔、帳號 / 權限、趨勢查詢 / CSV），含**端到端**：MachineService ↔ ald-ecat --sim（20 倍速）跑完整段配方、心跳中斷進安全狀態 |
+| `cd ipc && dotnet test` | C# 91 項（含配方檔、帳號 / 權限、趨勢、傳片），含**端到端**：MachineService ↔ ald-ecat --sim（20 倍速）跑完整段配方、送片 + 取片、心跳中斷進安全狀態 |
 
 ## 待做
 
 - RF（鎧泰 600 W / 300 W）協議確認後：主控板 UART 驅動 + 模擬。
-- 晶圓位置追蹤（傳片流程、WAFER_PRESENT）。
+- 晶圓感測器（WAFER_PRESENT）接上後與 WaferMap 比對；Heater module Process 位置實機確認。
 - STM32 HAL（`hal_port_stm32.c`）：等腳位分配。

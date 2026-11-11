@@ -29,4 +29,16 @@ public interface IMachine
 
     /// <summary>Loadlock 命令（主控板過 LL-01~08 互鎖後送給 SLK），等到完成。</summary>
     Task<bool> LoadlockAsync(LoadlockCommand cmd, int arg, TimeSpan timeout, CancellationToken ct);
+
+    /// <summary>上一個 LoadlockAsync 回 false 的原因（互鎖擋下的條件、SLK 錯誤、逾時）。</summary>
+    string LastLoadlockError { get; }
+
+    /// <summary>Heater module 原點復歸（回下位）。PM-04：手臂要在 SV 外。</summary>
+    Task HeaterHomeAsync(ushort speedSps, CancellationToken ct = default);
+
+    /// <summary>Heater module 移動到絕對位置（step）。</summary>
+    Task HeaterMoveAsync(int targetSteps, ushort speedSps, CancellationToken ct = default);
+
+    /// <summary>Wafer lift 上 / 下。PM-05：Heater module 在下位、手臂沒在動。</summary>
+    void SetWaferLift(bool up);
 }

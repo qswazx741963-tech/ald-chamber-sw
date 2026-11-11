@@ -211,12 +211,23 @@ public sealed class MachineService : IMachine, IDisposable
 
     public void StopAld() => _link.Write(ProcessBoard.Holding.Command, (ushort)ProcessBoard.Holding.CommandValues.Stop);
 
+    public string LastLoadlockError { get; private set; } = "";
+
     public async Task<bool> LoadlockAsync(LoadlockCommand cmd, int arg, TimeSpan timeout, CancellationToken ct)
     {
+        LastLoadlockError = "";
         var r = Loadlock.Execute(cmd, arg);
-        if (!r.Allowed) return false;
+        if (!r.Allowed) { LastLoadlockError = r.Reason; return false; }
         await Task.Delay(100, ct);
-        return await Loadlock.WaitAsync(timeout);
+        if (await Loadlock.WaitAsync(timeout)) return true;
+        LastLoadlockError = Loadlock.LastResult switch
+        {
+            MainBoard.Input.LlCmdResultValues.Denied => "主控板擋下：" + DenyReasons.Describe(_snap.LastDenyBits),
+            MainBoard.Input.LlCmdResultValues.Busy => "Loadlock 忙碌中（有其他序列在跑）",
+            MainBoard.Input.LlCmdResultValues.Error => "SLK 回報錯誤",
+            _ => $"{timeout.TotalSeconds:0} 秒內沒有完成",
+        };
+        return false;
     }
 
     // ------------------------------------------------------------ 馬達（PM）

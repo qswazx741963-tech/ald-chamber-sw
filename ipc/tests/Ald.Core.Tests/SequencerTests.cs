@@ -21,6 +21,13 @@ internal sealed class FakeMachine : IMachine
     public bool AldRunning;
     public bool BrokenTurbo;
     public List<string> Log = new();
+    // 傳片用：PM 機構與 Loadlock（命令下去下一次讀狀態就到位）
+    public int HeaterPos;
+    public bool LiftUp;
+    public bool LiftStuck;
+    public LoadlockSv Sv = LoadlockSv.Closed;
+    public int ArmPos;
+    public LoadlockCommand? FailLl;
 
     public MachineSnapshot Snapshot
     {
@@ -44,6 +51,9 @@ internal sealed class FakeMachine : IMachine
                 TurboAtSpeed = turbo, TurboGateOpened = o.HasFlag(VacuumOutputs.TurboGv), TurboGateClosed = !o.HasFlag(VacuumOutputs.TurboGv),
                 ChamberVenting = o.HasFlag(VacuumOutputs.ChamberVent), AldRunning = AldRunning, AldCycle = cycle,
                 ChamberGaugeStatus = p > 700 ? GaugeStatus.OverRange : GaugeStatus.Ok,
+                HeaterPosSteps = HeaterPos, HeaterDown = HeaterPos == 0, HeaterAtProcess = HeaterPos == 20000,
+                HeaterAxis = AxisState.Idle, WaferLiftUp = LiftUp, WaferLiftDown = !LiftUp,
+                SlitValve = Sv, ArmPosSteps = ArmPos,
             };
             return _s;
         }
@@ -59,7 +69,25 @@ internal sealed class FakeMachine : IMachine
     public void DownloadAld(AldRecipe r) => Downloaded = r;
     public void StartAld() { AldRunning = true; AldTicks = 0; Log.Add("START"); }
     public void StopAld() { AldRunning = false; Log.Add("STOP"); }
-    public Task<bool> LoadlockAsync(LoadlockCommand c, int a, TimeSpan t, CancellationToken ct) => Task.FromResult(true);
+    public Task<bool> LoadlockAsync(LoadlockCommand c, int a, TimeSpan t, CancellationToken ct)
+    {
+        Log.Add($"LL {c}");
+        LastLoadlockError = "";
+        if (c == FailLl) { LastLoadlockError = "主控板擋下：測試"; return Task.FromResult(false); }
+        switch (c)
+        {
+            case LoadlockCommand.SvOpen: Sv = LoadlockSv.Open; break;
+            case LoadlockCommand.SvClose: Sv = LoadlockSv.Closed; break;
+            case LoadlockCommand.ArmToPm: ArmPos = 18420; break;
+            case LoadlockCommand.ArmToLoadlock: ArmPos = 0; break;
+            case LoadlockCommand.RoughOff: _s = _s with { LoadlockRoughOpen = false }; break;
+        }
+        return Task.FromResult(true);
+    }
+    public string LastLoadlockError { get; private set; } = "";
+    public Task HeaterHomeAsync(ushort sp, CancellationToken ct = default) { HeaterPos = 0; Log.Add("HEATER HOME"); return Task.CompletedTask; }
+    public Task HeaterMoveAsync(int t, ushort sp, CancellationToken ct = default) { HeaterPos = t; Log.Add($"HEATER {t}"); return Task.CompletedTask; }
+    public void SetWaferLift(bool up) { if (!LiftStuck) LiftUp = up; Log.Add(up ? "LIFT UP" : "LIFT DOWN"); }
 }
 
 public class SequencerTests
