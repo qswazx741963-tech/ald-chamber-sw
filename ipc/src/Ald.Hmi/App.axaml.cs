@@ -9,7 +9,8 @@ namespace Ald.Hmi;
 
 /// <summary>
 /// 啟動：讀 config/machine.json → MachineService（連本機 ald-ecat）→ 警報 / 趨勢寫進 SQLite → 主畫面。
-/// 參數：--config 路徑（預設程式旁 config/machine.json）、--port（覆寫 ald-ecat 埠，例如模擬用 1502）
+/// 參數：--config 路徑（預設程式旁 config/machine.json）、--port（覆寫 ald-ecat 埠，例如模擬用 1502）、
+/// --recipes 配方資料夾（預設程式旁 recipes/）
 /// </summary>
 public partial class App : Application
 {
@@ -39,7 +40,8 @@ public partial class App : Application
             _machine.Updated += s => _trend.Add(s);
             _machine.Start();
 
-            desktop.MainWindow = new MainWindow(_machine, _alarmLog, _trend);
+            var recipes = Arg("--recipes", Path.Combine(AppContext.BaseDirectory, "recipes"));
+            desktop.MainWindow = new MainWindow(_machine, _alarmLog, _trend, recipes);
             desktop.Exit += (_, _) =>
             {
                 _machine.Dispose();   // 心跳停止 → 主控板看門狗 → 全機安全狀態

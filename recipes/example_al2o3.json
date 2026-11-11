@@ -1,13 +1,30 @@
 {
-  "_comment": "範例 Recipe，ALD 閥對應管路待確認（ALD_V1=前驅物 A？ALD_V2=Purge？）",
+  "_comment": "範例製程配方（ProcessRecipe）。ALD 閥對應管路待確認（V1=前驅物 A？V2=Purge？V3=前驅物 B？）。heaterSpDegC / mfc 為 0 的通道不用。",
   "name": "Example Al2O3",
-  "cycles": 100,
-  "steps": [
-    { "label": "Precursor A pulse", "valveMask": 1, "durationMs": 20 },
-    { "label": "Purge",             "valveMask": 2, "durationMs": 5000 },
-    { "label": "Precursor B pulse", "valveMask": 4, "durationMs": 20 },
-    { "label": "Purge",             "valveMask": 2, "durationMs": 5000 }
-  ],
-  "mfcSccm": [ 0, 20, 0, 0, 0, 0, 0, 0 ],
-  "heaterSpDegC": [ 150, 150, 0, 0, 0, 80, 120, 120, 120, 100, 100, 150, 0, 0, 0, 0 ]
+  "pumpDown": true,
+  "crossoverTorr": 0.5,
+  "baseTorr": 0.005,
+  "pumpTimeoutS": 1800,
+  "turboSpinUpTimeoutS": 900,
+  "heaterSpDegC": [ 150, 150, 0, 0, 0, 80, 120, 120, 120, 100, 100, 150, 0, 0, 0, 0 ],
+  "heatToleranceC": 3,
+  "heatSettleS": 60,
+  "heatTimeoutS": 3600,
+  "mfc": [ 0, 20, 0, 0, 0, 0, 0, 0 ],
+  "gasStabilizeS": 10,
+  "ald": {
+    "name": "Al2O3",
+    "cycles": 100,
+    "steps": [
+      { "label": "Precursor A pulse", "valveMask": 1, "durationMs": 20 },
+      { "label": "Purge",             "valveMask": 2, "durationMs": 5000 },
+      { "label": "Precursor B pulse", "valveMask": 4, "durationMs": 20 },
+      { "label": "Purge",             "valveMask": 2, "durationMs": 5000 }
+    ]
+  },
+  "standbySpDegC": null,
+  "ventAfter": false,
+  "ventTargetTorr": 740,
+  "ventTimeoutS": 600,
+  "turboSpinDownTimeoutS": 1200
 }

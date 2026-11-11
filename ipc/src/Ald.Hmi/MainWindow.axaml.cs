@@ -19,18 +19,22 @@ public partial class MainWindow : Window
     private readonly TrendLog? _trend;
     private ProcessSequencer? _seq;
     private string _status = "";
+    private readonly string _recipeDir;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private static readonly string[] SvText = { "未知", "關", "開啟中", "開", "關閉中", "錯誤" };
 
-    public MainWindow() : this(null, null, null) { }
+    public MainWindow() : this(null, null, null, "recipes") { }
 
-    public MainWindow(MachineService? machine, AlarmLog? alarmLog, TrendLog? trend)
+    public MainWindow(MachineService? machine, AlarmLog? alarmLog, TrendLog? trend, string recipeDir)
     {
         AvaloniaXamlLoader.Load(this);
         _m = machine;
         _alarmLog = alarmLog;
         _trend = trend;
+        _recipeDir = recipeDir;
         Wire();
+        WireManual();
+        WireRecipe();
         _timer.Tick += (_, _) => Render();
         _timer.Start();
         Closed += (_, _) => _timer.Stop();
@@ -42,7 +46,7 @@ public partial class MainWindow : Window
     {
         if (_m is null) return;
         C<Button>("BtnReset").Click += async (_, _) => await Do("Reset", () => _m.ResetAsync());
-        C<Button>("BtnSafe").Click += (_, _) => Do("安全停止", () => { _seq?.Abort(); _m.EnterSafe(); return Task.CompletedTask; });
+        C<Button>("BtnSafe").Click += (_, _) => _ = Do("安全停止", () => { _seq?.Abort(); _m.EnterSafe(); return Task.CompletedTask; });
         C<Button>("BtnPump").Click += (_, _) => RunRecipe(new ProcessRecipe { Name = "抽真空" });
         C<Button>("BtnVent").Click += (_, _) => RunRecipe(new ProcessRecipe { Name = "回填大氣", PumpDown = false, VentAfter = true });
         C<Button>("BtnAbort").Click += (_, _) => _seq?.Abort();
@@ -66,19 +70,30 @@ public partial class MainWindow : Window
         _alarmLog?.Add("操作", "Info", _status, evt: "OPERATOR");
     }
 
+    private bool SequenceRunning => _seq?.State == SequencerState.Running;
+
     private async void RunRecipe(ProcessRecipe r)
     {
-        if (_m is null || _seq?.State == SequencerState.Running) { _status = "已有流程在執行"; return; }
+        if (_m is null || SequenceRunning) { _status = "已有流程在執行"; return; }
         _seq = new ProcessSequencer(_m);
+        _runName = r.Name;
+        lock (_runLog) _runLog.Clear();
         _seq.Progress += p =>
         {
             _status = $"流程 {r.Name}：{p.Step} {p.Message}";
+            lock (_runLog) _runLog.Insert(0, $"{p.Time:HH:mm:ss} {p.Step} {p.Message}".TrimEnd());
             _alarmLog?.Add("流程", p.State == SequencerState.Failed ? "Alarm" : "Info", $"{r.Name}：{p.Step} {p.Message}".Trim(), evt: "STEP");
         };
         await _seq.RunAsync(r);
     }
 
     private static string P(double torr) => double.IsNaN(torr) ? "  ---   " : torr.ToString("0.00E+00");
+
+    /// <summary>PM 互鎖壓力暫存器是整數 mTorr，低於 1 mTorr 讀到 0 → 顯示「&lt; 1E-03」而不是 0。</summary>
+    private static string PmP(MachineSnapshot s)
+        => s.ChamberPressureTorr == 0 ? "< 1.0E-03"
+         : s.ChamberGaugeStatus == GaugeStatus.UnderRange ? "<" + P(s.ChamberPressureTorr)
+         : P(s.ChamberPressureTorr);
 
     private void Render()
     {
@@ -90,7 +105,7 @@ public partial class MainWindow : Window
         C<TextBlock>("TxtLl").Text = s.LoadlockFresh ? $"Loadlock：SV {SvText[(int)s.SlitValve % 6]}" : "Loadlock：未連線";
 
         var v = new StringBuilder();
-        v.AppendLine($"PM 互鎖壓力  {P(s.ChamberPressureTorr)} Torr  ({s.ChamberGaugeStatus})");
+        v.AppendLine($"PM 互鎖壓力  {PmP(s)} Torr  ({s.ChamberGaugeStatus})");
         v.AppendLine($"Barocel      {P(s.ManometerTorr)} Torr");
         v.AppendLine($"Ion gauge    {P(s.IonGaugeTorr)} Torr");
         v.AppendLine($"Foreline     {P(s.ForelineTorr)} Torr");
@@ -130,5 +145,7 @@ public partial class MainWindow : Window
         if (_alarmLog is not null && DateTime.Now.Second % 2 == 0)
             C<ListBox>("LstLog").ItemsSource = _alarmLog.Recent(200).Select(r => $"{r.Time:MM-dd HH:mm:ss} {r.Event,-8} {r.Source}：{r.Message}").ToList();
         C<TextBlock>("TxtStatusBar").Text = _status;
+        RenderManual(s);
+        RenderRecipe();
     }
 }

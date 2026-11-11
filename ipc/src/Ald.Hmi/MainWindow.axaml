@@ -69,10 +69,136 @@
                 </Grid>
             </TabItem>
             <TabItem Header="手動操作">
-                <TextBlock Margin="12" Text="TODO：各閥 / 加熱 / MFC / 馬達手動頁（命令一律走 MachineService，被互鎖擋下會顯示原因）" />
+                <!-- 命令一律走 MachineService；主控板 / 執行板的互鎖還是有效，被擋下會顯示原因。流程執行中整頁鎖住。 -->
+                <DockPanel Margin="8">
+                    <TextBlock DockPanel.Dock="Top" x:Name="TxtManualLock" Foreground="#B03030" FontWeight="Bold" Margin="4,0,0,6" />
+                    <Grid x:Name="PnlManual" ColumnDefinitions="*,*,*">
+                        <!-- 真空 / ALD 閥 -->
+                        <StackPanel Grid.Column="0" Spacing="4" Margin="4">
+                            <TextBlock Text="真空閥 / 泵" FontSize="18" FontWeight="Bold" />
+                            <StackPanel x:Name="PnlVac" Spacing="2" />
+                            <TextBlock x:Name="TxtVacFb" FontFamily="monospace" TextWrapping="Wrap" />
+                            <TextBlock Text="ALD 閥（手動脈衝前請確認管路）" FontSize="18" FontWeight="Bold" Margin="0,12,0,0" />
+                            <WrapPanel x:Name="PnlAld" />
+                            <Button x:Name="BtnAldAllOff" Content="ALD 閥全關" />
+                        </StackPanel>
+                        <!-- 加熱 / MFC -->
+                        <StackPanel Grid.Column="1" Spacing="4" Margin="4">
+                            <TextBlock Text="加熱" FontSize="18" FontWeight="Bold" />
+                            <ComboBox x:Name="CmbHeater" HorizontalAlignment="Stretch" />
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" >
+                                <TextBlock Grid.Row="0" Text="設定 °C" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="NumHeatSp" Minimum="0" Maximum="650" Increment="5" FormatString="0.0" />
+                                <TextBlock Grid.Row="1" Text="升溫 °C/min" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="NumHeatRamp" Value="0" Minimum="0" Maximum="100" Increment="1" FormatString="0.0" ToolTip.Tip="0 = 不限速" />
+                            </Grid>
+                            <WrapPanel>
+                                <Button x:Name="BtnHeatOn" Content="開啟 / 套用" Margin="0,0,6,6" />
+                                <Button x:Name="BtnHeatOff" Content="關閉此組" Margin="0,0,6,6" />
+                                <Button x:Name="BtnHeatAllOff" Content="全部關閉" Margin="0,0,6,6" />
+                            </WrapPanel>
+                            <TextBlock x:Name="TxtHeatInfo" FontFamily="monospace" />
+                            <TextBlock Text="MFC" FontSize="18" FontWeight="Bold" Margin="0,12,0,0" />
+                            <ComboBox x:Name="CmbMfc" HorizontalAlignment="Stretch" />
+                            <Grid ColumnDefinitions="Auto,*">
+                                <TextBlock x:Name="TxtMfcUnit" Text="設定" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <NumericUpDown Grid.Column="1" x:Name="NumMfc" Value="0" Minimum="0" Maximum="2000" Increment="1" FormatString="0.0" />
+                            </Grid>
+                            <CheckBox x:Name="ChkMfcUp" Content="開上游閥（MFC__UP）" IsChecked="True" />
+                            <WrapPanel>
+                                <Button x:Name="BtnMfcApply" Content="套用" Margin="0,0,6,6" />
+                                <Button x:Name="BtnMfcOff" Content="關此路" Margin="0,0,6,6" />
+                                <Button x:Name="BtnMfcAllOff" Content="全部關閉" Margin="0,0,6,6" />
+                            </WrapPanel>
+                            <TextBlock x:Name="TxtMfcInfo" FontFamily="monospace" />
+                        </StackPanel>
+                        <!-- PM 機構 -->
+                        <StackPanel Grid.Column="2" Spacing="4" Margin="4">
+                            <TextBlock Text="Heater module（步進）" FontSize="18" FontWeight="Bold" />
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                                <TextBlock Grid.Row="0" Text="目標 step" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="NumAxisTarget" Value="0" Minimum="-2000000" Maximum="2000000" Increment="100" FormatString="0" />
+                                <TextBlock Grid.Row="1" Text="速度 step/s" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="NumAxisSpeed" Minimum="1" Maximum="20000" Increment="100" Value="1000" FormatString="0" />
+                            </Grid>
+                            <WrapPanel>
+                                <Button x:Name="BtnAxisMove" Content="移動" Margin="0,0,6,6" />
+                                <Button x:Name="BtnAxisHome" Content="原點復歸" Margin="0,0,6,6" />
+                            </WrapPanel>
+                            <TextBlock x:Name="TxtAxisInfo" FontFamily="monospace" />
+                            <TextBlock Text="Wafer lift（氣缸）" FontSize="18" FontWeight="Bold" Margin="0,12,0,0" />
+                            <WrapPanel>
+                                <Button x:Name="BtnLiftUp" Content="上升" Margin="0,0,6,6" />
+                                <Button x:Name="BtnLiftDown" Content="下降" Margin="0,0,6,6" />
+                            </WrapPanel>
+                            <TextBlock x:Name="TxtLiftInfo" FontFamily="monospace" />
+                        </StackPanel>
+                    </Grid>
+                </DockPanel>
             </TabItem>
             <TabItem Header="Recipe">
-                <TextBlock Margin="12" Text="TODO：Recipe 編輯與執行（ProcessSequencer）" />
+                <Grid ColumnDefinitions="3*,2*" Margin="8">
+                    <!-- 左：選檔 + 編輯 -->
+                    <DockPanel Grid.Column="0" Margin="4">
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
+                            <ComboBox x:Name="CmbRecipeFile" MinWidth="260" PlaceholderText="選擇配方檔" />
+                            <Button x:Name="BtnRecipeReload" Content="重新整理" />
+                            <Button x:Name="BtnRecipeNew" Content="新配方" />
+                            <Button x:Name="BtnRecipeSave" Content="存檔" />
+                        </StackPanel>
+                        <ScrollViewer>
+                            <StackPanel Spacing="6">
+                                <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto">
+                                    <TextBlock Text="名稱" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBox Grid.Column="1" Grid.ColumnSpan="3" x:Name="TxtRName" />
+                                    <CheckBox Grid.Row="1" Grid.ColumnSpan="2" x:Name="ChkRPump" Content="先抽真空到 base pressure" />
+                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Base (Torr)" VerticalAlignment="Center" Margin="12,0,8,0" />
+                                    <TextBox Grid.Row="1" Grid.Column="3" x:Name="TxtRBase" />
+                                    <CheckBox Grid.Row="2" Grid.ColumnSpan="2" x:Name="ChkRVent" Content="結束後回填大氣" />
+                                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Crossover (Torr)" VerticalAlignment="Center" Margin="12,0,8,0" />
+                                    <TextBox Grid.Row="2" Grid.Column="3" x:Name="TxtRCross" />
+                                </Grid>
+                                <TextBlock Text="加熱設定 °C（0 = 不用）" FontWeight="Bold" Margin="0,6,0,0" />
+                                <Grid x:Name="GrdRHeat" ColumnDefinitions="Auto,110,Auto,110" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="容差 ±°C" VerticalAlignment="Center" />
+                                    <NumericUpDown x:Name="NumRTol" Minimum="0.5" Maximum="50" Increment="0.5" FormatString="0.0" Width="110" />
+                                    <TextBlock Text="穩定 s" VerticalAlignment="Center" />
+                                    <NumericUpDown x:Name="NumRSettle" Minimum="0" Maximum="36000" Increment="10" FormatString="0" Width="110" />
+                                </StackPanel>
+                                <TextBlock Text="MFC 設定（0 = 不用）" FontWeight="Bold" Margin="0,6,0,0" />
+                                <Grid x:Name="GrdRMfc" ColumnDefinitions="Auto,110,Auto,110" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="通氣穩定 s" VerticalAlignment="Center" />
+                                    <NumericUpDown x:Name="NumRGas" Minimum="0" Maximum="3600" Increment="1" FormatString="0" Width="110" />
+                                </StackPanel>
+                                <TextBlock Text="ALD 步驟（一行一步：名稱, 閥, ms；閥寫 V1+V3 或 -；空白 = 不跑 ALD）" FontWeight="Bold" Margin="0,6,0,0" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Cycles" VerticalAlignment="Center" />
+                                    <NumericUpDown x:Name="NumRCycles" Minimum="1" Maximum="60000" Increment="10" FormatString="0" Width="130" />
+                                    <TextBlock x:Name="TxtRAldTime" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBox x:Name="TxtRSteps" AcceptsReturn="True" FontFamily="monospace" MinHeight="120" />
+                                <TextBlock Text="逾時等進階欄位請直接改 JSON 檔，存檔時會保留。" Foreground="Gray" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                    <!-- 右：執行 -->
+                    <DockPanel Grid.Column="1" Margin="12,4,4,4">
+                        <StackPanel DockPanel.Dock="Top" Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Button x:Name="BtnRecipeCheck" Content="檢查" />
+                                <Button x:Name="BtnRecipeRun" Content="執行" Background="#2E7D32" Foreground="White" />
+                                <Button x:Name="BtnRecipeAbort" Content="中止" Background="#B03030" Foreground="White" />
+                            </StackPanel>
+                            <TextBlock x:Name="TxtRunState" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
+                            <TextBlock x:Name="TxtRunStep" FontSize="16" TextWrapping="Wrap" />
+                            <TextBlock x:Name="TxtRecipeMsg" Foreground="#B03030" TextWrapping="Wrap" />
+                            <TextBlock Text="步驟記錄" FontWeight="Bold" Margin="0,6,0,0" />
+                        </StackPanel>
+                        <ListBox x:Name="LstRunLog" FontFamily="monospace" />
+                    </DockPanel>
+                </Grid>
             </TabItem>
             <TabItem Header="趨勢">
                 <TextBlock Margin="12" Text="TODO：趨勢圖（資料已記錄在 SQLite trend 表）" />

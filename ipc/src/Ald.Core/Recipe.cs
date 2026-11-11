@@ -6,10 +6,7 @@ public sealed class AldRecipe
     public string Name { get; set; } = "";
     public int Cycles { get; set; } = 1;
     public List<AldStep> Steps { get; set; } = new();
-    /// <summary>MFC ×7 + EL-Press ×1（通道 8）；換成 % 滿刻度下給製程板時用 config 每台的滿刻度。</summary>
-    public double[] MfcSccm { get; set; } = new double[8];
-    /// <summary>16 組加熱（14 用 + 2 預留），K 型熱電偶。</summary>
-    public double[] HeaterSpDegC { get; set; } = new double[16];
+    // MFC 與加熱設定在 ProcessRecipe（整段製程配方），這裡只有下載給製程板的步驟表。
 
     public IEnumerable<string> Validate()
     {
@@ -19,8 +16,6 @@ public sealed class AldRecipe
             if (s.DurationMs is < 1 or > 60000) yield return $"第 {i + 1} 步時間需在 1–60000 ms";
         foreach (var (s, i) in Steps.Select((s, i) => (s, i)))
             if (s.ValveMask > 0x7F) yield return $"第 {i + 1} 步閥位元超出 ALD_V1–V7";
-        if (MfcSccm.Length != 8) yield return "MFC 設定需 8 組";
-        if (HeaterSpDegC.Length != 16) yield return "加熱設定需 16 組";
     }
 }
 

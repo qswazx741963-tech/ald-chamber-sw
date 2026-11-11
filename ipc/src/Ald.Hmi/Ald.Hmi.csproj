@@ -19,5 +19,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\config\machine.json" Link="config\machine.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\recipes\*.json" Link="recipes\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
