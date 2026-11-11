@@ -1,151 +1,308 @@
 # =====================================================================
-#  ALD Chamber Modbus 暫存器定義（唯一來源 / Single source of truth）
+#  ALD Chamber 暫存器定義（唯一來源 / Single source of truth）— map_version 2
 #  改完執行：python tools/codegen/gen_registers.py
 #
-#  欄位說明
+#  ■ 架構（方案 A，2026-11-10）
+#    IPC (ARK-1222) ──Ethernet / Modbus TCP──► 主控板（唯一的 Modbus 從站，Unit ID 1）
+#    主控板 ──CAN FD 背板──► 各槽執行板
+#    IPC ──RS-485──► Loadlock（SLK 模組，ASCII 協議，不經過主控板）
+#    IPC 看到的是「主控板上一整張表」，依槽位分區：
+#        絕對位址 = slot × slot_stride + 區內位址
+#    例：加熱板在 slot 2，HEATER_SP 區內位址 20 → IPC 寫 HR 2×200+20 = 420
+#    執行板韌體只用「區內位址」，跟自己插在哪一槽無關。
+#    以後換 EtherCAT，同一張表直接對應成 PDO，這份檔案不用改。
+#
+#  ■ 欄位說明
 #    name   : 名稱（大寫底線）
-#    addr   : 起始位址（0 起算，Modbus Poll 裡 Input Register 3x0001 = addr 0）
+#    addr   : 區內位址（0 起算，必須 < slot_stride）
 #    type   : u16（預設）/ i16 / i32（i32 佔 2 個暫存器，高位在前）
-#    count  : 陣列長度（預設 1），例如 6 組 MFC
+#    count  : 陣列長度（預設 1）
 #    scale  : 實際值 = 原始值 × scale（預設 1）
 #    unit   : 單位（只做說明）
-#    min/max: 允許的「實際值」範圍，IPC 寫入前與 Arduino 收到後都會檢查
+#    min/max: 允許的「實際值」範圍，IPC 寫入前與板子收到後都會檢查
 #    bits   : 位元欄位，依序 bit0, bit1 ...
 #    values : 列舉值（命令碼）
+#    default: HR 開機預設值（實際值或 values 名稱）。主控板開機、IPC 主站程式啟動都先載入這組值，
+#             IPC config 再覆寫。沒寫 = 0
 #
-#  位址格局（四塊板相同）
+#  ■ 區內位址格局（每槽相同）
 #    IR 0-9    共用表頭        HR 0-9    共用命令
-#    IR 10-19  DI 位元         HR 10-19  DO 命令位元
-#    IR 20-29  DO 回授位元     HR 20-99  設定值
-#    IR 30-99  AI / 運算值     HR 100-199 參數區
-#  ※ 待確認項目標 TODO，硬體定案後再補
+#    IR 10-29  DI / DO 回授    HR 10-19  DO 命令
+#    IR 30-199 AI / 運算值     HR 20-99  設定值
+#                              HR 100-199 參數區
+#  ※ 待確認項目標 TODO
 # =====================================================================
-map_version: 1
+map_version: 2
+slot_stride: 200          # 每槽在 IR、HR 各占 200 個位址
+max_slots: 9              # 槽 0 = 主控板 + 槽 1~8 執行板（最多 8 塊）；CAN ID / SLOT_ID 仍保留 4 bit，日後要加槽只改這裡
+
+board_types: { MAIN: 0, PROCESS: 1, HEATER: 2, VACUUM: 3, MOTION: 4 }
 
 common:
   input:
-    - { name: BOARD_ID,       addr: 0 }
+    - { name: BOARD_TYPE,     addr: 0, desc: "板型（見 board_types），與槽位設定不符時主控板拒用該槽" }
     - { name: FW_VERSION,     addr: 1, desc: "例如 0x0102 = v1.2" }
-    - { name: MAP_VERSION,    addr: 2, desc: "必須等於 map_version，否則 IPC 拒絕連線" }
+    - { name: MAP_VERSION,    addr: 2, desc: "必須等於 map_version，否則拒絕連線" }
     - name: STATUS
       addr: 3
-      bits: [READY, RUNNING, SAFE_STATE, WATCHDOG_TRIPPED, PARAM_REJECTED, LOCAL_INTERLOCK]
+      bits: [READY, RUNNING, SAFE_STATE, WATCHDOG_TRIPPED, PARAM_REJECTED, LOCAL_INTERLOCK, ONLINE]
     - { name: ALARM_BITS,     addr: 4, desc: "各板自訂警報位元（TODO 定義）" }
     - { name: HEARTBEAT_ECHO, addr: 5, desc: "回傳最後收到的 HEARTBEAT" }
     - { name: BOARD_COUNTER,  addr: 6, desc: "板內主迴圈計數，確認板子沒當機" }
     - { name: LAST_ERROR,     addr: 7 }
+    - { name: SLOT_ID,        addr: 8, desc: "背板腳位讀到的槽號" }
   holding:
-    - { name: HEARTBEAT,   addr: 0, desc: "IPC 每次輪詢 +1" }
+    - { name: HEARTBEAT,   addr: 0, desc: "上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）" }
     - name: COMMAND
       addr: 1
       values: { NONE: 0, START: 1, STOP: 2, RESET_ALARM: 3, ENTER_SAFE: 4 }
-    - { name: WATCHDOG_MS, addr: 2, unit: ms, min: 200, max: 10000, desc: "預設 1000，TODO 確認" }
+    - { name: WATCHDOG_MS, addr: 2, unit: ms, min: 200, max: 10000, default: 1000, desc: "預設 1000，TODO 確認" }
 
 boards:
   # ------------------------------------------------------------------
-  board1_process:
-    slave_id: 1
-    port: COM1
-    desc: 製程控制（ALD 閥、MFC、腔體壓力計）
+  main:
+    slot: 0
+    board_type: MAIN
+    prefix: MAIN
+    desc: 主控板（系統狀態、跨板互鎖、Loadlock / Throttle valve / RF 閘道）
+    input:
+      - name: DI
+        addr: 10
+        bits: [SAFE_LINE_OK, EMO_OK, CDA_OK, TRANSFER_PERMIT_OUT]
+      - { name: SLOT_ONLINE, addr: 11, desc: "bit n = 槽 n 在線且板型/版本正確" }
+      - name: SYS_STATE
+        addr: 12
+        values: { BOOT: 0, SAFE: 1, IDLE: 2, PROCESS: 3, TRANSFER: 4, ALARM: 5 }
+      - name: IL_DENY
+        addr: 13
+        desc: "最近一次被主控板互鎖擋下的原因（可能多個同時成立）"
+        bits: [SAFE_ACTIVE, SLOT_OFFLINE, LL_UNKNOWN, LL_ALARM, SV_NOT_CLOSED, SV_NOT_OPEN,
+               DP_HIGH, PRESSURE_UNKNOWN, PM_BUSY, PM_VENTING, ARM_IN_SV_PATH,
+               Z_NOT_DOWN, LL_LID_OPEN, LL_VALVE_CONFLICT, PM_NOT_AT_TRANSFER, LL_BUSY]
+      - { name: IL_DENY_ACTION, addr: 14, desc: "最近一次被擋下的動作（IL_ACT_*，見 docs/interlocks.md）" }
+      - name: IL_DENY2
+        addr: 15
+        desc: "IL_DENY 的延伸（16 個 bit 不夠用）"
+        bits: [TURBO_GV_OPEN, ARM_MOVING, HEATER_NOT_DOWN]
+      - name: DO_OUT
+        addr: 16
+        desc: "燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈）"
+        bits: [BUZZER, TOWER_RED, TOWER_YELLOW, TOWER_GREEN, TOWER_BLUE]
+
+      # ---- Throttle valve：目前製程不需要（2026-11-11），位址保留給日後擴充，韌體不驅動
+      - { name: TV_PRESSURE, addr: 30, scale: 0.001, unit: Torr }
+      - { name: TV_POSITION, addr: 31, scale: 0.1, unit: "%" }
+      - { name: TV_STATUS,   addr: 32 }
+
+      # ---- RF 1 / RF 2（主控板 UART）：預計用鎧泰科技 600 W / 300 W，介面待確認
+      - { name: RF_FWD_W,  addr: 40, count: 2, unit: W }
+      - { name: RF_REF_W,  addr: 42, count: 2, unit: W }
+      - { name: RF_STATUS, addr: 44, count: 2 }
+
+      # ---- Loadlock（SLK 模組，主控板 UART → RS-485 → SLK 端轉 RS-232，ASCII 協議；SLK 韌體不改）
+      - name: LL_LINK
+        addr: 100
+        bits: [ONLINE, TLM_FRESH, ONLINE_MODE, IL_BYPASS, PORT_LOCKED]
+      - { name: LL_CHM, addr: 101, desc: "腔體狀態 0 IDLE,1 PUMPING,2 VAC_READY,3 SV_OPENING,4 TRANSFER_VAC,5 SV_CLOSING,6 VENTING,7 ATM_READY,99 ERROR" }
+      - { name: LL_ARM, addr: 102, desc: "手臂狀態 0 IDLE,1 HOMING,2 READY,3 MOVING,4 AT_POS,5 Z_RAISING,6 Z_UP,7 Z_LOWERING,99 ERROR" }
+      - { name: LL_SV,  addr: 103, desc: "Slit valve 0 UNKNOWN,1 CLOSED,2 OPENING,3 OPEN,4 CLOSING,5 ERROR" }
+      - { name: LL_Z,   addr: 104, desc: "Z 軸 0 UNKNOWN,1 DOWN,2 RAISING,3 UP,4 LOWERING" }
+      - { name: LL_WAF, addr: 105, desc: "Wafer 位置 0 UNKNOWN,1 AT_LL,2 ON_ARM,3 AT_PM" }
+      - { name: LL_SEQ, addr: 106, desc: "序列步 0-22，0 = 沒在跑" }
+      - name: LL_FLAGS
+        addr: 107
+        bits: [WAFER_PRESENT, ROUGH_OPEN, VENT_OPEN, LID_OPEN, PRES_UNDER_RANGE, PRES_SUSPECT]
+        desc: "PRES_SUSPECT = LL 壓力從 > IL_LL_JUMP_MTORR 直接跳到「低於下限」或開機後還沒看過有效讀值，疑似壓力計斷線 → 不採信"
+      - { name: LL_PRES, addr: 108, type: i32, unit: mTorr, desc: "SLK 壓力計（0~1000 Torr）；-1 = 低於量測下限 1 Torr" }
+      - { name: LL_ALM,  addr: 110, desc: "SLK 警報碼，0 = 正常" }
+      - { name: LL_POS,  addr: 111, type: i32, unit: step, desc: "手臂位置（36.84 step/mm）" }
+      - { name: LL_SPD,  addr: 113, unit: step/s }
+      - { name: LL_TLM_AGE_MS, addr: 114, unit: ms, desc: "最後一筆 TLM 距今時間" }
+      - name: LL_CMD_RESULT
+        addr: 115
+        values: { NONE: 0, SENT: 1, DENIED: 2, DONE: 3, ERROR: 4, BUSY: 5 }
+      - { name: LL_CMD_ACK,  addr: 116, desc: "主控板處理完的 LL_CMD_SEQ" }
+      - { name: LL_LAST_EVT, addr: 117, desc: "最後一個 SLK 事件代碼（見 docs/loadlock-integration.md）" }
+      # ---- PM 壓力（主控板依 HR PM_GAUGE_* 換算，互鎖用；畫面顯示也可用）
+      - { name: PM_PRES_MTORR, addr: 120, type: i32, unit: mTorr, desc: "PM 壓力；狀態不是 OK / UNDER_RANGE 時為 2147483647" }
+      - name: PM_GAUGE_STATUS
+        addr: 122
+        values: &gauge_status { OK: 0, UNDER_RANGE: 1, OVER_RANGE: 2, FAULT: 3, OFFLINE: 4, NOT_CONFIGURED: 5 }
+      - { name: LL_GAUGE_PRES_MTORR, addr: 124, type: i32, unit: mTorr, desc: "LL 擴充壓力計（LL_GAUGE_MODEL ≠ NONE 時）；未知為 2147483647" }
+      - name: LL_GAUGE_STATUS
+        addr: 126
+        values: *gauge_status
+
+    holding:
+      - name: DO_CMD
+        addr: 10
+        desc: "燈塔 / 蜂鳴器命令（IPC 決定燈號與閃爍）"
+        bits: [BUZZER, TOWER_RED, TOWER_YELLOW, TOWER_GREEN, TOWER_BLUE]
+      # ---- Throttle valve（保留，目前不用）
+      - name: TV_MODE
+        addr: 20
+        values: { OPEN: 0, CLOSE: 1, POSITION: 2, PRESSURE: 3 }
+      - { name: TV_SP_POSITION, addr: 21, scale: 0.1,   unit: "%",  min: 0, max: 100 }
+      - { name: TV_SP_PRESSURE, addr: 22, scale: 0.001, unit: Torr, min: 0, max: 10 }
+      # ---- RF
+      - name: RF_ON
+        addr: 30
+        bits: [RF1, RF2]
+      - { name: RF_SP_W, addr: 31, count: 2, unit: W, min: 0, max: 600, desc: "預計鎧泰科技 600 W / 300 W；上限依實際機型" }
+      # ---- Loadlock 命令：IPC 先寫 LL_CMD / LL_CMD_ARG，最後把 LL_CMD_SEQ +1 觸發；主控板過互鎖才送給 SLK
+      - name: LL_CMD
+        addr: 100
+        values: { NONE: 0, STATUS: 1, ESTOP: 2, RESET: 3, RECOVER: 4,
+                  PUMP: 10, VENT: 11, LOAD: 12, UNLOAD: 13, ABORT: 14, XFER_DONE: 15,
+                  SV_OPEN: 20, SV_CLOSE: 21, ROUGH_ON: 22, ROUGH_OFF: 23, VENT_ON: 24, VENT_OFF: 25,
+                  ARM_HOME: 30, ARM_AHOME: 31, ARM_LL: 32, ARM_PM: 33, ARM_GOTO: 34, Z_UP: 35, Z_DOWN: 36 }
+      - { name: LL_CMD_ARG, addr: 101, type: i32, desc: "ARM_GOTO 目標步數" }
+      - { name: LL_CMD_SEQ, addr: 103, desc: "命令序號，改變才會執行一次（主控板開機時先記下目前值，不會執行舊命令）" }
+      # ---- 互鎖參數（主控板執行，IPC 只是顯示 / 修改）
+      - { name: IL_SV_DP_MAX_MTORR, addr: 150, unit: mTorr, min: 1, max: 10000, default: 50, desc: "開 SV 前 Loadlock 與 PM 壓差上限，預設 50（config 可改）" }
+      - name: IL_LL_Z_ENABLE
+        addr: 151
+        default: ENABLED
+        desc: "SLK Z 軸是否啟用；之後取消 Z 軸（改用 PM Wafer lift）時設 DISABLED，Z 相關互鎖就不檢查"
+        values: { DISABLED: 0, ENABLED: 1 }
+      - { name: IL_LL_STALE_MS,    addr: 152, unit: ms, min: 100, max: 5000, default: 500, desc: "Loadlock TLM 超過此時間沒更新 → 視為狀態不明，預設 500" }
+      - { name: IL_ARM_SAFE_POS,   addr: 153, type: i32, unit: step, default: 5894, desc: "手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm）" }
+      - name: IL_SV_MODE
+        addr: 155
+        default: BELOW
+        desc: "開 SV 的壓力條件：BELOW = LL 與 PM 都低於 IL_SV_BELOW_MTORR（預設，SLK 壓力計低於下限算低於 1 Torr）；DIFF = 壓差 ≤ IL_SV_DP_MAX_MTORR（LL 需有 mTorr 級壓力計）"
+        values: { BELOW: 0, DIFF: 1 }
+      - { name: IL_SV_BELOW_MTORR, addr: 156, unit: mTorr, min: 1, max: 10000, default: 1000, desc: "BELOW 模式門檻，預設 1000（1 Torr）" }
+      - { name: IL_LL_JUMP_MTORR,  addr: 157, unit: mTorr, min: 1000, max: 60000, default: 10000, desc: "LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr）" }
+      # ---- PM 壓力計（config 型號選單寫進來，主控板用來換算互鎖壓力）
+      - name: PM_GAUGE_MODEL
+        addr: 160
+        default: APGX_H
+        desc: "換算公式見 docs/gauges.md"
+        values: { NONE: 0, LINEAR: 1, APGX_H: 2, WRG200_X: 3, WRG200_G: 4, WRG200_Q: 5 }
+      - { name: PM_GAUGE_AI_ADDR,  addr: 161, default: 633, desc: "壓力計電壓（mV）所在的 IR 絕對位址，預設 633 = 槽 3 AI_RAW[3] Chamber APGX-H" }
+      - { name: PM_GAUGE_FS_MTORR, addr: 162, type: i32, unit: mTorr, default: 1000000, desc: "LINEAR（電容式 0~10 V）滿刻度，例 1000 Torr = 1000000" }
+      # ---- LL 壓力計擴充（預留，預設 NONE = 用 SLK 讀值；SLK 不動。接上獨立壓力計例如 APGX-H 到真空板 AI 時才設定）
+      - name: LL_GAUGE_MODEL
+        addr: 165
+        desc: "NONE = 用 SLK 壓力；設了型號就改用這顆判斷 LL 壓力（不受 SLK 1 Torr 下限與斷線疑慮限制）"
+        values: { NONE: 0, LINEAR: 1, APGX_H: 2, WRG200_X: 3, WRG200_G: 4, WRG200_Q: 5 }
+      - { name: LL_GAUGE_AI_ADDR,  addr: 166, desc: "LL 壓力計電壓（mV）所在的 IR 絕對位址，例 635 = 槽 3 AI_RAW[5]" }
+      - { name: LL_GAUGE_FS_MTORR, addr: 167, type: i32, unit: mTorr, desc: "只有 LINEAR 用" }
+
+  # ------------------------------------------------------------------
+  process:
+    slot: 1
+    board_type: PROCESS
+    prefix: PROC
+    desc: 製程控制（ALD 閥 ×7、MFC 上游閥 ×8、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）
     input:
       - name: DI
         addr: 10
         bits: [RF1_POWER_CABLE_OK, RF1_MATCH_CABLE_OK]
       - name: DO_FB
         addr: 20
-        bits: [ALD_V1, ALD_V2, ALD_V3, ALD_V4, ALD_V5, ALD_V6,
-               MFC_UP_V1, MFC_UP_V2, MFC_UP_V3, MFC_UP_V4, MFC_UP_V5, MFC_UP_V6]
-      - { name: MFC_PV,        addr: 30, count: 6, scale: 0.1, unit: sccm }
-      - { name: MANOMETER_RAW, addr: 36, unit: mV, desc: "原始電壓，換算在 IPC" }
+        bits: [ALD_V1, ALD_V2, ALD_V3, ALD_V4, ALD_V5, ALD_V6, ALD_V7,
+               MFC_UP_V1, MFC_UP_V2, MFC_UP_V3, MFC_UP_V4, MFC_UP_V5, MFC_UP_V6, MFC_UP_V7, MFC_UP_V8]
+      - { name: MFC_PV,        addr: 30, count: 8, scale: 0.01, unit: "%FS",
+          desc: "Bronkhorst EL-FLOW F-201CB ×7 + EL-Press P-602CV ×1（通道 8，壓力）；換成 sccm / psi 在 IPC（config 每台滿刻度）" }
+      - { name: MANOMETER_RAW, addr: 38, unit: mV, desc: "Barocel 原始電壓（1000 Torr FS），換算在 IPC" }
       - { name: ALD_CYCLE_NOW, addr: 40 }
       - { name: ALD_STEP_NOW,  addr: 41 }
+      - { name: WAVE_SEQ,      addr: 50, desc: "壓力波形緩衝序號，每完成一個 cycle +1（波形本體走另外的區塊讀取，TODO）" }
     holding:
       - name: DO_CMD
         addr: 10
-        bits: [ALD_V1, ALD_V2, ALD_V3, ALD_V4, ALD_V5, ALD_V6,
-               MFC_UP_V1, MFC_UP_V2, MFC_UP_V3, MFC_UP_V4, MFC_UP_V5, MFC_UP_V6]
-      - { name: MFC_SP,         addr: 20, count: 6, scale: 0.1, unit: sccm, min: 0, max: 1000 }
-      - { name: ALD_CYCLES,     addr: 100, min: 1, max: 60000 }
-      - { name: ALD_STEP_COUNT, addr: 101, min: 1, max: 16 }
-      - { name: ALD_STEP_VALVES, addr: 110, count: 16, desc: "每步要開的 ALD 閥位元（bit0 = ALD_V1）" }
+        bits: [ALD_V1, ALD_V2, ALD_V3, ALD_V4, ALD_V5, ALD_V6, ALD_V7,
+               MFC_UP_V1, MFC_UP_V2, MFC_UP_V3, MFC_UP_V4, MFC_UP_V5, MFC_UP_V6, MFC_UP_V7, MFC_UP_V8]
+      - { name: MFC_SP,          addr: 20, count: 8, scale: 0.01, unit: "%FS", min: 0, max: 100, desc: "0–100 % 滿刻度 = 0–5 V" }
+      - { name: ALD_CYCLES,      addr: 100, min: 1, max: 60000 }
+      - { name: ALD_STEP_COUNT,  addr: 101, min: 1, max: 16 }
+      - { name: PURGE_VALVES,    addr: 102, desc: "安全狀態下保持開啟的 ALD 閥（bit0 = ALD_V1 … bit6 = ALD_V7），例如 N2 purge。TODO 依管路" }
+      - { name: ALD_STEP_VALVES, addr: 110, count: 16, desc: "每步要開的 ALD 閥位元（bit0 = ALD_V1 … bit6 = ALD_V7）" }
       - { name: ALD_STEP_MS,     addr: 130, count: 16, unit: ms, min: 1, max: 60000 }
 
   # ------------------------------------------------------------------
-  board2_heater:
-    slave_id: 2
-    port: COM2
-    desc: 加熱器與熱電偶（12 組，板內 PID）
-    heaters: &heaters [LID_CONE, CHAMBER_LID, CHAMBER_WALL, SUSCEPTOR_UP, SUSCEPTOR_LOW,
-                       AMPOULE1, AMPOULE2, GASLINE1, GASLINE2, FORELINE, SPARE1, SPARE2]
+  heater:
+    slot: 2
+    board_type: HEATER
+    prefix: HEAT
+    desc: 加熱器與 K 型熱電偶（16 組，板內 PID；2026-11-11 新設計全部改 K type）
+    heaters: &heaters [PRECURSOR1, PRECURSOR2, PRECURSOR3, PRECURSOR4, PRECURSOR5, BUBBLER,
+                       CHAMBER_UPPER, CHAMBER_LOWER, DELIVERY, PRECURSOR_MODULE, FIVE_WAY, MAIN_VALVE,
+                       CHUCK1, CHUCK2, SPARE1, SPARE2]
     input:
       - name: DI
         addr: 10
-        bits: [OT_LID_CONE, OT_CHAMBER_LID, OT_CHAMBER_WALL]
+        bits: [OT_CHAMBER, OT_PRECURSOR, OT_DELIVERY, OT_CHUCK]
       - name: DO_FB
         addr: 20
         bits: *heaters
-      - { name: TC_TEMP, addr: 30, count: 12, type: i16, scale: 0.1, unit: degC }
-      - { name: HEATER_DUTY, addr: 50, count: 12, scale: 0.1, unit: "%" }
+      - { name: TC_TEMP,     addr: 30, count: 16, type: i16, scale: 0.1, unit: degC, desc: "-3276.8 = 熱電偶斷線 / 讀不到" }
+      - { name: HEATER_DUTY, addr: 50, count: 16, scale: 0.1, unit: "%" }
     holding:
       - name: HEATER_ENABLE
         addr: 10
         bits: *heaters
-      - { name: HEATER_SP,   addr: 20, count: 12, scale: 0.1, unit: degC,     min: 0, max: 300, desc: "TODO 各組上限" }
-      - { name: HEATER_RAMP, addr: 40, count: 12, scale: 0.1, unit: degC/min, min: 0, max: 50 }
-      - { name: PID_KP, addr: 100, count: 12, scale: 0.01 }
-      - { name: PID_KI, addr: 120, count: 12, scale: 0.001 }
-      - { name: PID_KD, addr: 140, count: 12, scale: 0.01 }
+      - { name: HEATER_SP,   addr: 20, count: 16, scale: 0.1, unit: degC,     min: 0, max: 650, desc: "超過該組 HEATER_LIMIT 就不加熱" }
+      - { name: HEATER_RAMP, addr: 40, count: 16, scale: 0.1, unit: degC/min, min: 0, max: 50 }
+      - { name: HOLD_SP,     addr: 60, count: 16, scale: 0.1, unit: degC,     min: 0, max: 650,
+          desc: "安全狀態時的保溫溫度（避免前驅物在管路冷凝），0 = 安全狀態關閉該組。TODO 依製程" }
+      - { name: HEATER_LIMIT, addr: 80, count: 16, scale: 0.1, unit: degC, min: 0, max: 650,
+          desc: "各組溫度上限（config 寫入）：前驅物 200、main valve 250、其他 300~350、Chuck 600；0 = 該組不准加熱" }
+      - { name: PID_KP, addr: 100, count: 16, scale: 0.01,  default: 8.0,  desc: "預設值只是起點，實機要整定（config 覆寫）" }
+      - { name: PID_KI, addr: 120, count: 16, scale: 0.001, default: 0.05 }
+      - { name: PID_KD, addr: 140, count: 16, scale: 0.01,  default: 0 }
 
   # ------------------------------------------------------------------
-  board3_vacuum:
-    slave_id: 3
-    port: COM2
-    desc: 壓力 / 真空、閥件、泵（板內互鎖）
-    valves: &valves [TURBO_GV, TURBO_ROUGH, CHAMBER_ROUGH, CHAMBER_VENT, LOADLOCK_VENT,
-                     LOADLOCK_ROUGH, SLIT_OPEN, SLIT_CLOSE, DRYPUMP_ON, TURBO_ON]
+  vacuum:
+    slot: 3
+    board_type: VACUUM
+    prefix: VAC
+    desc: PM 壓力 / 真空、閥件、泵（板內互鎖）。Loadlock 的閥、Slit valve 由 SLK 模組控制
+    valves: &valves [TURBO_GV, TURBO_ROUGH, CHAMBER_ROUGH, CHAMBER_VENT, DRYPUMP_ON, TURBO_ON]
     input:
       - name: DI
         addr: 10
-        bits: [CHAMBER_LID_CLOSED, LID_COVER_CLOSED, LOADLOCK_LID_CLOSED,
-               TURBO_GV_OPENED, TURBO_GV_CLOSED, SLIT_OPENED, SLIT_CLOSED,
-               INDEXER_UP, INDEXER_DOWN, DRYPUMP_RUNNING, DRYPUMP_ALARM,
+        bits: [CHAMBER_LID_CLOSED, LID_COVER_CLOSED,
+               TURBO_GV_OPENED, TURBO_GV_CLOSED, DRYPUMP_RUNNING, DRYPUMP_ALARM,
                TURBO_AT_SPEED, TURBO_ALARM]
       - name: DO_FB
         addr: 20
         bits: *valves
       - name: DO_BLOCKED
         addr: 21
-        desc: "IPC 有下命令但被板內互鎖擋下的閥"
+        desc: "有下命令但被板內互鎖擋下的閥"
         bits: *valves
       - { name: AI_RAW, addr: 30, count: 8, unit: mV,
-          desc: "0 CDA, 1 冷卻水流量, 2 Ion gauge, 3 Chamber convectron, 4 Foreline convectron, 5 Loadlock convectron, 6-7 Spare" }
+          desc: "0 CDA, 1 冷卻水流量, 2 Ion gauge（WRG200）, 3 Chamber convectron（APGX-H）, 4 Foreline convectron, 5 預留 LL 壓力計擴充, 6-7 Spare" }
     holding:
       - name: DO_CMD
         addr: 10
         bits: *valves
 
   # ------------------------------------------------------------------
-  board4_motion:
-    slave_id: 4
-    port: COM2
-    desc: 馬達、升降、感測器（3 軸：0 Susceptor, 1 Wafer lift, 2 Loadlock）
+  motion:
+    slot: 4
+    board_type: MOTION
+    prefix: MOT
+    desc: PM 內升降（軸 0 Heater module、軸 1 預留；Wafer lift 為氣缸）。Loadlock 手臂 / Indexer 由 SLK 模組控制
     input:
       - name: DI
         addr: 10
-        bits: [SUSCEPTOR_HOME, SUSCEPTOR_PROCESS, WAFER_LIFT_HOME, WAFER_LIFT_UP,
-               LOADLOCK_HOME, WAFER_PRESENT]
+        bits: [HEATER_DOWN, HEATER_PROCESS, WAFER_LIFT_DOWN, WAFER_LIFT_UP, WAFER_PRESENT]
       - name: DO_FB
         addr: 20
-        bits: [WAFER_LIFT_UP, WAFER_LIFT_DOWN, INDEXER_UP, INDEXER_DOWN]
-      - { name: AXIS_POS,   addr: 30, count: 3, type: i32, unit: step }
-      - { name: AXIS_STATE, addr: 40, count: 3, desc: "0 idle, 1 moving, 2 homing, 3 error" }
+        bits: [WAFER_LIFT_UP, WAFER_LIFT_DOWN]
+      - { name: AXIS_POS,   addr: 30, count: 2, type: i32, unit: step }
+      - { name: AXIS_STATE, addr: 40, count: 2, desc: "0 idle, 1 moving, 2 homing, 3 error" }
     holding:
       - name: DO_CMD
         addr: 10
-        bits: [WAFER_LIFT_UP, WAFER_LIFT_DOWN, INDEXER_UP, INDEXER_DOWN]
-      - { name: AXIS_TARGET, addr: 20, count: 3, type: i32, unit: step }
-      - { name: AXIS_SPEED,  addr: 30, count: 3, unit: step/s, min: 1, max: 20000 }
+        bits: [WAFER_LIFT_UP, WAFER_LIFT_DOWN]
+      - { name: AXIS_TARGET, addr: 20, count: 2, type: i32, unit: step }
+      - { name: AXIS_SPEED,  addr: 30, count: 2, unit: step/s, min: 1, max: 20000, default: 1000 }
       - name: AXIS_CMD
         addr: 40
-        count: 3
+        count: 2
         values: { NONE: 0, MOVE: 1, HOME: 2, STOP: 3 }

@@ -1,0 +1,29 @@
+{
+  "_comment": "模擬器用的短配方（ald-ecat --sim --speed 10）：抽真空 → Chamber 加熱 120 °C → Ar 20 sccm → ALD 20 cycles → 回填。正式機請勿直接使用。",
+  "name": "模擬快速測試",
+  "pumpDown": true,
+  "crossoverTorr": 0.5,
+  "baseTorr": 0.005,
+  "pumpTimeoutS": 120,
+  "turboSpinUpTimeoutS": 60,
+  "heaterSpDegC": [ 0, 0, 0, 0, 0, 0, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0 ],
+  "heatToleranceC": 5,
+  "heatSettleS": 2,
+  "heatTimeoutS": 120,
+  "mfc": [ 0, 20, 0, 0, 0, 0, 0, 0 ],
+  "gasStabilizeS": 1,
+  "ald": {
+    "name": "模擬快速測試",
+    "cycles": 20,
+    "steps": [
+      { "label": "A pulse", "valveMask": 1, "durationMs": 20 },
+      { "label": "Purge",   "valveMask": 2, "durationMs": 100 },
+      { "label": "B pulse", "valveMask": 4, "durationMs": 20 },
+      { "label": "Purge",   "valveMask": 2, "durationMs": 100 }
+    ]
+  },
+  "ventAfter": true,
+  "ventTargetTorr": 740,
+  "ventTimeoutS": 120,
+  "turboSpinDownTimeoutS": 120
+}

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=ALD Chamber
+Comment=ALD 人機（自動啟動）
+Exec=/opt/ald/bin/ald-hmi.sh
+X-GNOME-Autostart-enabled=true
+Terminal=false

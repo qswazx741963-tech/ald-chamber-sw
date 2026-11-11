@@ -3,23 +3,89 @@ namespace Ald.Comm.Generated;
 
 public static class RegisterMap
 {
-    public const ushort MapVersion = 1;
+    public const ushort MapVersion = 2;
+    public const ushort SlotStride = 200;
+    public const int MaxSlots = 9;
+    /// <summary>HR 開機預設值（絕對位址, 原始值），與主控板 / 主站程式同一份</summary>
+    public static readonly (ushort Addr, ushort Value)[] HoldingDefaults =
+    {
+        (2, 1000), // main.WATCHDOG_MS
+        (150, 50), // main.IL_SV_DP_MAX_MTORR
+        (151, 1), // main.IL_LL_Z_ENABLE
+        (152, 500), // main.IL_LL_STALE_MS
+        (154, 5894), // main.IL_ARM_SAFE_POS
+        (156, 1000), // main.IL_SV_BELOW_MTORR
+        (157, 10000), // main.IL_LL_JUMP_MTORR
+        (160, 2), // main.PM_GAUGE_MODEL
+        (161, 633), // main.PM_GAUGE_AI_ADDR
+        (162, 15), // main.PM_GAUGE_FS_MTORR
+        (163, 16960), // main.PM_GAUGE_FS_MTORR
+        (202, 1000), // process.WATCHDOG_MS
+        (402, 1000), // heater.WATCHDOG_MS
+        (500, 800), // heater.PID_KP
+        (501, 800), // heater.PID_KP
+        (502, 800), // heater.PID_KP
+        (503, 800), // heater.PID_KP
+        (504, 800), // heater.PID_KP
+        (505, 800), // heater.PID_KP
+        (506, 800), // heater.PID_KP
+        (507, 800), // heater.PID_KP
+        (508, 800), // heater.PID_KP
+        (509, 800), // heater.PID_KP
+        (510, 800), // heater.PID_KP
+        (511, 800), // heater.PID_KP
+        (512, 800), // heater.PID_KP
+        (513, 800), // heater.PID_KP
+        (514, 800), // heater.PID_KP
+        (515, 800), // heater.PID_KP
+        (520, 50), // heater.PID_KI
+        (521, 50), // heater.PID_KI
+        (522, 50), // heater.PID_KI
+        (523, 50), // heater.PID_KI
+        (524, 50), // heater.PID_KI
+        (525, 50), // heater.PID_KI
+        (526, 50), // heater.PID_KI
+        (527, 50), // heater.PID_KI
+        (528, 50), // heater.PID_KI
+        (529, 50), // heater.PID_KI
+        (530, 50), // heater.PID_KI
+        (531, 50), // heater.PID_KI
+        (532, 50), // heater.PID_KI
+        (533, 50), // heater.PID_KI
+        (534, 50), // heater.PID_KI
+        (535, 50), // heater.PID_KI
+        (602, 1000), // vacuum.WATCHDOG_MS
+        (802, 1000), // motion.WATCHDOG_MS
+        (830, 1000), // motion.AXIS_SPEED
+        (831, 1000), // motion.AXIS_SPEED
+    };
 }
 
-/// <summary>製程控制（ALD 閥、MFC、腔體壓力計）</summary>
-public static class Board1Process
+public enum BoardType : ushort
 {
-    public const byte SlaveId = 1;
-    public const string DefaultPort = "COM1";
+    Main = 0,
+    Process = 1,
+    Heater = 2,
+    Vacuum = 3,
+    Motion = 4,
+}
 
-    /// <summary>Input Register (FC04)</summary>
+/// <summary>主控板（系統狀態、跨板互鎖、Loadlock / Throttle valve / RF 閘道）（槽 0，位址 = 0 + 區內位址）</summary>
+public static class MainBoard
+{
+    public const int Slot = 0;
+    public const BoardType Type = BoardType.Main;
+    public const ushort Base = 0;
+
+    /// <summary>Input Register (FC04)，以下皆為絕對位址</summary>
     public static class Input
     {
-        public const ushort Size = 42;
-        public const ushort BoardId = 0;
+        public const ushort Size = 127;
+        /// <summary>板型（見 board_types），與槽位設定不符時主控板拒用該槽</summary>
+        public const ushort BoardType = 0;
         /// <summary>例如 0x0102 = v1.2</summary>
         public const ushort FwVersion = 1;
-        /// <summary>必須等於 map_version，否則 IPC 拒絕連線</summary>
+        /// <summary>必須等於 map_version，否則拒絕連線</summary>
         public const ushort MapVersion = 2;
         public const ushort Status = 3;
         [System.Flags] public enum StatusBits : ushort
@@ -30,6 +96,7 @@ public static class Board1Process
             WatchdogTripped = 1 << 3,
             ParamRejected = 1 << 4,
             LocalInterlock = 1 << 5,
+            Online = 1 << 6,
         }
         /// <summary>各板自訂警報位元（TODO 定義）</summary>
         public const ushort AlarmBits = 4;
@@ -38,43 +105,171 @@ public static class Board1Process
         /// <summary>板內主迴圈計數，確認板子沒當機</summary>
         public const ushort BoardCounter = 6;
         public const ushort LastError = 7;
+        /// <summary>背板腳位讀到的槽號</summary>
+        public const ushort SlotId = 8;
         public const ushort Di = 10;
         [System.Flags] public enum DiBits : ushort
         {
-            Rf1PowerCableOk = 1 << 0,
-            Rf1MatchCableOk = 1 << 1,
+            SafeLineOk = 1 << 0,
+            EmoOk = 1 << 1,
+            CdaOk = 1 << 2,
+            TransferPermitOut = 1 << 3,
         }
-        public const ushort DoFb = 20;
-        [System.Flags] public enum DoFbBits : ushort
+        /// <summary>bit n = 槽 n 在線且板型/版本正確</summary>
+        public const ushort SlotOnline = 11;
+        public const ushort SysState = 12;
+        public enum SysStateValues : ushort
         {
-            AldV1 = 1 << 0,
-            AldV2 = 1 << 1,
-            AldV3 = 1 << 2,
-            AldV4 = 1 << 3,
-            AldV5 = 1 << 4,
-            AldV6 = 1 << 5,
-            MfcUpV1 = 1 << 6,
-            MfcUpV2 = 1 << 7,
-            MfcUpV3 = 1 << 8,
-            MfcUpV4 = 1 << 9,
-            MfcUpV5 = 1 << 10,
-            MfcUpV6 = 1 << 11,
+            Boot = 0,
+            Safe = 1,
+            Idle = 2,
+            Process = 3,
+            Transfer = 4,
+            Alarm = 5,
         }
-        /// <summary>[sccm]</summary>
-        public const ushort MfcPv = 30;
-        public const ushort MfcPvCount = 6;
-        public const double MfcPvScale = 0.1;
-        /// <summary>原始電壓，換算在 IPC [mV]</summary>
-        public const ushort ManometerRaw = 36;
-        public const ushort AldCycleNow = 40;
-        public const ushort AldStepNow = 41;
+        /// <summary>最近一次被主控板互鎖擋下的原因（可能多個同時成立）</summary>
+        public const ushort IlDeny = 13;
+        [System.Flags] public enum IlDenyBits : ushort
+        {
+            SafeActive = 1 << 0,
+            SlotOffline = 1 << 1,
+            LlUnknown = 1 << 2,
+            LlAlarm = 1 << 3,
+            SvNotClosed = 1 << 4,
+            SvNotOpen = 1 << 5,
+            DpHigh = 1 << 6,
+            PressureUnknown = 1 << 7,
+            PmBusy = 1 << 8,
+            PmVenting = 1 << 9,
+            ArmInSvPath = 1 << 10,
+            ZNotDown = 1 << 11,
+            LlLidOpen = 1 << 12,
+            LlValveConflict = 1 << 13,
+            PmNotAtTransfer = 1 << 14,
+            LlBusy = 1 << 15,
+        }
+        /// <summary>最近一次被擋下的動作（IL_ACT_*，見 docs/interlocks.md）</summary>
+        public const ushort IlDenyAction = 14;
+        /// <summary>IL_DENY 的延伸（16 個 bit 不夠用）</summary>
+        public const ushort IlDeny2 = 15;
+        [System.Flags] public enum IlDeny2Bits : ushort
+        {
+            TurboGvOpen = 1 << 0,
+            ArmMoving = 1 << 1,
+            HeaterNotDown = 1 << 2,
+        }
+        /// <summary>燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈）</summary>
+        public const ushort DoOut = 16;
+        [System.Flags] public enum DoOutBits : ushort
+        {
+            Buzzer = 1 << 0,
+            TowerRed = 1 << 1,
+            TowerYellow = 1 << 2,
+            TowerGreen = 1 << 3,
+            TowerBlue = 1 << 4,
+        }
+        /// <summary>[Torr]</summary>
+        public const ushort TvPressure = 30;
+        public const double TvPressureScale = 0.001;
+        /// <summary>[%]</summary>
+        public const ushort TvPosition = 31;
+        public const double TvPositionScale = 0.1;
+        public const ushort TvStatus = 32;
+        /// <summary>[W]</summary>
+        public const ushort RfFwdW = 40;
+        public const ushort RfFwdWCount = 2;
+        /// <summary>[W]</summary>
+        public const ushort RfRefW = 42;
+        public const ushort RfRefWCount = 2;
+        public const ushort RfStatus = 44;
+        public const ushort RfStatusCount = 2;
+        public const ushort LlLink = 100;
+        [System.Flags] public enum LlLinkBits : ushort
+        {
+            Online = 1 << 0,
+            TlmFresh = 1 << 1,
+            OnlineMode = 1 << 2,
+            IlBypass = 1 << 3,
+            PortLocked = 1 << 4,
+        }
+        /// <summary>腔體狀態 0 IDLE,1 PUMPING,2 VAC_READY,3 SV_OPENING,4 TRANSFER_VAC,5 SV_CLOSING,6 VENTING,7 ATM_READY,99 ERROR</summary>
+        public const ushort LlChm = 101;
+        /// <summary>手臂狀態 0 IDLE,1 HOMING,2 READY,3 MOVING,4 AT_POS,5 Z_RAISING,6 Z_UP,7 Z_LOWERING,99 ERROR</summary>
+        public const ushort LlArm = 102;
+        /// <summary>Slit valve 0 UNKNOWN,1 CLOSED,2 OPENING,3 OPEN,4 CLOSING,5 ERROR</summary>
+        public const ushort LlSv = 103;
+        /// <summary>Z 軸 0 UNKNOWN,1 DOWN,2 RAISING,3 UP,4 LOWERING</summary>
+        public const ushort LlZ = 104;
+        /// <summary>Wafer 位置 0 UNKNOWN,1 AT_LL,2 ON_ARM,3 AT_PM</summary>
+        public const ushort LlWaf = 105;
+        /// <summary>序列步 0-22，0 = 沒在跑</summary>
+        public const ushort LlSeq = 106;
+        /// <summary>PRES_SUSPECT = LL 壓力從 > IL_LL_JUMP_MTORR 直接跳到「低於下限」或開機後還沒看過有效讀值，疑似壓力計斷線 → 不採信</summary>
+        public const ushort LlFlags = 107;
+        [System.Flags] public enum LlFlagsBits : ushort
+        {
+            WaferPresent = 1 << 0,
+            RoughOpen = 1 << 1,
+            VentOpen = 1 << 2,
+            LidOpen = 1 << 3,
+            PresUnderRange = 1 << 4,
+            PresSuspect = 1 << 5,
+        }
+        /// <summary>SLK 壓力計（0~1000 Torr）；-1 = 低於量測下限 1 Torr [mTorr]</summary>
+        public const ushort LlPres = 108;
+        /// <summary>SLK 警報碼，0 = 正常</summary>
+        public const ushort LlAlm = 110;
+        /// <summary>手臂位置（36.84 step/mm） [step]</summary>
+        public const ushort LlPos = 111;
+        /// <summary>[step/s]</summary>
+        public const ushort LlSpd = 113;
+        /// <summary>最後一筆 TLM 距今時間 [ms]</summary>
+        public const ushort LlTlmAgeMs = 114;
+        public const ushort LlCmdResult = 115;
+        public enum LlCmdResultValues : ushort
+        {
+            None = 0,
+            Sent = 1,
+            Denied = 2,
+            Done = 3,
+            Error = 4,
+            Busy = 5,
+        }
+        /// <summary>主控板處理完的 LL_CMD_SEQ</summary>
+        public const ushort LlCmdAck = 116;
+        /// <summary>最後一個 SLK 事件代碼（見 docs/loadlock-integration.md）</summary>
+        public const ushort LlLastEvt = 117;
+        /// <summary>PM 壓力；狀態不是 OK / UNDER_RANGE 時為 2147483647 [mTorr]</summary>
+        public const ushort PmPresMtorr = 120;
+        public const ushort PmGaugeStatus = 122;
+        public enum PmGaugeStatusValues : ushort
+        {
+            Ok = 0,
+            UnderRange = 1,
+            OverRange = 2,
+            Fault = 3,
+            Offline = 4,
+            NotConfigured = 5,
+        }
+        /// <summary>LL 擴充壓力計（LL_GAUGE_MODEL ≠ NONE 時）；未知為 2147483647 [mTorr]</summary>
+        public const ushort LlGaugePresMtorr = 124;
+        public const ushort LlGaugeStatus = 126;
+        public enum LlGaugeStatusValues : ushort
+        {
+            Ok = 0,
+            UnderRange = 1,
+            OverRange = 2,
+            Fault = 3,
+            Offline = 4,
+            NotConfigured = 5,
+        }
     }
 
-    /// <summary>Holding Register (FC03/FC16)</summary>
+    /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
     public static class Holding
     {
-        public const ushort Size = 146;
-        /// <summary>IPC 每次輪詢 +1</summary>
+        public const ushort Size = 169;
+        /// <summary>上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）</summary>
         public const ushort Heartbeat = 0;
         public const ushort Command = 1;
         public enum CommandValues : ushort
@@ -89,7 +284,237 @@ public static class Board1Process
         public const ushort WatchdogMs = 2;
         public const double WatchdogMsMin = 200;
         public const double WatchdogMsMax = 10000;
+        /// <summary>燈塔 / 蜂鳴器命令（IPC 決定燈號與閃爍）</summary>
         public const ushort DoCmd = 10;
+        [System.Flags] public enum DoCmdBits : ushort
+        {
+            Buzzer = 1 << 0,
+            TowerRed = 1 << 1,
+            TowerYellow = 1 << 2,
+            TowerGreen = 1 << 3,
+            TowerBlue = 1 << 4,
+        }
+        public const ushort TvMode = 20;
+        public enum TvModeValues : ushort
+        {
+            Open = 0,
+            Close = 1,
+            Position = 2,
+            Pressure = 3,
+        }
+        /// <summary>[%]</summary>
+        public const ushort TvSpPosition = 21;
+        public const double TvSpPositionScale = 0.1;
+        public const double TvSpPositionMin = 0;
+        public const double TvSpPositionMax = 100;
+        /// <summary>[Torr]</summary>
+        public const ushort TvSpPressure = 22;
+        public const double TvSpPressureScale = 0.001;
+        public const double TvSpPressureMin = 0;
+        public const double TvSpPressureMax = 10;
+        public const ushort RfOn = 30;
+        [System.Flags] public enum RfOnBits : ushort
+        {
+            Rf1 = 1 << 0,
+            Rf2 = 1 << 1,
+        }
+        /// <summary>預計鎧泰科技 600 W / 300 W；上限依實際機型 [W]</summary>
+        public const ushort RfSpW = 31;
+        public const ushort RfSpWCount = 2;
+        public const double RfSpWMin = 0;
+        public const double RfSpWMax = 600;
+        public const ushort LlCmd = 100;
+        public enum LlCmdValues : ushort
+        {
+            None = 0,
+            Status = 1,
+            Estop = 2,
+            Reset = 3,
+            Recover = 4,
+            Pump = 10,
+            Vent = 11,
+            Load = 12,
+            Unload = 13,
+            Abort = 14,
+            XferDone = 15,
+            SvOpen = 20,
+            SvClose = 21,
+            RoughOn = 22,
+            RoughOff = 23,
+            VentOn = 24,
+            VentOff = 25,
+            ArmHome = 30,
+            ArmAhome = 31,
+            ArmLl = 32,
+            ArmPm = 33,
+            ArmGoto = 34,
+            ZUp = 35,
+            ZDown = 36,
+        }
+        /// <summary>ARM_GOTO 目標步數</summary>
+        public const ushort LlCmdArg = 101;
+        /// <summary>命令序號，改變才會執行一次（主控板開機時先記下目前值，不會執行舊命令）</summary>
+        public const ushort LlCmdSeq = 103;
+        /// <summary>開 SV 前 Loadlock 與 PM 壓差上限，預設 50（config 可改） [mTorr]</summary>
+        public const ushort IlSvDpMaxMtorr = 150;
+        public const double IlSvDpMaxMtorrMin = 1;
+        public const double IlSvDpMaxMtorrMax = 10000;
+        /// <summary>SLK Z 軸是否啟用；之後取消 Z 軸（改用 PM Wafer lift）時設 DISABLED，Z 相關互鎖就不檢查</summary>
+        public const ushort IlLlZEnable = 151;
+        public enum IlLlZEnableValues : ushort
+        {
+            Disabled = 0,
+            Enabled = 1,
+        }
+        /// <summary>Loadlock TLM 超過此時間沒更新 → 視為狀態不明，預設 500 [ms]</summary>
+        public const ushort IlLlStaleMs = 152;
+        public const double IlLlStaleMsMin = 100;
+        public const double IlLlStaleMsMax = 5000;
+        /// <summary>手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm） [step]</summary>
+        public const ushort IlArmSafePos = 153;
+        /// <summary>開 SV 的壓力條件：BELOW = LL 與 PM 都低於 IL_SV_BELOW_MTORR（預設，SLK 壓力計低於下限算低於 1 Torr）；DIFF = 壓差 ≤ IL_SV_DP_MAX_MTORR（LL 需有 mTorr 級壓力計）</summary>
+        public const ushort IlSvMode = 155;
+        public enum IlSvModeValues : ushort
+        {
+            Below = 0,
+            Diff = 1,
+        }
+        /// <summary>BELOW 模式門檻，預設 1000（1 Torr） [mTorr]</summary>
+        public const ushort IlSvBelowMtorr = 156;
+        public const double IlSvBelowMtorrMin = 1;
+        public const double IlSvBelowMtorrMax = 10000;
+        /// <summary>LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr） [mTorr]</summary>
+        public const ushort IlLlJumpMtorr = 157;
+        public const double IlLlJumpMtorrMin = 1000;
+        public const double IlLlJumpMtorrMax = 60000;
+        /// <summary>換算公式見 docs/gauges.md</summary>
+        public const ushort PmGaugeModel = 160;
+        public enum PmGaugeModelValues : ushort
+        {
+            None = 0,
+            Linear = 1,
+            ApgxH = 2,
+            Wrg200X = 3,
+            Wrg200G = 4,
+            Wrg200Q = 5,
+        }
+        /// <summary>壓力計電壓（mV）所在的 IR 絕對位址，預設 633 = 槽 3 AI_RAW[3] Chamber APGX-H</summary>
+        public const ushort PmGaugeAiAddr = 161;
+        /// <summary>LINEAR（電容式 0~10 V）滿刻度，例 1000 Torr = 1000000 [mTorr]</summary>
+        public const ushort PmGaugeFsMtorr = 162;
+        /// <summary>NONE = 用 SLK 壓力；設了型號就改用這顆判斷 LL 壓力（不受 SLK 1 Torr 下限與斷線疑慮限制）</summary>
+        public const ushort LlGaugeModel = 165;
+        public enum LlGaugeModelValues : ushort
+        {
+            None = 0,
+            Linear = 1,
+            ApgxH = 2,
+            Wrg200X = 3,
+            Wrg200G = 4,
+            Wrg200Q = 5,
+        }
+        /// <summary>LL 壓力計電壓（mV）所在的 IR 絕對位址，例 635 = 槽 3 AI_RAW[5]</summary>
+        public const ushort LlGaugeAiAddr = 166;
+        /// <summary>只有 LINEAR 用 [mTorr]</summary>
+        public const ushort LlGaugeFsMtorr = 167;
+    }
+
+}
+
+/// <summary>製程控制（ALD 閥 ×7、MFC 上游閥 ×8、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）（槽 1，位址 = 200 + 區內位址）</summary>
+public static class ProcessBoard
+{
+    public const int Slot = 1;
+    public const BoardType Type = BoardType.Process;
+    public const ushort Base = 200;
+
+    /// <summary>Input Register (FC04)，以下皆為絕對位址</summary>
+    public static class Input
+    {
+        public const ushort Size = 51;
+        /// <summary>板型（見 board_types），與槽位設定不符時主控板拒用該槽</summary>
+        public const ushort BoardType = 200;
+        /// <summary>例如 0x0102 = v1.2</summary>
+        public const ushort FwVersion = 201;
+        /// <summary>必須等於 map_version，否則拒絕連線</summary>
+        public const ushort MapVersion = 202;
+        public const ushort Status = 203;
+        [System.Flags] public enum StatusBits : ushort
+        {
+            Ready = 1 << 0,
+            Running = 1 << 1,
+            SafeState = 1 << 2,
+            WatchdogTripped = 1 << 3,
+            ParamRejected = 1 << 4,
+            LocalInterlock = 1 << 5,
+            Online = 1 << 6,
+        }
+        /// <summary>各板自訂警報位元（TODO 定義）</summary>
+        public const ushort AlarmBits = 204;
+        /// <summary>回傳最後收到的 HEARTBEAT</summary>
+        public const ushort HeartbeatEcho = 205;
+        /// <summary>板內主迴圈計數，確認板子沒當機</summary>
+        public const ushort BoardCounter = 206;
+        public const ushort LastError = 207;
+        /// <summary>背板腳位讀到的槽號</summary>
+        public const ushort SlotId = 208;
+        public const ushort Di = 210;
+        [System.Flags] public enum DiBits : ushort
+        {
+            Rf1PowerCableOk = 1 << 0,
+            Rf1MatchCableOk = 1 << 1,
+        }
+        public const ushort DoFb = 220;
+        [System.Flags] public enum DoFbBits : ushort
+        {
+            AldV1 = 1 << 0,
+            AldV2 = 1 << 1,
+            AldV3 = 1 << 2,
+            AldV4 = 1 << 3,
+            AldV5 = 1 << 4,
+            AldV6 = 1 << 5,
+            AldV7 = 1 << 6,
+            MfcUpV1 = 1 << 7,
+            MfcUpV2 = 1 << 8,
+            MfcUpV3 = 1 << 9,
+            MfcUpV4 = 1 << 10,
+            MfcUpV5 = 1 << 11,
+            MfcUpV6 = 1 << 12,
+            MfcUpV7 = 1 << 13,
+            MfcUpV8 = 1 << 14,
+        }
+        /// <summary>Bronkhorst EL-FLOW F-201CB ×7 + EL-Press P-602CV ×1（通道 8，壓力）；換成 sccm / psi 在 IPC（config 每台滿刻度） [%FS]</summary>
+        public const ushort MfcPv = 230;
+        public const ushort MfcPvCount = 8;
+        public const double MfcPvScale = 0.01;
+        /// <summary>Barocel 原始電壓（1000 Torr FS），換算在 IPC [mV]</summary>
+        public const ushort ManometerRaw = 238;
+        public const ushort AldCycleNow = 240;
+        public const ushort AldStepNow = 241;
+        /// <summary>壓力波形緩衝序號，每完成一個 cycle +1（波形本體走另外的區塊讀取，TODO）</summary>
+        public const ushort WaveSeq = 250;
+    }
+
+    /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
+    public static class Holding
+    {
+        public const ushort Size = 146;
+        /// <summary>上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）</summary>
+        public const ushort Heartbeat = 200;
+        public const ushort Command = 201;
+        public enum CommandValues : ushort
+        {
+            None = 0,
+            Start = 1,
+            Stop = 2,
+            ResetAlarm = 3,
+            EnterSafe = 4,
+        }
+        /// <summary>預設 1000，TODO 確認 [ms]</summary>
+        public const ushort WatchdogMs = 202;
+        public const double WatchdogMsMin = 200;
+        public const double WatchdogMsMax = 10000;
+        public const ushort DoCmd = 210;
         [System.Flags] public enum DoCmdBits : ushort
         {
             AldV1 = 1 << 0,
@@ -98,30 +523,35 @@ public static class Board1Process
             AldV4 = 1 << 3,
             AldV5 = 1 << 4,
             AldV6 = 1 << 5,
-            MfcUpV1 = 1 << 6,
-            MfcUpV2 = 1 << 7,
-            MfcUpV3 = 1 << 8,
-            MfcUpV4 = 1 << 9,
-            MfcUpV5 = 1 << 10,
-            MfcUpV6 = 1 << 11,
+            AldV7 = 1 << 6,
+            MfcUpV1 = 1 << 7,
+            MfcUpV2 = 1 << 8,
+            MfcUpV3 = 1 << 9,
+            MfcUpV4 = 1 << 10,
+            MfcUpV5 = 1 << 11,
+            MfcUpV6 = 1 << 12,
+            MfcUpV7 = 1 << 13,
+            MfcUpV8 = 1 << 14,
         }
-        /// <summary>[sccm]</summary>
-        public const ushort MfcSp = 20;
-        public const ushort MfcSpCount = 6;
-        public const double MfcSpScale = 0.1;
+        /// <summary>0–100 % 滿刻度 = 0–5 V [%FS]</summary>
+        public const ushort MfcSp = 220;
+        public const ushort MfcSpCount = 8;
+        public const double MfcSpScale = 0.01;
         public const double MfcSpMin = 0;
-        public const double MfcSpMax = 1000;
-        public const ushort AldCycles = 100;
+        public const double MfcSpMax = 100;
+        public const ushort AldCycles = 300;
         public const double AldCyclesMin = 1;
         public const double AldCyclesMax = 60000;
-        public const ushort AldStepCount = 101;
+        public const ushort AldStepCount = 301;
         public const double AldStepCountMin = 1;
         public const double AldStepCountMax = 16;
-        /// <summary>每步要開的 ALD 閥位元（bit0 = ALD_V1）</summary>
-        public const ushort AldStepValves = 110;
+        /// <summary>安全狀態下保持開啟的 ALD 閥（bit0 = ALD_V1 … bit6 = ALD_V7），例如 N2 purge。TODO 依管路</summary>
+        public const ushort PurgeValves = 302;
+        /// <summary>每步要開的 ALD 閥位元（bit0 = ALD_V1 … bit6 = ALD_V7）</summary>
+        public const ushort AldStepValves = 310;
         public const ushort AldStepValvesCount = 16;
         /// <summary>[ms]</summary>
-        public const ushort AldStepMs = 130;
+        public const ushort AldStepMs = 330;
         public const ushort AldStepMsCount = 16;
         public const double AldStepMsMin = 1;
         public const double AldStepMsMax = 60000;
@@ -129,22 +559,24 @@ public static class Board1Process
 
 }
 
-/// <summary>加熱器與熱電偶（12 組，板內 PID）</summary>
-public static class Board2Heater
+/// <summary>加熱器與 K 型熱電偶（16 組，板內 PID；2026-11-11 新設計全部改 K type）（槽 2，位址 = 400 + 區內位址）</summary>
+public static class HeaterBoard
 {
-    public const byte SlaveId = 2;
-    public const string DefaultPort = "COM2";
+    public const int Slot = 2;
+    public const BoardType Type = BoardType.Heater;
+    public const ushort Base = 400;
 
-    /// <summary>Input Register (FC04)</summary>
+    /// <summary>Input Register (FC04)，以下皆為絕對位址</summary>
     public static class Input
     {
-        public const ushort Size = 62;
-        public const ushort BoardId = 0;
+        public const ushort Size = 66;
+        /// <summary>板型（見 board_types），與槽位設定不符時主控板拒用該槽</summary>
+        public const ushort BoardType = 400;
         /// <summary>例如 0x0102 = v1.2</summary>
-        public const ushort FwVersion = 1;
-        /// <summary>必須等於 map_version，否則 IPC 拒絕連線</summary>
-        public const ushort MapVersion = 2;
-        public const ushort Status = 3;
+        public const ushort FwVersion = 401;
+        /// <summary>必須等於 map_version，否則拒絕連線</summary>
+        public const ushort MapVersion = 402;
+        public const ushort Status = 403;
         [System.Flags] public enum StatusBits : ushort
         {
             Ready = 1 << 0,
@@ -153,54 +585,62 @@ public static class Board2Heater
             WatchdogTripped = 1 << 3,
             ParamRejected = 1 << 4,
             LocalInterlock = 1 << 5,
+            Online = 1 << 6,
         }
         /// <summary>各板自訂警報位元（TODO 定義）</summary>
-        public const ushort AlarmBits = 4;
+        public const ushort AlarmBits = 404;
         /// <summary>回傳最後收到的 HEARTBEAT</summary>
-        public const ushort HeartbeatEcho = 5;
+        public const ushort HeartbeatEcho = 405;
         /// <summary>板內主迴圈計數，確認板子沒當機</summary>
-        public const ushort BoardCounter = 6;
-        public const ushort LastError = 7;
-        public const ushort Di = 10;
+        public const ushort BoardCounter = 406;
+        public const ushort LastError = 407;
+        /// <summary>背板腳位讀到的槽號</summary>
+        public const ushort SlotId = 408;
+        public const ushort Di = 410;
         [System.Flags] public enum DiBits : ushort
         {
-            OtLidCone = 1 << 0,
-            OtChamberLid = 1 << 1,
-            OtChamberWall = 1 << 2,
+            OtChamber = 1 << 0,
+            OtPrecursor = 1 << 1,
+            OtDelivery = 1 << 2,
+            OtChuck = 1 << 3,
         }
-        public const ushort DoFb = 20;
+        public const ushort DoFb = 420;
         [System.Flags] public enum DoFbBits : ushort
         {
-            LidCone = 1 << 0,
-            ChamberLid = 1 << 1,
-            ChamberWall = 1 << 2,
-            SusceptorUp = 1 << 3,
-            SusceptorLow = 1 << 4,
-            Ampoule1 = 1 << 5,
-            Ampoule2 = 1 << 6,
-            Gasline1 = 1 << 7,
-            Gasline2 = 1 << 8,
-            Foreline = 1 << 9,
-            Spare1 = 1 << 10,
-            Spare2 = 1 << 11,
+            Precursor1 = 1 << 0,
+            Precursor2 = 1 << 1,
+            Precursor3 = 1 << 2,
+            Precursor4 = 1 << 3,
+            Precursor5 = 1 << 4,
+            Bubbler = 1 << 5,
+            ChamberUpper = 1 << 6,
+            ChamberLower = 1 << 7,
+            Delivery = 1 << 8,
+            PrecursorModule = 1 << 9,
+            FiveWay = 1 << 10,
+            MainValve = 1 << 11,
+            Chuck1 = 1 << 12,
+            Chuck2 = 1 << 13,
+            Spare1 = 1 << 14,
+            Spare2 = 1 << 15,
         }
-        /// <summary>[degC]</summary>
-        public const ushort TcTemp = 30;
-        public const ushort TcTempCount = 12;
+        /// <summary>-3276.8 = 熱電偶斷線 / 讀不到 [degC]</summary>
+        public const ushort TcTemp = 430;
+        public const ushort TcTempCount = 16;
         public const double TcTempScale = 0.1;
         /// <summary>[%]</summary>
-        public const ushort HeaterDuty = 50;
-        public const ushort HeaterDutyCount = 12;
+        public const ushort HeaterDuty = 450;
+        public const ushort HeaterDutyCount = 16;
         public const double HeaterDutyScale = 0.1;
     }
 
-    /// <summary>Holding Register (FC03/FC16)</summary>
+    /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
     public static class Holding
     {
-        public const ushort Size = 152;
-        /// <summary>IPC 每次輪詢 +1</summary>
-        public const ushort Heartbeat = 0;
-        public const ushort Command = 1;
+        public const ushort Size = 156;
+        /// <summary>上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）</summary>
+        public const ushort Heartbeat = 400;
+        public const ushort Command = 401;
         public enum CommandValues : ushort
         {
             None = 0,
@@ -210,66 +650,85 @@ public static class Board2Heater
             EnterSafe = 4,
         }
         /// <summary>預設 1000，TODO 確認 [ms]</summary>
-        public const ushort WatchdogMs = 2;
+        public const ushort WatchdogMs = 402;
         public const double WatchdogMsMin = 200;
         public const double WatchdogMsMax = 10000;
-        public const ushort HeaterEnable = 10;
+        public const ushort HeaterEnable = 410;
         [System.Flags] public enum HeaterEnableBits : ushort
         {
-            LidCone = 1 << 0,
-            ChamberLid = 1 << 1,
-            ChamberWall = 1 << 2,
-            SusceptorUp = 1 << 3,
-            SusceptorLow = 1 << 4,
-            Ampoule1 = 1 << 5,
-            Ampoule2 = 1 << 6,
-            Gasline1 = 1 << 7,
-            Gasline2 = 1 << 8,
-            Foreline = 1 << 9,
-            Spare1 = 1 << 10,
-            Spare2 = 1 << 11,
+            Precursor1 = 1 << 0,
+            Precursor2 = 1 << 1,
+            Precursor3 = 1 << 2,
+            Precursor4 = 1 << 3,
+            Precursor5 = 1 << 4,
+            Bubbler = 1 << 5,
+            ChamberUpper = 1 << 6,
+            ChamberLower = 1 << 7,
+            Delivery = 1 << 8,
+            PrecursorModule = 1 << 9,
+            FiveWay = 1 << 10,
+            MainValve = 1 << 11,
+            Chuck1 = 1 << 12,
+            Chuck2 = 1 << 13,
+            Spare1 = 1 << 14,
+            Spare2 = 1 << 15,
         }
-        /// <summary>TODO 各組上限 [degC]</summary>
-        public const ushort HeaterSp = 20;
-        public const ushort HeaterSpCount = 12;
+        /// <summary>超過該組 HEATER_LIMIT 就不加熱 [degC]</summary>
+        public const ushort HeaterSp = 420;
+        public const ushort HeaterSpCount = 16;
         public const double HeaterSpScale = 0.1;
         public const double HeaterSpMin = 0;
-        public const double HeaterSpMax = 300;
+        public const double HeaterSpMax = 650;
         /// <summary>[degC/min]</summary>
-        public const ushort HeaterRamp = 40;
-        public const ushort HeaterRampCount = 12;
+        public const ushort HeaterRamp = 440;
+        public const ushort HeaterRampCount = 16;
         public const double HeaterRampScale = 0.1;
         public const double HeaterRampMin = 0;
         public const double HeaterRampMax = 50;
-        public const ushort PidKp = 100;
-        public const ushort PidKpCount = 12;
+        /// <summary>安全狀態時的保溫溫度（避免前驅物在管路冷凝），0 = 安全狀態關閉該組。TODO 依製程 [degC]</summary>
+        public const ushort HoldSp = 460;
+        public const ushort HoldSpCount = 16;
+        public const double HoldSpScale = 0.1;
+        public const double HoldSpMin = 0;
+        public const double HoldSpMax = 650;
+        /// <summary>各組溫度上限（config 寫入）：前驅物 200、main valve 250、其他 300~350、Chuck 600；0 = 該組不准加熱 [degC]</summary>
+        public const ushort HeaterLimit = 480;
+        public const ushort HeaterLimitCount = 16;
+        public const double HeaterLimitScale = 0.1;
+        public const double HeaterLimitMin = 0;
+        public const double HeaterLimitMax = 650;
+        /// <summary>預設值只是起點，實機要整定（config 覆寫）</summary>
+        public const ushort PidKp = 500;
+        public const ushort PidKpCount = 16;
         public const double PidKpScale = 0.01;
-        public const ushort PidKi = 120;
-        public const ushort PidKiCount = 12;
+        public const ushort PidKi = 520;
+        public const ushort PidKiCount = 16;
         public const double PidKiScale = 0.001;
-        public const ushort PidKd = 140;
-        public const ushort PidKdCount = 12;
+        public const ushort PidKd = 540;
+        public const ushort PidKdCount = 16;
         public const double PidKdScale = 0.01;
     }
 
 }
 
-/// <summary>壓力 / 真空、閥件、泵（板內互鎖）</summary>
-public static class Board3Vacuum
+/// <summary>PM 壓力 / 真空、閥件、泵（板內互鎖）。Loadlock 的閥、Slit valve 由 SLK 模組控制（槽 3，位址 = 600 + 區內位址）</summary>
+public static class VacuumBoard
 {
-    public const byte SlaveId = 3;
-    public const string DefaultPort = "COM2";
+    public const int Slot = 3;
+    public const BoardType Type = BoardType.Vacuum;
+    public const ushort Base = 600;
 
-    /// <summary>Input Register (FC04)</summary>
+    /// <summary>Input Register (FC04)，以下皆為絕對位址</summary>
     public static class Input
     {
         public const ushort Size = 38;
-        public const ushort BoardId = 0;
+        /// <summary>板型（見 board_types），與槽位設定不符時主控板拒用該槽</summary>
+        public const ushort BoardType = 600;
         /// <summary>例如 0x0102 = v1.2</summary>
-        public const ushort FwVersion = 1;
-        /// <summary>必須等於 map_version，否則 IPC 拒絕連線</summary>
-        public const ushort MapVersion = 2;
-        public const ushort Status = 3;
+        public const ushort FwVersion = 601;
+        /// <summary>必須等於 map_version，否則拒絕連線</summary>
+        public const ushort MapVersion = 602;
+        public const ushort Status = 603;
         [System.Flags] public enum StatusBits : ushort
         {
             Ready = 1 << 0,
@@ -278,72 +737,62 @@ public static class Board3Vacuum
             WatchdogTripped = 1 << 3,
             ParamRejected = 1 << 4,
             LocalInterlock = 1 << 5,
+            Online = 1 << 6,
         }
         /// <summary>各板自訂警報位元（TODO 定義）</summary>
-        public const ushort AlarmBits = 4;
+        public const ushort AlarmBits = 604;
         /// <summary>回傳最後收到的 HEARTBEAT</summary>
-        public const ushort HeartbeatEcho = 5;
+        public const ushort HeartbeatEcho = 605;
         /// <summary>板內主迴圈計數，確認板子沒當機</summary>
-        public const ushort BoardCounter = 6;
-        public const ushort LastError = 7;
-        public const ushort Di = 10;
+        public const ushort BoardCounter = 606;
+        public const ushort LastError = 607;
+        /// <summary>背板腳位讀到的槽號</summary>
+        public const ushort SlotId = 608;
+        public const ushort Di = 610;
         [System.Flags] public enum DiBits : ushort
         {
             ChamberLidClosed = 1 << 0,
             LidCoverClosed = 1 << 1,
-            LoadlockLidClosed = 1 << 2,
-            TurboGvOpened = 1 << 3,
-            TurboGvClosed = 1 << 4,
-            SlitOpened = 1 << 5,
-            SlitClosed = 1 << 6,
-            IndexerUp = 1 << 7,
-            IndexerDown = 1 << 8,
-            DrypumpRunning = 1 << 9,
-            DrypumpAlarm = 1 << 10,
-            TurboAtSpeed = 1 << 11,
-            TurboAlarm = 1 << 12,
+            TurboGvOpened = 1 << 2,
+            TurboGvClosed = 1 << 3,
+            DrypumpRunning = 1 << 4,
+            DrypumpAlarm = 1 << 5,
+            TurboAtSpeed = 1 << 6,
+            TurboAlarm = 1 << 7,
         }
-        public const ushort DoFb = 20;
+        public const ushort DoFb = 620;
         [System.Flags] public enum DoFbBits : ushort
         {
             TurboGv = 1 << 0,
             TurboRough = 1 << 1,
             ChamberRough = 1 << 2,
             ChamberVent = 1 << 3,
-            LoadlockVent = 1 << 4,
-            LoadlockRough = 1 << 5,
-            SlitOpen = 1 << 6,
-            SlitClose = 1 << 7,
-            DrypumpOn = 1 << 8,
-            TurboOn = 1 << 9,
+            DrypumpOn = 1 << 4,
+            TurboOn = 1 << 5,
         }
-        /// <summary>IPC 有下命令但被板內互鎖擋下的閥</summary>
-        public const ushort DoBlocked = 21;
+        /// <summary>有下命令但被板內互鎖擋下的閥</summary>
+        public const ushort DoBlocked = 621;
         [System.Flags] public enum DoBlockedBits : ushort
         {
             TurboGv = 1 << 0,
             TurboRough = 1 << 1,
             ChamberRough = 1 << 2,
             ChamberVent = 1 << 3,
-            LoadlockVent = 1 << 4,
-            LoadlockRough = 1 << 5,
-            SlitOpen = 1 << 6,
-            SlitClose = 1 << 7,
-            DrypumpOn = 1 << 8,
-            TurboOn = 1 << 9,
+            DrypumpOn = 1 << 4,
+            TurboOn = 1 << 5,
         }
-        /// <summary>0 CDA, 1 冷卻水流量, 2 Ion gauge, 3 Chamber convectron, 4 Foreline convectron, 5 Loadlock convectron, 6-7 Spare [mV]</summary>
-        public const ushort AiRaw = 30;
+        /// <summary>0 CDA, 1 冷卻水流量, 2 Ion gauge（WRG200）, 3 Chamber convectron（APGX-H）, 4 Foreline convectron, 5 預留 LL 壓力計擴充, 6-7 Spare [mV]</summary>
+        public const ushort AiRaw = 630;
         public const ushort AiRawCount = 8;
     }
 
-    /// <summary>Holding Register (FC03/FC16)</summary>
+    /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
     public static class Holding
     {
         public const ushort Size = 11;
-        /// <summary>IPC 每次輪詢 +1</summary>
-        public const ushort Heartbeat = 0;
-        public const ushort Command = 1;
+        /// <summary>上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）</summary>
+        public const ushort Heartbeat = 600;
+        public const ushort Command = 601;
         public enum CommandValues : ushort
         {
             None = 0,
@@ -353,43 +802,41 @@ public static class Board3Vacuum
             EnterSafe = 4,
         }
         /// <summary>預設 1000，TODO 確認 [ms]</summary>
-        public const ushort WatchdogMs = 2;
+        public const ushort WatchdogMs = 602;
         public const double WatchdogMsMin = 200;
         public const double WatchdogMsMax = 10000;
-        public const ushort DoCmd = 10;
+        public const ushort DoCmd = 610;
         [System.Flags] public enum DoCmdBits : ushort
         {
             TurboGv = 1 << 0,
             TurboRough = 1 << 1,
             ChamberRough = 1 << 2,
             ChamberVent = 1 << 3,
-            LoadlockVent = 1 << 4,
-            LoadlockRough = 1 << 5,
-            SlitOpen = 1 << 6,
-            SlitClose = 1 << 7,
-            DrypumpOn = 1 << 8,
-            TurboOn = 1 << 9,
+            DrypumpOn = 1 << 4,
+            TurboOn = 1 << 5,
         }
     }
 
 }
 
-/// <summary>馬達、升降、感測器（3 軸：0 Susceptor, 1 Wafer lift, 2 Loadlock）</summary>
-public static class Board4Motion
+/// <summary>PM 內升降（軸 0 Heater module、軸 1 預留；Wafer lift 為氣缸）。Loadlock 手臂 / Indexer 由 SLK 模組控制（槽 4，位址 = 800 + 區內位址）</summary>
+public static class MotionBoard
 {
-    public const byte SlaveId = 4;
-    public const string DefaultPort = "COM2";
+    public const int Slot = 4;
+    public const BoardType Type = BoardType.Motion;
+    public const ushort Base = 800;
 
-    /// <summary>Input Register (FC04)</summary>
+    /// <summary>Input Register (FC04)，以下皆為絕對位址</summary>
     public static class Input
     {
-        public const ushort Size = 43;
-        public const ushort BoardId = 0;
+        public const ushort Size = 42;
+        /// <summary>板型（見 board_types），與槽位設定不符時主控板拒用該槽</summary>
+        public const ushort BoardType = 800;
         /// <summary>例如 0x0102 = v1.2</summary>
-        public const ushort FwVersion = 1;
-        /// <summary>必須等於 map_version，否則 IPC 拒絕連線</summary>
-        public const ushort MapVersion = 2;
-        public const ushort Status = 3;
+        public const ushort FwVersion = 801;
+        /// <summary>必須等於 map_version，否則拒絕連線</summary>
+        public const ushort MapVersion = 802;
+        public const ushort Status = 803;
         [System.Flags] public enum StatusBits : ushort
         {
             Ready = 1 << 0,
@@ -398,47 +845,47 @@ public static class Board4Motion
             WatchdogTripped = 1 << 3,
             ParamRejected = 1 << 4,
             LocalInterlock = 1 << 5,
+            Online = 1 << 6,
         }
         /// <summary>各板自訂警報位元（TODO 定義）</summary>
-        public const ushort AlarmBits = 4;
+        public const ushort AlarmBits = 804;
         /// <summary>回傳最後收到的 HEARTBEAT</summary>
-        public const ushort HeartbeatEcho = 5;
+        public const ushort HeartbeatEcho = 805;
         /// <summary>板內主迴圈計數，確認板子沒當機</summary>
-        public const ushort BoardCounter = 6;
-        public const ushort LastError = 7;
-        public const ushort Di = 10;
+        public const ushort BoardCounter = 806;
+        public const ushort LastError = 807;
+        /// <summary>背板腳位讀到的槽號</summary>
+        public const ushort SlotId = 808;
+        public const ushort Di = 810;
         [System.Flags] public enum DiBits : ushort
         {
-            SusceptorHome = 1 << 0,
-            SusceptorProcess = 1 << 1,
-            WaferLiftHome = 1 << 2,
+            HeaterDown = 1 << 0,
+            HeaterProcess = 1 << 1,
+            WaferLiftDown = 1 << 2,
             WaferLiftUp = 1 << 3,
-            LoadlockHome = 1 << 4,
-            WaferPresent = 1 << 5,
+            WaferPresent = 1 << 4,
         }
-        public const ushort DoFb = 20;
+        public const ushort DoFb = 820;
         [System.Flags] public enum DoFbBits : ushort
         {
             WaferLiftUp = 1 << 0,
             WaferLiftDown = 1 << 1,
-            IndexerUp = 1 << 2,
-            IndexerDown = 1 << 3,
         }
         /// <summary>[step]</summary>
-        public const ushort AxisPos = 30;
-        public const ushort AxisPosCount = 3;
+        public const ushort AxisPos = 830;
+        public const ushort AxisPosCount = 2;
         /// <summary>0 idle, 1 moving, 2 homing, 3 error</summary>
-        public const ushort AxisState = 40;
-        public const ushort AxisStateCount = 3;
+        public const ushort AxisState = 840;
+        public const ushort AxisStateCount = 2;
     }
 
-    /// <summary>Holding Register (FC03/FC16)</summary>
+    /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
     public static class Holding
     {
-        public const ushort Size = 43;
-        /// <summary>IPC 每次輪詢 +1</summary>
-        public const ushort Heartbeat = 0;
-        public const ushort Command = 1;
+        public const ushort Size = 42;
+        /// <summary>上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）</summary>
+        public const ushort Heartbeat = 800;
+        public const ushort Command = 801;
         public enum CommandValues : ushort
         {
             None = 0,
@@ -448,27 +895,25 @@ public static class Board4Motion
             EnterSafe = 4,
         }
         /// <summary>預設 1000，TODO 確認 [ms]</summary>
-        public const ushort WatchdogMs = 2;
+        public const ushort WatchdogMs = 802;
         public const double WatchdogMsMin = 200;
         public const double WatchdogMsMax = 10000;
-        public const ushort DoCmd = 10;
+        public const ushort DoCmd = 810;
         [System.Flags] public enum DoCmdBits : ushort
         {
             WaferLiftUp = 1 << 0,
             WaferLiftDown = 1 << 1,
-            IndexerUp = 1 << 2,
-            IndexerDown = 1 << 3,
         }
         /// <summary>[step]</summary>
-        public const ushort AxisTarget = 20;
-        public const ushort AxisTargetCount = 3;
+        public const ushort AxisTarget = 820;
+        public const ushort AxisTargetCount = 2;
         /// <summary>[step/s]</summary>
-        public const ushort AxisSpeed = 30;
-        public const ushort AxisSpeedCount = 3;
+        public const ushort AxisSpeed = 830;
+        public const ushort AxisSpeedCount = 2;
         public const double AxisSpeedMin = 1;
         public const double AxisSpeedMax = 20000;
-        public const ushort AxisCmd = 40;
-        public const ushort AxisCmdCount = 3;
+        public const ushort AxisCmd = 840;
+        public const ushort AxisCmdCount = 2;
         public enum AxisCmdValues : ushort
         {
             None = 0,

@@ -1,6 +1,7 @@
-# PlatformIO
-firmware/.pio/
-firmware/.vscode/
+# STM32CubeIDE
+firmware/**/Debug/
+firmware/**/Release/
+firmware/**/.settings/
 # .NET
 ipc/**/bin/
 ipc/**/obj/
@@ -12,3 +13,6 @@ __pycache__/
 # IPC 本機資料
 ipc/data/
 *.db
+
+# 安裝包
+dist/

@@ -13,22 +13,34 @@ jobs:
       - run: python tools/codegen/gen_registers.py --check
 
   firmware:
-    name: 編譯四塊板韌體
+    name: 韌體邏輯單元測試（PC / gcc）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install platformio
-      - run: pio run
-        working-directory: firmware
+      - run: make -C firmware/tests
+
+  sim:
+    name: 整機模擬（正式韌體 + 物理模型 + SLK 模擬）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C sim
+
+  ecat-master:
+    name: IPC EtherCAT 主站程式（模擬版編譯 + 單元測試）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C ipc/ecat-master test all
 
   ipc:
     name: 編譯 IPC 並跑單元測試
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "8.0.x" }
+      - name: 編 ald-ecat（端到端測試要用虛擬機台）
+        run: make -C ipc/ecat-master
       - run: dotnet test AldChamber.sln
         working-directory: ipc
