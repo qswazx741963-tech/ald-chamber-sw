@@ -7,6 +7,7 @@ extern uint32_t fake_now;
 extern bool     fake_do[32];
 extern bool     fake_di[32];
 extern uint16_t fake_ai[16];
+extern uint16_t fake_ao[16];
 extern bool     fake_safe_line;
 extern bool     fake_safe_pulled;
 extern uint8_t  fake_slot, fake_board_type;

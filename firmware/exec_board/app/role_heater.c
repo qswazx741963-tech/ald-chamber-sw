@@ -1,6 +1,7 @@
 /*
- * 加熱板：12 組 SSR + 12 組熱電偶、3 個過溫開關
- * 邏輯通道：DO 0–11 SSR；DI 0–2 過溫開關（true = 過溫）；熱電偶讀值 TODO（建議 MAX31856，SPI）
+ * 加熱板：16 組 SSR + 16 組 K 型熱電偶（14 用 + 2 預留）、4 個過溫開關
+ * 邏輯通道：DO 0–15 SSR；DI 0–3 過溫開關（true = 過溫）；熱電偶讀值 TODO（MAX31856 ×16，SPI，K type）
+ * 各組溫度上限 HEATER_LIMIT（前驅物 200、main valve 250、其他 300~350、Chuck 600 °C），0 = 不准加熱。
  * 過溫開關「同時」要用硬體直接切 SSR 電源，這裡只是軟體回報 + 第二道保護。
  */
 #include "exec_app.h"
@@ -10,7 +11,8 @@
 #include "slot_table.h"
 #include <math.h>
 
-#define N 12u
+#define N 16u
+#define N_OT 4u
 #define SSR_WINDOW_MS 1000u
 #define TC_INVALID    ((uint16_t)0x8000)
 
@@ -33,7 +35,7 @@ static void safe(void)
 static void loop(uint32_t now)
 {
     bool any_ot = false;
-    for (uint16_t i = 0; i < 3; i++) {
+    for (uint16_t i = 0; i < N_OT; i++) {
         bool ot = hal_di_read(i);
         if (ot) g_ir[HEAT_IR_DI] |= (uint16_t)(1u << i); else g_ir[HEAT_IR_DI] &= (uint16_t)~(1u << i);
         any_ot |= ot;
@@ -47,7 +49,9 @@ static void loop(uint32_t now)
             float pv = read_tc_degc(h);
             g_ir[HEAT_IR_TC_TEMP + h] = isnan(pv) ? TC_INVALID : (uint16_t)(int16_t)(pv * 10);
             uint16_t sp_raw = safe_now ? g_hr[HEAT_HR_HOLD_SP + h] : g_hr[HEAT_HR_HEATER_SP + h];
-            bool en = !any_ot && !isnan(pv) && sp_raw <= HEAT_HR_HEATER_SP_MAX_RAW
+            uint16_t sp_max = g_hr[HEAT_HR_HEATER_LIMIT + h];
+            bool en = !any_ot && !isnan(pv) && sp_raw <= HEAT_HR_HEATER_SP_MAX_RAW && sp_raw <= sp_max
+                   && pv * 10.0f <= (float)sp_max + 100.0f   /* 量到超過上限 10 °C 也停 */
                    && (safe_now ? sp_raw > 0 : (g_hr[HEAT_HR_HEATER_ENABLE] >> h) & 1u);
             if (!en) { pid_reset(&s_pid[h]); g_ir[HEAT_IR_HEATER_DUTY + h] = 0; continue; }
             float out = pid_step(&s_pid[h], sp_raw * 0.1f, pv, g_hr[HEAT_HR_HEATER_RAMP + h] * 0.1f / 60.0f, dt,

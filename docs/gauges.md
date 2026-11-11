@@ -45,7 +45,16 @@ SLK 原本的壓力計 0–1000 Torr，低於 1 Torr 回報 -1（主控板 IR `L
 
 一旦有有效讀值就恢復。**副作用**：主控板重開機時 LL 已經在真空，要先讓 LL 回到 1 Torr 以上（短暫 vent）再抽一次，SV 才開得了。
 
+### LL 壓力計擴充（預留）
+
+SLK 不動。之後若把一顆獨立壓力計（例如舊配件表列的 LL 用 APGX-H）接到真空板 AI 5，
+在 `machine.json` 的 `gauges.loadlockGauge.model` 選型號，主控板就改用它判斷 LL 壓力（HR `LL_GAUGE_MODEL` / `LL_GAUGE_AI_ADDR`），
+結果在 IR `LL_GAUGE_PRES_MTORR` / `LL_GAUGE_STATUS`。好處：量得到 1 Torr 以下、沒有斷線誤判，開機後也不用先 vent。
+設了型號卻讀不到（離線 / 故障）→ LL 壓力未知 → 不准開 SV。預設 `None` = 沿用 SLK 讀值。
+
 ## 四、Turbo（Leybold TURBOVAC 350 iR）介面摘要
+
+2026-11-11：Leybold 350 iR 與 Pfeiffer ATH 500M 兩台都會用到，先以 Leybold 為主；Pfeiffer 的介面之後補。
 
 REMOTE X1（15 pin）：pin 8 Start（> 10 V = 啟動）、pin 10 Standby、pin 11 Cooling/Venting valve、
 pin 3/4/5 Normal operation 繼電器（≥ 90 % 設定轉速）、pin 1/2/9 Error 繼電器、pin 14/15 Warning 繼電器、pin 12 類比輸出（預設轉速 0–10 V）。

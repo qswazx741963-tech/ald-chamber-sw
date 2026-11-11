@@ -27,7 +27,7 @@ public static class MainBoard
     /// <summary>Input Register (FC04)，以下皆為絕對位址</summary>
     public static class Input
     {
-        public const ushort Size = 123;
+        public const ushort Size = 127;
         /// <summary>板型（見 board_types），與槽位設定不符時主控板拒用該槽</summary>
         public const ushort BoardType = 0;
         /// <summary>例如 0x0102 = v1.2</summary>
@@ -188,12 +188,24 @@ public static class MainBoard
             Offline = 4,
             NotConfigured = 5,
         }
+        /// <summary>LL 擴充壓力計（LL_GAUGE_MODEL ≠ NONE 時）；未知為 2147483647 [mTorr]</summary>
+        public const ushort LlGaugePresMtorr = 124;
+        public const ushort LlGaugeStatus = 126;
+        public enum LlGaugeStatusValues : ushort
+        {
+            Ok = 0,
+            UnderRange = 1,
+            OverRange = 2,
+            Fault = 3,
+            Offline = 4,
+            NotConfigured = 5,
+        }
     }
 
     /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
     public static class Holding
     {
-        public const ushort Size = 164;
+        public const ushort Size = 169;
         /// <summary>上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）</summary>
         public const ushort Heartbeat = 0;
         public const ushort Command = 1;
@@ -325,11 +337,26 @@ public static class MainBoard
         public const ushort PmGaugeAiAddr = 161;
         /// <summary>LINEAR（電容式 0~10 V）滿刻度，例 1000 Torr = 1000000 [mTorr]</summary>
         public const ushort PmGaugeFsMtorr = 162;
+        /// <summary>NONE = 用 SLK 壓力；設了型號就改用這顆判斷 LL 壓力（不受 SLK 1 Torr 下限與斷線疑慮限制）</summary>
+        public const ushort LlGaugeModel = 165;
+        public enum LlGaugeModelValues : ushort
+        {
+            None = 0,
+            Linear = 1,
+            ApgxH = 2,
+            Wrg200X = 3,
+            Wrg200G = 4,
+            Wrg200Q = 5,
+        }
+        /// <summary>LL 壓力計電壓（mV）所在的 IR 絕對位址，例 635 = 槽 3 AI_RAW[5]</summary>
+        public const ushort LlGaugeAiAddr = 166;
+        /// <summary>只有 LINEAR 用 [mTorr]</summary>
+        public const ushort LlGaugeFsMtorr = 167;
     }
 
 }
 
-/// <summary>製程控制（ALD 閥、MFC、腔體壓力計、RF 線檢知）（槽 1，位址 = 200 + 區內位址）</summary>
+/// <summary>製程控制（ALD 閥 ×7、MFC 上游閥 ×8、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）（槽 1，位址 = 200 + 區內位址）</summary>
 public static class ProcessBoard
 {
     public const int Slot = 1;
@@ -381,19 +408,22 @@ public static class ProcessBoard
             AldV4 = 1 << 3,
             AldV5 = 1 << 4,
             AldV6 = 1 << 5,
-            MfcUpV1 = 1 << 6,
-            MfcUpV2 = 1 << 7,
-            MfcUpV3 = 1 << 8,
-            MfcUpV4 = 1 << 9,
-            MfcUpV5 = 1 << 10,
-            MfcUpV6 = 1 << 11,
+            AldV7 = 1 << 6,
+            MfcUpV1 = 1 << 7,
+            MfcUpV2 = 1 << 8,
+            MfcUpV3 = 1 << 9,
+            MfcUpV4 = 1 << 10,
+            MfcUpV5 = 1 << 11,
+            MfcUpV6 = 1 << 12,
+            MfcUpV7 = 1 << 13,
+            MfcUpV8 = 1 << 14,
         }
-        /// <summary>[sccm]</summary>
+        /// <summary>Bronkhorst EL-FLOW F-201CB ×7 + EL-Press P-602CV ×1（通道 8，壓力）；換成 sccm / psi 在 IPC（config 每台滿刻度） [%FS]</summary>
         public const ushort MfcPv = 230;
-        public const ushort MfcPvCount = 6;
-        public const double MfcPvScale = 0.1;
-        /// <summary>原始電壓，換算在 IPC [mV]</summary>
-        public const ushort ManometerRaw = 236;
+        public const ushort MfcPvCount = 8;
+        public const double MfcPvScale = 0.01;
+        /// <summary>Barocel 原始電壓（1000 Torr FS），換算在 IPC [mV]</summary>
+        public const ushort ManometerRaw = 238;
         public const ushort AldCycleNow = 240;
         public const ushort AldStepNow = 241;
         /// <summary>壓力波形緩衝序號，每完成一個 cycle +1（波形本體走另外的區塊讀取，TODO）</summary>
@@ -428,28 +458,31 @@ public static class ProcessBoard
             AldV4 = 1 << 3,
             AldV5 = 1 << 4,
             AldV6 = 1 << 5,
-            MfcUpV1 = 1 << 6,
-            MfcUpV2 = 1 << 7,
-            MfcUpV3 = 1 << 8,
-            MfcUpV4 = 1 << 9,
-            MfcUpV5 = 1 << 10,
-            MfcUpV6 = 1 << 11,
+            AldV7 = 1 << 6,
+            MfcUpV1 = 1 << 7,
+            MfcUpV2 = 1 << 8,
+            MfcUpV3 = 1 << 9,
+            MfcUpV4 = 1 << 10,
+            MfcUpV5 = 1 << 11,
+            MfcUpV6 = 1 << 12,
+            MfcUpV7 = 1 << 13,
+            MfcUpV8 = 1 << 14,
         }
-        /// <summary>[sccm]</summary>
+        /// <summary>0–100 % 滿刻度 = 0–5 V [%FS]</summary>
         public const ushort MfcSp = 220;
-        public const ushort MfcSpCount = 6;
-        public const double MfcSpScale = 0.1;
+        public const ushort MfcSpCount = 8;
+        public const double MfcSpScale = 0.01;
         public const double MfcSpMin = 0;
-        public const double MfcSpMax = 1000;
+        public const double MfcSpMax = 100;
         public const ushort AldCycles = 300;
         public const double AldCyclesMin = 1;
         public const double AldCyclesMax = 60000;
         public const ushort AldStepCount = 301;
         public const double AldStepCountMin = 1;
         public const double AldStepCountMax = 16;
-        /// <summary>安全狀態下保持開啟的閥（bit0 = ALD_V1），例如 N2 purge。TODO 依管路</summary>
+        /// <summary>安全狀態下保持開啟的 ALD 閥（bit0 = ALD_V1 … bit6 = ALD_V7），例如 N2 purge。TODO 依管路</summary>
         public const ushort PurgeValves = 302;
-        /// <summary>每步要開的 ALD 閥位元（bit0 = ALD_V1）</summary>
+        /// <summary>每步要開的 ALD 閥位元（bit0 = ALD_V1 … bit6 = ALD_V7）</summary>
         public const ushort AldStepValves = 310;
         public const ushort AldStepValvesCount = 16;
         /// <summary>[ms]</summary>
@@ -461,7 +494,7 @@ public static class ProcessBoard
 
 }
 
-/// <summary>加熱器與熱電偶（12 組，板內 PID）（槽 2，位址 = 400 + 區內位址）</summary>
+/// <summary>加熱器與 K 型熱電偶（16 組，板內 PID；2026-11-11 新設計全部改 K type）（槽 2，位址 = 400 + 區內位址）</summary>
 public static class HeaterBoard
 {
     public const int Slot = 2;
@@ -471,7 +504,7 @@ public static class HeaterBoard
     /// <summary>Input Register (FC04)，以下皆為絕對位址</summary>
     public static class Input
     {
-        public const ushort Size = 62;
+        public const ushort Size = 66;
         /// <summary>板型（見 board_types），與槽位設定不符時主控板拒用該槽</summary>
         public const ushort BoardType = 400;
         /// <summary>例如 0x0102 = v1.2</summary>
@@ -501,40 +534,45 @@ public static class HeaterBoard
         public const ushort Di = 410;
         [System.Flags] public enum DiBits : ushort
         {
-            OtLidCone = 1 << 0,
-            OtChamberLid = 1 << 1,
-            OtChamberWall = 1 << 2,
+            OtChamber = 1 << 0,
+            OtPrecursor = 1 << 1,
+            OtDelivery = 1 << 2,
+            OtChuck = 1 << 3,
         }
         public const ushort DoFb = 420;
         [System.Flags] public enum DoFbBits : ushort
         {
-            LidCone = 1 << 0,
-            ChamberLid = 1 << 1,
-            ChamberWall = 1 << 2,
-            SusceptorUp = 1 << 3,
-            SusceptorLow = 1 << 4,
-            Ampoule1 = 1 << 5,
-            Ampoule2 = 1 << 6,
-            Gasline1 = 1 << 7,
-            Gasline2 = 1 << 8,
-            Foreline = 1 << 9,
-            Spare1 = 1 << 10,
-            Spare2 = 1 << 11,
+            Precursor1 = 1 << 0,
+            Precursor2 = 1 << 1,
+            Precursor3 = 1 << 2,
+            Precursor4 = 1 << 3,
+            Precursor5 = 1 << 4,
+            Bubbler = 1 << 5,
+            ChamberUpper = 1 << 6,
+            ChamberLower = 1 << 7,
+            Delivery = 1 << 8,
+            PrecursorModule = 1 << 9,
+            FiveWay = 1 << 10,
+            MainValve = 1 << 11,
+            Chuck1 = 1 << 12,
+            Chuck2 = 1 << 13,
+            Spare1 = 1 << 14,
+            Spare2 = 1 << 15,
         }
-        /// <summary>[degC]</summary>
+        /// <summary>-3276.8 = 熱電偶斷線 / 讀不到 [degC]</summary>
         public const ushort TcTemp = 430;
-        public const ushort TcTempCount = 12;
+        public const ushort TcTempCount = 16;
         public const double TcTempScale = 0.1;
         /// <summary>[%]</summary>
         public const ushort HeaterDuty = 450;
-        public const ushort HeaterDutyCount = 12;
+        public const ushort HeaterDutyCount = 16;
         public const double HeaterDutyScale = 0.1;
     }
 
     /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
     public static class Holding
     {
-        public const ushort Size = 152;
+        public const ushort Size = 156;
         /// <summary>上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）</summary>
         public const ushort Heartbeat = 400;
         public const ushort Command = 401;
@@ -553,45 +591,55 @@ public static class HeaterBoard
         public const ushort HeaterEnable = 410;
         [System.Flags] public enum HeaterEnableBits : ushort
         {
-            LidCone = 1 << 0,
-            ChamberLid = 1 << 1,
-            ChamberWall = 1 << 2,
-            SusceptorUp = 1 << 3,
-            SusceptorLow = 1 << 4,
-            Ampoule1 = 1 << 5,
-            Ampoule2 = 1 << 6,
-            Gasline1 = 1 << 7,
-            Gasline2 = 1 << 8,
-            Foreline = 1 << 9,
-            Spare1 = 1 << 10,
-            Spare2 = 1 << 11,
+            Precursor1 = 1 << 0,
+            Precursor2 = 1 << 1,
+            Precursor3 = 1 << 2,
+            Precursor4 = 1 << 3,
+            Precursor5 = 1 << 4,
+            Bubbler = 1 << 5,
+            ChamberUpper = 1 << 6,
+            ChamberLower = 1 << 7,
+            Delivery = 1 << 8,
+            PrecursorModule = 1 << 9,
+            FiveWay = 1 << 10,
+            MainValve = 1 << 11,
+            Chuck1 = 1 << 12,
+            Chuck2 = 1 << 13,
+            Spare1 = 1 << 14,
+            Spare2 = 1 << 15,
         }
-        /// <summary>TODO 各組上限 [degC]</summary>
+        /// <summary>超過該組 HEATER_LIMIT 就不加熱 [degC]</summary>
         public const ushort HeaterSp = 420;
-        public const ushort HeaterSpCount = 12;
+        public const ushort HeaterSpCount = 16;
         public const double HeaterSpScale = 0.1;
         public const double HeaterSpMin = 0;
-        public const double HeaterSpMax = 300;
+        public const double HeaterSpMax = 650;
         /// <summary>[degC/min]</summary>
         public const ushort HeaterRamp = 440;
-        public const ushort HeaterRampCount = 12;
+        public const ushort HeaterRampCount = 16;
         public const double HeaterRampScale = 0.1;
         public const double HeaterRampMin = 0;
         public const double HeaterRampMax = 50;
         /// <summary>安全狀態時的保溫溫度（避免前驅物在管路冷凝），0 = 安全狀態關閉該組。TODO 依製程 [degC]</summary>
         public const ushort HoldSp = 460;
-        public const ushort HoldSpCount = 12;
+        public const ushort HoldSpCount = 16;
         public const double HoldSpScale = 0.1;
         public const double HoldSpMin = 0;
-        public const double HoldSpMax = 300;
+        public const double HoldSpMax = 650;
+        /// <summary>各組溫度上限（config 寫入）：前驅物 200、main valve 250、其他 300~350、Chuck 600；0 = 該組不准加熱 [degC]</summary>
+        public const ushort HeaterLimit = 480;
+        public const ushort HeaterLimitCount = 16;
+        public const double HeaterLimitScale = 0.1;
+        public const double HeaterLimitMin = 0;
+        public const double HeaterLimitMax = 650;
         public const ushort PidKp = 500;
-        public const ushort PidKpCount = 12;
+        public const ushort PidKpCount = 16;
         public const double PidKpScale = 0.01;
         public const ushort PidKi = 520;
-        public const ushort PidKiCount = 12;
+        public const ushort PidKiCount = 16;
         public const double PidKiScale = 0.001;
         public const ushort PidKd = 540;
-        public const ushort PidKdCount = 12;
+        public const ushort PidKdCount = 16;
         public const double PidKdScale = 0.01;
     }
 
@@ -667,7 +715,7 @@ public static class VacuumBoard
             DrypumpOn = 1 << 4,
             TurboOn = 1 << 5,
         }
-        /// <summary>0 CDA, 1 冷卻水流量, 2 Ion gauge, 3 Chamber convectron, 4 Foreline convectron, 5-7 Spare [mV]</summary>
+        /// <summary>0 CDA, 1 冷卻水流量, 2 Ion gauge（WRG200）, 3 Chamber convectron（APGX-H）, 4 Foreline convectron, 5 預留 LL 壓力計擴充, 6-7 Spare [mV]</summary>
         public const ushort AiRaw = 630;
         public const ushort AiRawCount = 8;
     }

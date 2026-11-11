@@ -7,7 +7,7 @@
 #define MAIN_BOARD_TYPE   0u
 
 /* ---- Input Register (FC04)（區內位址；共用表頭見 COM_IR_*） */
-#define MAIN_IR_SIZE 123u
+#define MAIN_IR_SIZE 127u
 #define MAIN_IR_DI                                   10u  /* u16 */
 #define MAIN_IR_DI_BIT_SAFE_LINE_OK                  0u
 #define MAIN_IR_DI_BIT_EMO_OK                        1u
@@ -93,9 +93,17 @@
 #define MAIN_IR_PM_GAUGE_STATUS_FAULT                3u
 #define MAIN_IR_PM_GAUGE_STATUS_OFFLINE              4u
 #define MAIN_IR_PM_GAUGE_STATUS_NOT_CONFIGURED       5u
+#define MAIN_IR_LL_GAUGE_PRES_MTORR                  124u  /* i32 [mTorr] */
+#define MAIN_IR_LL_GAUGE_STATUS                      126u  /* u16 */
+#define MAIN_IR_LL_GAUGE_STATUS_OK                   0u
+#define MAIN_IR_LL_GAUGE_STATUS_UNDER_RANGE          1u
+#define MAIN_IR_LL_GAUGE_STATUS_OVER_RANGE           2u
+#define MAIN_IR_LL_GAUGE_STATUS_FAULT                3u
+#define MAIN_IR_LL_GAUGE_STATUS_OFFLINE              4u
+#define MAIN_IR_LL_GAUGE_STATUS_NOT_CONFIGURED       5u
 
 /* ---- Holding Register (FC03/FC06/FC16)（區內位址；共用表頭見 COM_HR_*） */
-#define MAIN_HR_SIZE 164u
+#define MAIN_HR_SIZE 169u
 #define MAIN_HR_DO_CMD                               10u  /* u16 */
 #define MAIN_HR_DO_CMD_BIT_BUZZER                    0u
 #define MAIN_HR_DO_CMD_BIT_TOWER_RED                 1u
@@ -174,3 +182,12 @@
 #define MAIN_HR_PM_GAUGE_MODEL_WRG200_Q              5u
 #define MAIN_HR_PM_GAUGE_AI_ADDR                     161u  /* u16 */
 #define MAIN_HR_PM_GAUGE_FS_MTORR                    162u  /* i32 [mTorr] */
+#define MAIN_HR_LL_GAUGE_MODEL                       165u  /* u16 */
+#define MAIN_HR_LL_GAUGE_MODEL_NONE                  0u
+#define MAIN_HR_LL_GAUGE_MODEL_LINEAR                1u
+#define MAIN_HR_LL_GAUGE_MODEL_APGX_H                2u
+#define MAIN_HR_LL_GAUGE_MODEL_WRG200_X              3u
+#define MAIN_HR_LL_GAUGE_MODEL_WRG200_G              4u
+#define MAIN_HR_LL_GAUGE_MODEL_WRG200_Q              5u
+#define MAIN_HR_LL_GAUGE_AI_ADDR                     166u  /* u16 */
+#define MAIN_HR_LL_GAUGE_FS_MTORR                    167u  /* i32 [mTorr] */

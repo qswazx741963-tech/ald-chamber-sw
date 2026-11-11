@@ -423,6 +423,12 @@ static void test_main_loop_safe_without_ipc(void)
     /* 製程板離線 → PM 壓力未知 */
     CHECK_EQ(ir_slot(0)[MAIN_IR_PM_GAUGE_STATUS], MAIN_IR_PM_GAUGE_STATUS_OFFLINE);
     CHECK_EQ(reg_get_i32(&ir_slot(0)[MAIN_IR_PM_PRES_MTORR]), INT32_MAX);
+    /* LL 擴充壓力計預設沒裝 → 沿用 SLK 讀值 */
+    CHECK_EQ(ir_slot(0)[MAIN_IR_LL_GAUGE_STATUS], MAIN_IR_LL_GAUGE_STATUS_NOT_CONFIGURED);
+    hr_slot(0)[MAIN_HR_LL_GAUGE_MODEL] = MAIN_HR_LL_GAUGE_MODEL_APGX_H;
+    hr_slot(0)[MAIN_HR_LL_GAUGE_AI_ADDR] = 635;
+    fake_now += 10; main_app_loop();
+    CHECK_EQ(ir_slot(0)[MAIN_IR_LL_GAUGE_STATUS], MAIN_IR_LL_GAUGE_STATUS_OFFLINE);   /* 真空板沒在線 */
 }
 
 int main(void)

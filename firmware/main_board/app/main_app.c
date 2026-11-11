@@ -29,6 +29,9 @@ enum { DO_TRANSFER_PERMIT = 0, DO_BUZZER, DO_TOWER_RED, DO_TOWER_YELLOW, DO_TOWE
 enum { DI_EMO_OK = 0, DI_CDA_OK };
 
 
+/* 製程板 DO 低 7 位元 = ALD_V1~7（前驅物閥） */
+#define PROC_ALD_MASK ((uint16_t)((1u << (PROC_HR_DO_CMD_BIT_ALD_V7 + 1u)) - 1u))
+
 static const fieldbus_ops_t *s_bus;
 static const ald_slot_def_t s_slots[] = ALD_SLOT_TABLE;
 static uint32_t s_slot_rx_ms[ALD_MAX_SLOTS];
@@ -78,28 +81,47 @@ static void bp_receive(uint32_t now)
 }
 
 /* ---------------------------------------------------------------- 互鎖輸入 */
-/* PM 壓力：依 HR PM_GAUGE_*（config 型號選單）換算，結果也放進 IR PM_PRES_MTORR / PM_GAUGE_STATUS。
- * 回傳 INT32_MAX = 壓力未知（離線 / 故障 / 未設定 / 超出上限），互鎖一律當成「不准」 */
+/* 依型號 / 位址 / 滿刻度讀一顆壓力計。回傳 INT32_MAX = 壓力未知（離線 / 故障 / 未設定 / 超出上限） */
+static int32_t read_gauge_mtorr(uint16_t model, uint16_t addr, int32_t fs_mtorr, uint32_t now, gauge_status_t *st)
+{
+    uint8_t slot = (uint8_t)(addr / ALD_SLOT_STRIDE);
+    float torr = 0.0f;
+    if (model == GAUGE_NONE || addr >= REG_IMAGE_SIZE || slot == 0) *st = GAUGE_NOT_CONFIGURED;
+    else if (!slot_online(slot, now)) *st = GAUGE_OFFLINE;
+    else *st = gauge_convert(model, g_ir[addr], (float)fs_mtorr / 1000.0f, &torr);
+    if (*st != GAUGE_OK && *st != GAUGE_UNDER_RANGE) return INT32_MAX;
+    float m = torr * 1000.0f + 0.5f;
+    return m >= 2.0e9f ? INT32_MAX : (int32_t)m;
+}
+
+/* PM 壓力：依 HR PM_GAUGE_*（config 型號選單）換算，結果也放進 IR PM_PRES_MTORR / PM_GAUGE_STATUS */
 static int32_t pm_pressure_mtorr(uint32_t now)
 {
     const uint16_t *hr0 = hr_slot(0);
     uint16_t *ir0 = ir_slot(0);
-    uint16_t addr = hr0[MAIN_HR_PM_GAUGE_AI_ADDR];
-    uint8_t slot = (uint8_t)(addr / ALD_SLOT_STRIDE);
     gauge_status_t st;
-    float torr = 0.0f;
-    if (addr >= REG_IMAGE_SIZE || slot == 0) st = GAUGE_NOT_CONFIGURED;
-    else if (!slot_online(slot, now)) st = GAUGE_OFFLINE;
-    else st = gauge_convert(hr0[MAIN_HR_PM_GAUGE_MODEL], g_ir[addr],
-                            (float)reg_get_i32(&hr0[MAIN_HR_PM_GAUGE_FS_MTORR]) / 1000.0f, &torr);
-    int32_t mtorr = INT32_MAX;
-    if (st == GAUGE_OK || st == GAUGE_UNDER_RANGE) {
-        float m = torr * 1000.0f + 0.5f;
-        mtorr = m >= 2.0e9f ? INT32_MAX : (int32_t)m;
-    }
-    reg_put_i32(&ir0[MAIN_IR_PM_PRES_MTORR], mtorr);
+    int32_t p = read_gauge_mtorr(hr0[MAIN_HR_PM_GAUGE_MODEL], hr0[MAIN_HR_PM_GAUGE_AI_ADDR],
+                                 reg_get_i32(&hr0[MAIN_HR_PM_GAUGE_FS_MTORR]), now, &st);
+    reg_put_i32(&ir0[MAIN_IR_PM_PRES_MTORR], p);
     ir0[MAIN_IR_PM_GAUGE_STATUS] = (uint16_t)st;
-    return mtorr;
+    return p;
+}
+
+/* LL 擴充壓力計（預留，HR LL_GAUGE_MODEL ≠ NONE 才用）：有設定就取代 SLK 的壓力讀值。
+ * SLK 不動；獨立壓力計量得到 1 Torr 以下，也不會有「斷線讀成低於下限」的疑慮 */
+static void ll_gauge_override(il_inputs_t *in, uint32_t now)
+{
+    const uint16_t *hr0 = hr_slot(0);
+    uint16_t *ir0 = ir_slot(0);
+    uint16_t model = hr0[MAIN_HR_LL_GAUGE_MODEL];
+    gauge_status_t st;
+    int32_t p = read_gauge_mtorr(model, hr0[MAIN_HR_LL_GAUGE_AI_ADDR], reg_get_i32(&hr0[MAIN_HR_LL_GAUGE_FS_MTORR]), now, &st);
+    reg_put_i32(&ir0[MAIN_IR_LL_GAUGE_PRES_MTORR], p);
+    ir0[MAIN_IR_LL_GAUGE_STATUS] = (uint16_t)st;
+    if (model == GAUGE_NONE) return;                  /* 沒裝：沿用 SLK 讀值 */
+    if (p == INT32_MAX) { in->ll_pres_suspect = true; return; }   /* 設了卻讀不到 → 壓力未知 */
+    in->ll_pres_mtorr = p;
+    in->ll_pres_suspect = false;
 }
 
 static void build_inputs(il_inputs_t *in, uint32_t now)
@@ -118,8 +140,9 @@ static void build_inputs(il_inputs_t *in, uint32_t now)
     ll_fill_inputs(&s_llg, in, now, stale);
 
     in->pm_pres_mtorr = pm_pressure_mtorr(now);
+    ll_gauge_override(in, now);
     in->pm_process_running = (proc[COM_IR_STATUS] & (1u << COM_IR_STATUS_BIT_RUNNING))
-                          || (proc[PROC_IR_DO_FB] & 0x3Fu & (uint16_t)~purge);
+                          || (proc[PROC_IR_DO_FB] & PROC_ALD_MASK & (uint16_t)~purge);
     in->pm_rf_on = hr0[MAIN_HR_RF_ON] != 0;            /* TODO 改用 RF 電源實際回報 */
     in->pm_venting = vac[VAC_IR_DO_FB] & (1u << VAC_IR_DO_FB_BIT_CHAMBER_VENT);
     in->pm_turbo_gv_closed = vac[VAC_IR_DI] & (1u << VAC_IR_DI_BIT_TURBO_GV_CLOSED);
@@ -163,7 +186,7 @@ static void filter_hr(uint8_t slot, const il_inputs_t *in, uint8_t react)
 
     if (slot == PROC_DEFAULT_SLOT) {
         uint16_t purge = s_hr_out[PROC_HR_PURGE_VALVES];
-        uint16_t ald_bits = s_hr_out[PROC_HR_DO_CMD] & 0x3Fu & (uint16_t)~purge;
+        uint16_t ald_bits = s_hr_out[PROC_HR_DO_CMD] & PROC_ALD_MASK & (uint16_t)~purge;
         if (s_hr_out[COM_HR_COMMAND] == COM_HR_COMMAND_START || ald_bits) {
             uint32_t d = il_check(IL_ACT_PM_PROCESS, in);
             if (d) {
@@ -174,7 +197,7 @@ static void filter_hr(uint8_t slot, const il_inputs_t *in, uint8_t react)
         }
         if (react & IL_REACT_PM_ABORT) {
             s_hr_out[COM_HR_COMMAND] = COM_HR_COMMAND_STOP;
-            s_hr_out[PROC_HR_DO_CMD] &= (uint16_t)~(0x3Fu & (uint16_t)~purge);
+            s_hr_out[PROC_HR_DO_CMD] &= (uint16_t)~(PROC_ALD_MASK & (uint16_t)~purge);
         }
     } else if (slot == VAC_DEFAULT_SLOT) {
         uint16_t vent = 1u << VAC_HR_DO_CMD_BIT_CHAMBER_VENT;

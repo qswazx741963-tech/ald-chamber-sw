@@ -91,6 +91,33 @@ static void test_exec_watchdog(void)
     CHECK(g_ir[COM_IR_STATUS] & (1u << COM_IR_STATUS_BIT_WATCHDOG_TRIPPED));
 }
 
+/* 製程板：MFC ×8 用 % 滿刻度、ALD_V7、MFC_UP_V8、壓力計在 AI 8 */
+static void test_process_io(void)
+{
+    fake_reset();
+    fake_slot = 1; fake_board_type = BOARD_TYPE_PROCESS;
+    exec_app_init();
+    uint8_t buf[64];
+    bp_sync_t sy = {1, 0, BP_SYNC_RUN_OK};
+    fake_can_rx_push(bp_make_id(BP_T_SYNC, BP_BROADCAST_SLOT, 0), buf, bp_pack_sync(buf, &sy));
+    uint16_t hr[40] = {0};
+    hr[COM_HR_WATCHDOG_MS] = 1000;
+    hr[COM_HR_COMMAND] = COM_HR_COMMAND_RESET_ALARM;
+    hr[PROC_HR_DO_CMD] = (1u << PROC_HR_DO_CMD_BIT_ALD_V7) | (1u << PROC_HR_DO_CMD_BIT_MFC_UP_V8);
+    hr[PROC_HR_MFC_SP + 7] = 5000;                 /* 50.00 % */
+    hr[PROC_HR_MFC_SP + 0] = 10001;                /* 超過 100 % → 不送 */
+    fake_can_rx_push(bp_make_id(BP_T_HR, 1, 0), buf, bp_pack_regs(buf, 0, hr, 30));
+    fake_ai[7] = 1250; fake_ai[8] = 4321;
+    fake_now = 10; exec_app_loop();
+    CHECK(!exec_in_safe());
+    CHECK_EQ(fake_ao[7], 2500);                   /* 50 % × 5 V */
+    CHECK_EQ(fake_ao[0], 0);
+    CHECK(fake_do[6]);                            /* ALD_V7 */
+    CHECK(fake_do[14]);                           /* MFC_UP_V8 */
+    CHECK_EQ(g_ir[PROC_IR_MFC_PV + 7], 2500);     /* 1.25 V = 25.00 % */
+    CHECK_EQ(g_ir[PROC_IR_MANOMETER_RAW], 4321);
+}
+
 static void test_exec_bad_slot(void)
 {
     fake_reset();
@@ -112,6 +139,7 @@ int main(void)
     RUN(test_pid);
     RUN(test_exec_watchdog);
     RUN(test_exec_bad_slot);
+    RUN(test_process_io);
     printf("執行板：%d 項檢查，%d 項失敗\n", g_checks, g_fail);
     return g_fail != 0;
 }

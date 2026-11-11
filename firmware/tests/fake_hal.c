@@ -50,7 +50,8 @@ uint32_t hal_millis(void) { return fake_now; }
 void hal_do_write(uint16_t ch, bool on) { if (ch < 32) fake_do[ch] = on; }
 bool hal_di_read(uint16_t ch) { return ch < 32 && fake_di[ch]; }
 uint16_t hal_ai_read_mv(uint16_t ch) { return ch < 16 ? fake_ai[ch] : 0; }
-void hal_ao_write_mv(uint16_t ch, uint16_t mv) { (void)ch; (void)mv; }
+uint16_t fake_ao[16];
+void hal_ao_write_mv(uint16_t ch, uint16_t mv) { if (ch < 16) fake_ao[ch] = mv; }
 int hal_can_send(uint16_t id, const uint8_t *data, uint8_t len) { (void)id; (void)data; (void)len; fake_can_sent++; return 0; }
 int hal_can_recv(uint16_t *id, uint8_t *data, uint8_t *len)
 {
