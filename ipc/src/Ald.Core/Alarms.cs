@@ -5,7 +5,11 @@ public enum AlarmLevel { Info = 0, Warning = 1, Alarm = 2 }
 /// <param name="Code">固定代碼（記錄 / 查詢用），例 "LINK", "SLOT3_OFFLINE", "TC07_BROKEN"</param>
 public sealed record AlarmInfo(string Code, AlarmLevel Level, string Source, string Message);
 
-public sealed record ActiveAlarm(AlarmInfo Info, DateTime Since);
+public sealed record ActiveAlarm(AlarmInfo Info, DateTime Since)
+{
+    /// <summary>已按「確認 / 消音」。</summary>
+    public bool Acked { get; init; }
+}
 
 public sealed record AlarmChange(AlarmInfo Info, bool Raised, DateTime Time);
 
@@ -31,9 +35,33 @@ public sealed class AlarmManager
         _heaterUsed = cfg.Heaters.Channels.Select(h => h.LimitDegC > 0).ToArray();
     }
 
-    public IReadOnlyCollection<ActiveAlarm> Active => _active.Values;
-    public bool AnyAlarm => _active.Values.Any(a => a.Info.Level == AlarmLevel.Alarm);
-    public bool AnyWarning => _active.Values.Any(a => a.Info.Level == AlarmLevel.Warning);
+    private readonly object _lock = new();
+    // 已經自己消失、但還沒人確認過的異常（Alarm 等級）：燈塔維持紅燈閃爍 + 蜂鳴，直到按確認
+    private readonly Dictionary<string, ActiveAlarm> _latched = new();
+    private DateTime? _connectedSince;
+    /// <summary>程式啟動後第一次連上的這段時間內消失的異常不留存（開機時各板陸續上線的暫時警報，不要一開機就叫）。</summary>
+    public static readonly TimeSpan StartupGrace = TimeSpan.FromSeconds(10);
+
+    public IReadOnlyCollection<ActiveAlarm> Active { get { lock (_lock) return _active.Values.ToList(); } }
+    /// <summary>已消失但沒確認過的異常。</summary>
+    public IReadOnlyCollection<ActiveAlarm> Latched { get { lock (_lock) return _latched.Values.ToList(); } }
+    public bool AnyAlarm { get { lock (_lock) return _active.Values.Any(a => a.Info.Level == AlarmLevel.Alarm); } }
+    public bool AnyWarning { get { lock (_lock) return _active.Values.Any(a => a.Info.Level == AlarmLevel.Warning); } }
+    public bool UnackedAlarm { get { lock (_lock) return _latched.Count > 0 || _active.Values.Any(a => !a.Acked && a.Info.Level == AlarmLevel.Alarm); } }
+    public bool UnackedWarning { get { lock (_lock) return _active.Values.Any(a => !a.Acked && a.Info.Level == AlarmLevel.Warning); } }
+
+    /// <summary>確認 / 消音：目前所有警報標為已確認，已消失的異常清掉。回傳確認了幾筆。</summary>
+    public int Acknowledge()
+    {
+        lock (_lock)
+        {
+            int n = _latched.Count;
+            _latched.Clear();
+            foreach (var k in _active.Keys.ToList())
+                if (!_active[k].Acked) { _active[k] = _active[k] with { Acked = true }; n++; }
+            return n;
+        }
+    }
 
     private static readonly string[] SlotNames = { "主控板", "製程板", "加熱板", "真空板", "馬達板" };
 
@@ -96,12 +124,19 @@ public sealed class AlarmManager
         var now = s.Time;
         var changes = new List<AlarmChange>();
         var current = Evaluate(s).GroupBy(a => a.Code).ToDictionary(g => g.Key, g => g.First());
-        foreach (var (code, info) in current)
-            if (!_active.ContainsKey(code)) { _active[code] = new(info, now); changes.Add(new(info, true, now)); }
-        foreach (var code in _active.Keys.Where(k => !current.ContainsKey(k)).ToList())
+        if (s.Connected) _connectedSince ??= now;   // 只看程式啟動後第一次連上
+        bool latch = _connectedSince is { } since && now - since >= StartupGrace;
+        lock (_lock)
         {
-            changes.Add(new(_active[code].Info, false, now));
-            _active.Remove(code);
+            foreach (var (code, info) in current)
+                if (!_active.ContainsKey(code)) { _active[code] = new(info, now); changes.Add(new(info, true, now)); _latched.Remove(code); }
+            foreach (var code in _active.Keys.Where(k => !current.ContainsKey(k)).ToList())
+            {
+                var a = _active[code];
+                changes.Add(new(a.Info, false, now));
+                _active.Remove(code);
+                if (latch && !a.Acked && a.Info.Level == AlarmLevel.Alarm) _latched[code] = a;
+            }
         }
         if (s.Connected && (s.LastDenyBits != _lastDeny || s.LastDenyAction != _lastDenyAction))
         {

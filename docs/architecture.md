@@ -15,7 +15,7 @@
 【第二階】主控板（自製，STM32H743 + LAN9252 EtherCAT 從站 + FreeRTOS）
    ├─ UART：RF1 / RF2（預計鎧泰科技 600 W / 300 W）；Throttle valve 預留（目前不用）
    ├─ UART（RS-485）── Loadlock（SLK 模組，韌體不改、全開放；互鎖在這裡做）
-   ├─ 硬體輸出：SAFE 線、燈塔、蜂鳴器（TRANSFER_PERMIT 預留，目前不接 Loadlock）
+   ├─ 硬體輸出：SAFE 線、4 色燈塔（紅黃綠藍）、蜂鳴器（TRANSFER_PERMIT 預留，目前不接 Loadlock）
    └─ 背板：CAN FD（5 Mbps）+ SAFE 線 + SYNC 線 + 槽位腳位 SLOT_ID[3:0]
           │
 【第三階】執行板（自製，全部 STM32G474，同一份韌體，依板型跳線決定角色）

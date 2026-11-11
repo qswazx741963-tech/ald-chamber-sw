@@ -35,6 +35,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | IR 13 | 13 | IL_DENY | u16 | 1 |  |  |  | 最近一次被主控板互鎖擋下的原因（可能多個同時成立） bits: 0=SAFE_ACTIVE, 1=SLOT_OFFLINE, 2=LL_UNKNOWN, 3=LL_ALARM, 4=SV_NOT_CLOSED, 5=SV_NOT_OPEN, 6=DP_HIGH, 7=PRESSURE_UNKNOWN, 8=PM_BUSY, 9=PM_VENTING, 10=ARM_IN_SV_PATH, 11=Z_NOT_DOWN, 12=LL_LID_OPEN, 13=LL_VALVE_CONFLICT, 14=PM_NOT_AT_TRANSFER, 15=LL_BUSY |
 | IR 14 | 14 | IL_DENY_ACTION | u16 | 1 |  |  |  | 最近一次被擋下的動作（IL_ACT_*，見 docs/interlocks.md） |
 | IR 15 | 15 | IL_DENY2 | u16 | 1 |  |  |  | IL_DENY 的延伸（16 個 bit 不夠用） bits: 0=TURBO_GV_OPEN, 1=ARM_MOVING, 2=HEATER_NOT_DOWN |
+| IR 16 | 16 | DO_OUT | u16 | 1 |  |  |  | 燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈） bits: 0=BUZZER, 1=TOWER_RED, 2=TOWER_YELLOW, 3=TOWER_GREEN, 4=TOWER_BLUE |
 | IR 30 | 30 | TV_PRESSURE | u16 | 1 | 0.001 | Torr |  |  |
 | IR 31 | 31 | TV_POSITION | u16 | 1 | 0.1 | % |  |  |
 | IR 32 | 32 | TV_STATUS | u16 | 1 |  |  |  |  |
@@ -69,7 +70,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 0 | 0 | HEARTBEAT | u16 | 1 |  |  |  | 上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層） |
 | HR 1 | 1 | COMMAND | u16 | 1 |  |  |  | 值: 0=NONE, 1=START, 2=STOP, 3=RESET_ALARM, 4=ENTER_SAFE |
 | HR 2 | 2 | WATCHDOG_MS | u16 | 1 |  | ms | 200–10000 | 預設 1000，TODO 確認 |
-| HR 10 | 10 | DO_CMD | u16 | 1 |  |  |  | bits: 0=BUZZER, 1=TOWER_RED, 2=TOWER_YELLOW, 3=TOWER_GREEN |
+| HR 10 | 10 | DO_CMD | u16 | 1 |  |  |  | 燈塔 / 蜂鳴器命令（IPC 決定燈號與閃爍） bits: 0=BUZZER, 1=TOWER_RED, 2=TOWER_YELLOW, 3=TOWER_GREEN, 4=TOWER_BLUE |
 | HR 20 | 20 | TV_MODE | u16 | 1 |  |  |  | 值: 0=OPEN, 1=CLOSE, 2=POSITION, 3=PRESSURE |
 | HR 21 | 21 | TV_SP_POSITION | u16 | 1 | 0.1 | % | 0–100 |  |
 | HR 22 | 22 | TV_SP_PRESSURE | u16 | 1 | 0.001 | Torr | 0–10 |  |

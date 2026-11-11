@@ -84,6 +84,10 @@ boards:
         addr: 15
         desc: "IL_DENY 的延伸（16 個 bit 不夠用）"
         bits: [TURBO_GV_OPEN, ARM_MOVING, HEATER_NOT_DOWN]
+      - name: DO_OUT
+        addr: 16
+        desc: "燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈）"
+        bits: [BUZZER, TOWER_RED, TOWER_YELLOW, TOWER_GREEN, TOWER_BLUE]
 
       # ---- Throttle valve：目前製程不需要（2026-11-11），位址保留給日後擴充，韌體不驅動
       - { name: TV_PRESSURE, addr: 30, scale: 0.001, unit: Torr }
@@ -132,7 +136,8 @@ boards:
     holding:
       - name: DO_CMD
         addr: 10
-        bits: [BUZZER, TOWER_RED, TOWER_YELLOW, TOWER_GREEN]
+        desc: "燈塔 / 蜂鳴器命令（IPC 決定燈號與閃爍）"
+        bits: [BUZZER, TOWER_RED, TOWER_YELLOW, TOWER_GREEN, TOWER_BLUE]
       # ---- Throttle valve（保留，目前不用）
       - name: TV_MODE
         addr: 20

@@ -51,6 +51,7 @@ public static class SnapshotBuilder
             CdaOk = di.HasFlag(MainBoard.Input.DiBits.CdaOk),
             LastDenyBits = m[MainBoard.Input.IlDeny] | ((uint)m[MainBoard.Input.IlDeny2] << 16),
             LastDenyAction = m[MainBoard.Input.IlDenyAction],
+            Tower = (TowerLamp)m[MainBoard.Input.DoOut],
             ChamberPressureTorr = pm == Unknown32 ? double.NaN : pm / 1000.0,
             ChamberGaugeStatus = gst,
             RfOn = false,   // TODO 鎧泰 RF 協議確認後改讀 RF 實際狀態

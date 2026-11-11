@@ -21,6 +21,7 @@ public sealed record MachineConfig
     public HmiConfig Hmi { get; init; } = new();
     public TransferConfig Transfer { get; init; } = new();
     public LeakTestConfig LeakTest { get; init; } = new();
+    public TowerConfig Tower { get; init; } = new();
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -57,6 +58,7 @@ public sealed record MachineConfig
         if (Interlock.SvBelowTorr is <= 0 or > 10) yield return "interlock.svBelowTorr 需在 0–10";
         if (LeakTest.Gauge.ToLowerInvariant() is not ("chamberiongauge" or "chambermanometer" or "chamberconvectron"))
             yield return "leakTest.gauge 需為 chamberIonGauge / chamberManometer / chamberConvectron";
+        if (Tower.BlinkMs is < 100 or > 5000) yield return "tower.blinkMs 需在 100–5000";
         if (!(LeakTest.ChamberVolumeL > 0)) yield return "leakTest.chamberVolumeL 需 > 0";
         if (!(LeakTest.StartBelowTorr > 0) || !(LeakTest.AbortAboveTorr > LeakTest.StartBelowTorr))
             yield return "leakTest 壓力設定錯誤（需 abortAboveTorr > startBelowTorr > 0）";

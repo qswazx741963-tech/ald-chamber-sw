@@ -217,6 +217,13 @@
     "loadlockStepTimeoutS": 60,
     "waferMapPath": "data/wafer.json"
   },
+  "tower": {
+    "_note": "4 色燈塔（SEMI S2 慣例）：紅 = 異常 / 安全狀態（未確認閃）、黃 = 警告（未確認閃）或待機、綠 = 流程執行中、藍 = 需要人員處理（閃，例如取片完成、晶圓位置不明）。蜂鳴器 = 未確認的異常，按「確認 / 消音」停。主控板保底：安全狀態一定紅燈、IPC 斷線只留紅燈。",
+    "idleYellow": true,
+    "buzzOnWarning": false,
+    "buzzerIntermittent": true,
+    "blinkMs": 500
+  },
   "leakTest": {
     "_note": "漏率測試（壓升法）。抽到 startBelowTorr 以下 → 再抽 pumpS → 關 Turbo GV → 等 settleS → 記錄 measureS 秒 → 直線擬合。合格上限 limitMtorrPerMin 為暫定值，請依規格調整；量測時間與上限在人機可以臨時改。",
     "gauge": "chamberIonGauge",

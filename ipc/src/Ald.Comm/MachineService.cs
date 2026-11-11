@@ -71,6 +71,7 @@ public sealed class MachineService : IMachine, IDisposable
             _procDo = link.ReadHolding(ProcessBoard.Holding.DoCmd, 1)[0];
             _heaterEnable = link.ReadHolding(HeaterBoard.Holding.HeaterEnable, 1)[0];
             _motDo = link.ReadHolding(MotionBoard.Holding.DoCmd, 1)[0];
+            _tower = null;   // 重新連上後重寫一次燈號
         }
     }
 
@@ -137,6 +138,19 @@ public sealed class MachineService : IMachine, IDisposable
 
     /// <summary>軟體觸發全機安全狀態（等同主控板收到 ENTER_SAFE）。</summary>
     public void EnterSafe() => _link.Write(MainBoard.Holding.Command, (ushort)MainBoard.Holding.CommandValues.EnterSafe);
+
+    private TowerLamp? _tower;
+
+    /// <summary>燈塔 / 蜂鳴器命令（有變化才寫）。主控板安全狀態會強制紅燈、IPC 斷線時只留紅燈。</summary>
+    public void SetTower(TowerLamp lamps)
+    {
+        lock (_cmdLock)
+        {
+            if (_tower == lamps || !_link.Connected) return;
+            _link.Write(MainBoard.Holding.DoCmd, (ushort)lamps);
+            _tower = lamps;
+        }
+    }
 
     // ------------------------------------------------------------ IMachine
     public void SetVacuum(VacuumOutputs outputs)

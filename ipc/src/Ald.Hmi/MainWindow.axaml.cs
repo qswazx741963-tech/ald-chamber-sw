@@ -41,6 +41,7 @@ public partial class MainWindow : Window
         WireManual();
         WireRecipe();
         WireMaint();
+        WireTower();
         _timer.Tick += (_, _) => Render();
         _timer.Start();
         Closed += (_, _) => _timer.Stop();
@@ -96,11 +97,12 @@ public partial class MainWindow : Window
     private async void RunAuto(ProcessRecipe r)
     {
         if (_m is null || _wafers is null || Busy) { _status = "已有流程在執行"; return; }
+        _needOp = false;
         _auto = new AutoRunJob(_m, _wafers, _m.Config.Transfer, _m.Config.Interlock.LoadlockZEnabled);
         _runIsAuto = true;
         _runName = $"自動跑片 {r.Name}";
         lock (_runLog) _runLog.Clear();
-        _auto.Progress += p => LogRun(_runName, p);
+        _auto.Progress += p => { LogRun(_runName, p); TowerEvent(p, doneNeedsOperator: true); };
         _alarmLog?.Add(OpSource, "Info", _runName, evt: "OPERATOR");
         await _auto.RunAsync(r);
     }
@@ -108,11 +110,12 @@ public partial class MainWindow : Window
     private async void RunRecipe(ProcessRecipe r)
     {
         if (_m is null || Busy) { _status = "已有流程在執行"; return; }
+        _needOp = false;
         _seq = new ProcessSequencer(_m);
         _runIsAuto = false;
         _runName = r.Name;
         lock (_runLog) _runLog.Clear();
-        _seq.Progress += p => LogRun($"流程 {r.Name}", p);
+        _seq.Progress += p => { LogRun($"流程 {r.Name}", p); TowerEvent(p, doneNeedsOperator: false); };
         await _seq.RunAsync(r);
     }
 
@@ -170,7 +173,10 @@ public partial class MainWindow : Window
             $"ALD {(s.AldRunning ? "執行中" : "停")}  cycle {s.AldCycle}  閥 0x{s.AldValves:X2}";
 
         C<ListBox>("LstActive").ItemsSource = _m.Alarms.Active.OrderByDescending(a => a.Info.Level)
-            .Select(a => $"[{a.Info.Level}] {a.Since:HH:mm:ss} {a.Info.Source}：{a.Info.Message}").ToList();
+            .Select(a => $"{(a.Acked ? "  " : "● ")}[{a.Info.Level}] {a.Since:HH:mm:ss} {a.Info.Source}：{a.Info.Message}{(a.Acked ? "" : "（未確認）")}")
+            .Concat(_m.Alarms.Latched.Select(a => $"● [已消失] {a.Since:HH:mm:ss} {a.Info.Source}：{a.Info.Message}（未確認）"))
+            .Concat(_seqFault ? new[] { "● [流程] 流程異常停止（未確認，詳見事件記錄）" } : Array.Empty<string>())
+            .ToList();
         if (_alarmLog is not null && DateTime.Now.Second % 2 == 0)
             C<ListBox>("LstLog").ItemsSource = _alarmLog.Recent(200).Select(r => $"{r.Time:MM-dd HH:mm:ss} {r.Event,-8} {r.Source}：{r.Message}").ToList();
         C<TextBlock>("TxtStatusBar").Text = _status;
@@ -180,5 +186,6 @@ public partial class MainWindow : Window
         RenderTrend();
         RenderTransfer(s);
         RenderMaint(s);
+        RenderTower(s);
     }
 }

@@ -87,6 +87,7 @@ public partial class MainWindow
         _leakPlotN = -1;
         _leak.Progress += p =>
         {
+            TowerEvent(p, doneNeedsOperator: false);
             _status = $"漏率測試：{p.Step} {p.Message}".TrimEnd();
             lock (_leakLog) _leakLog.Insert(0, $"{p.Time:HH:mm:ss} {p.Step} {p.Message}".TrimEnd());
             _alarmLog?.Add("漏率測試", p.State == SequencerState.Failed ? "Alarm" : "Info", $"{p.Step} {p.Message}".Trim(), evt: "STEP");

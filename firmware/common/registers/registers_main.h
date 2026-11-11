@@ -43,6 +43,12 @@
 #define MAIN_IR_IL_DENY2_BIT_TURBO_GV_OPEN           0u
 #define MAIN_IR_IL_DENY2_BIT_ARM_MOVING              1u
 #define MAIN_IR_IL_DENY2_BIT_HEATER_NOT_DOWN         2u
+#define MAIN_IR_DO_OUT                               16u  /* u16 */
+#define MAIN_IR_DO_OUT_BIT_BUZZER                    0u
+#define MAIN_IR_DO_OUT_BIT_TOWER_RED                 1u
+#define MAIN_IR_DO_OUT_BIT_TOWER_YELLOW              2u
+#define MAIN_IR_DO_OUT_BIT_TOWER_GREEN               3u
+#define MAIN_IR_DO_OUT_BIT_TOWER_BLUE                4u
 #define MAIN_IR_TV_PRESSURE                          30u  /* u16 [Torr] scale 0.001 */
 #define MAIN_IR_TV_POSITION                          31u  /* u16 [%] scale 0.1 */
 #define MAIN_IR_TV_STATUS                            32u  /* u16 */
@@ -109,6 +115,7 @@
 #define MAIN_HR_DO_CMD_BIT_TOWER_RED                 1u
 #define MAIN_HR_DO_CMD_BIT_TOWER_YELLOW              2u
 #define MAIN_HR_DO_CMD_BIT_TOWER_GREEN               3u
+#define MAIN_HR_DO_CMD_BIT_TOWER_BLUE                4u
 #define MAIN_HR_TV_MODE                              20u  /* u16 */
 #define MAIN_HR_TV_MODE_OPEN                         0u
 #define MAIN_HR_TV_MODE_CLOSE                        1u

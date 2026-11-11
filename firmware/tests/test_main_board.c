@@ -416,6 +416,11 @@ static void test_main_loop_safe_without_ipc(void)
     for (int i = 0; i < 50; i++) { fake_now += 10; main_app_loop(); }
     CHECK(fake_safe_pulled);                         /* 沒有 IPC 心跳 → 安全狀態、拉 SAFE 線 */
     CHECK(!fake_do[0]);                              /* TRANSFER_PERMIT 關 */
+    /* 沒有 IPC：就算 HR 有燈號命令，也只亮紅燈、蜂鳴器不叫 */
+    hr_slot(0)[MAIN_HR_DO_CMD] = 0x1F;
+    fake_now += 10; main_app_loop();
+    CHECK(fake_do[2] && !fake_do[1] && !fake_do[3] && !fake_do[4] && !fake_do[5]);
+    CHECK_EQ(ir_slot(0)[MAIN_IR_DO_OUT], 1u << MAIN_IR_DO_OUT_BIT_TOWER_RED);
     CHECK_EQ(ir_slot(0)[MAIN_IR_SYS_STATE], MAIN_IR_SYS_STATE_SAFE);
     CHECK(fake_can_sent > 0);                        /* 背板仍持續送 SYNC */
     /* 槽位都沒有回應 → 只有槽 0 在線 */

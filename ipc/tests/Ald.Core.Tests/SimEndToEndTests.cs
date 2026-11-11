@@ -198,4 +198,21 @@ public sealed class SimEndToEndTests : IDisposable
         Assert.True(await Until(() => m.Snapshot.TurboGateOpened, 10), "量完 GV 開回");
         Assert.DoesNotContain(m.Alarms.Active, a => a.Info.Level == AlarmLevel.Alarm);
     }
+
+    [Fact]
+    public async Task TowerLamp_FollowsIpc_SafeForcesRed()
+    {
+        if (_ecat is null) { _out.WriteLine("略過：ald-ecat 沒有編譯"); return; }
+        using var m = NewService();
+        m.Start();
+        Assert.True(await Until(() => m.Snapshot.AllOnline, 10), "連線");
+        // 安全狀態：IPC 只要綠燈，主控板仍強制紅燈
+        m.SetTower(TowerLamp.Green);
+        Assert.True(await Until(() => m.Snapshot.Tower == (TowerLamp.Green | TowerLamp.Red), 5), $"安全狀態紅燈 {m.Snapshot.Tower}");
+        await m.ResetAsync();
+        Assert.True(await Until(() => !m.Snapshot.SafeState, 5), "Reset");
+        Assert.True(await Until(() => m.Snapshot.Tower == TowerLamp.Green, 5), $"解除後照 IPC {m.Snapshot.Tower}");
+        m.SetTower(TowerLamp.Blue | TowerLamp.Buzzer | TowerLamp.Yellow);
+        Assert.True(await Until(() => m.Snapshot.Tower == (TowerLamp.Blue | TowerLamp.Buzzer | TowerLamp.Yellow), 5), $"{m.Snapshot.Tower}");
+    }
 }

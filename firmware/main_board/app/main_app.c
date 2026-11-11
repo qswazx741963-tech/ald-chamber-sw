@@ -25,7 +25,7 @@
 #include <string.h>
 
 /* 主控板自己的 DO 邏輯通道（實際腳位在 hal_port_stm32.c） */
-enum { DO_TRANSFER_PERMIT = 0, DO_BUZZER, DO_TOWER_RED, DO_TOWER_YELLOW, DO_TOWER_GREEN };
+enum { DO_TRANSFER_PERMIT = 0, DO_BUZZER, DO_TOWER_RED, DO_TOWER_YELLOW, DO_TOWER_GREEN, DO_TOWER_BLUE };
 enum { DI_EMO_OK = 0, DI_CDA_OK };
 
 
@@ -257,6 +257,25 @@ static void bp_send_all(const il_inputs_t *in, uint8_t react, uint32_t now)
 }
 
 /* ---------------------------------------------------------------- IPC 看門狗 */
+static bool s_ipc_ok;
+
+/* 燈塔 / 蜂鳴器：燈號規則與閃爍由 IPC 決定（HR DO_CMD）。主控板只做兩件保底：
+ * 安全狀態一定亮紅燈；IPC 斷線時其他燈與蜂鳴器關掉（沒有人能消音），只留紅燈。
+ * 實際輸出回報在 IR DO_OUT。 */
+static void tower_out(void)
+{
+    uint16_t cmd = s_ipc_ok ? hr_slot(0)[MAIN_HR_DO_CMD] : 0;
+    bool red = s_safe || (cmd >> MAIN_HR_DO_CMD_BIT_TOWER_RED & 1u);
+    bool out[5] = { cmd >> MAIN_HR_DO_CMD_BIT_BUZZER & 1u, red, cmd >> MAIN_HR_DO_CMD_BIT_TOWER_YELLOW & 1u,
+                    cmd >> MAIN_HR_DO_CMD_BIT_TOWER_GREEN & 1u, cmd >> MAIN_HR_DO_CMD_BIT_TOWER_BLUE & 1u };
+    static const uint16_t ch[5] = { DO_BUZZER, DO_TOWER_RED, DO_TOWER_YELLOW, DO_TOWER_GREEN, DO_TOWER_BLUE };
+    static const uint16_t bit[5] = { MAIN_IR_DO_OUT_BIT_BUZZER, MAIN_IR_DO_OUT_BIT_TOWER_RED, MAIN_IR_DO_OUT_BIT_TOWER_YELLOW,
+                                     MAIN_IR_DO_OUT_BIT_TOWER_GREEN, MAIN_IR_DO_OUT_BIT_TOWER_BLUE };
+    uint16_t fb = 0;
+    for (unsigned i = 0; i < 5; i++) { hal_do_write(ch[i], out[i]); reg_bit(&fb, bit[i], out[i]); }
+    ir_slot(0)[MAIN_IR_DO_OUT] = fb;
+}
+
 static void ipc_watchdog(uint32_t now)
 {
     uint16_t *hr0 = hr_slot(0), *ir0 = ir_slot(0);
@@ -268,6 +287,7 @@ static void ipc_watchdog(uint32_t now)
     uint16_t wd = hr0[COM_HR_WATCHDOG_MS];
     if (wd < COM_HR_WATCHDOG_MS_MIN_RAW || wd > COM_HR_WATCHDOG_MS_MAX_RAW) wd = 1000;
     bool ok = s_ipc_seen && now - s_ipc_hb_ms < wd && s_bus->link_up();
+    s_ipc_ok = ok;
     reg_bit(&ir0[COM_IR_STATUS], COM_IR_STATUS_BIT_WATCHDOG_TRIPPED, s_ipc_seen && !ok);
     if (!ok) s_safe = true;
     if (!hal_safe_line_ok() || !hal_di_read(DI_EMO_OK)) { if (!s_safe) s_reset_pending = false; s_safe = true; }
@@ -323,6 +343,7 @@ void main_app_loop(void)
     bool permit = !(react & IL_REACT_PERMIT_OFF);
     hal_do_write(DO_TRANSFER_PERMIT, permit);
     hal_safe_line_pull(s_safe && !s_reset_pending);
+    tower_out();
     bp_send_all(&in, react, now);
 
     /* 狀態回報 */

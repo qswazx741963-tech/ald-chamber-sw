@@ -18,6 +18,7 @@ public sealed record MachineSnapshot
     /// <summary>主控板最後一次擋下命令的原因（IR IL_DENY + IL_DENY2，bit 定義見 registers.yaml）與動作。</summary>
     public uint LastDenyBits { get; init; }
     public ushort LastDenyAction { get; init; }
+    public TowerLamp Tower { get; init; }                      // 燈塔 / 蜂鳴器實際輸出（主控板 IR DO_OUT）
 
     // 槽 3 真空板（PM）
     public bool ChamberLidClosed { get; init; }

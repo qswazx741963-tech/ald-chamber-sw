@@ -10,6 +10,14 @@
         <Border DockPanel.Dock="Top" Padding="10,6" Background="#20303F">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                    <StackPanel x:Name="PnlTower" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" ToolTip.Tip="燈塔實際輸出：紅 異常 / 黃 警告或待機 / 綠 執行中 / 藍 需要人員處理">
+                        <Ellipse x:Name="LmpRed" Width="16" Height="16" />
+                        <Ellipse x:Name="LmpYellow" Width="16" Height="16" />
+                        <Ellipse x:Name="LmpGreen" Width="16" Height="16" />
+                        <Ellipse x:Name="LmpBlue" Width="16" Height="16" />
+                        <TextBlock x:Name="TxtBuzzer" Foreground="White" Width="20" Text="" />
+                    </StackPanel>
+                    <Button x:Name="BtnAck" Content="確認 / 消音" Background="#E0E0E0" Foreground="Black" />
                     <TextBlock x:Name="TxtUser" Foreground="White" VerticalAlignment="Center" Text="未登入（檢視）" />
                     <Button x:Name="BtnLogin" Content="登入" Background="#E0E0E0" Foreground="Black" />
                     <Button x:Name="BtnReset" Content="Reset（解除安全狀態）" Background="#E0E0E0" Foreground="Black" />
@@ -66,7 +74,7 @@
             </TabItem>
             <TabItem Header="警報">
                 <Grid RowDefinitions="Auto,*,Auto,2*" Margin="8">
-                    <TextBlock Grid.Row="0" Text="目前警報" FontWeight="Bold" />
+                    <TextBlock Grid.Row="0" Text="目前警報（● = 未確認；按上方「確認 / 消音」）" FontWeight="Bold" />
                     <ListBox Grid.Row="1" x:Name="LstActive" />
                     <TextBlock Grid.Row="2" Text="事件記錄（最新在上）" FontWeight="Bold" Margin="0,8,0,0" />
                     <ListBox Grid.Row="3" x:Name="LstLog" />

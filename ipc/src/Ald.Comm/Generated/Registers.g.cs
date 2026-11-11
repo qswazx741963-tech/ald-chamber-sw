@@ -158,6 +158,16 @@ public static class MainBoard
             ArmMoving = 1 << 1,
             HeaterNotDown = 1 << 2,
         }
+        /// <summary>燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈）</summary>
+        public const ushort DoOut = 16;
+        [System.Flags] public enum DoOutBits : ushort
+        {
+            Buzzer = 1 << 0,
+            TowerRed = 1 << 1,
+            TowerYellow = 1 << 2,
+            TowerGreen = 1 << 3,
+            TowerBlue = 1 << 4,
+        }
         /// <summary>[Torr]</summary>
         public const ushort TvPressure = 30;
         public const double TvPressureScale = 0.001;
@@ -274,6 +284,7 @@ public static class MainBoard
         public const ushort WatchdogMs = 2;
         public const double WatchdogMsMin = 200;
         public const double WatchdogMsMax = 10000;
+        /// <summary>燈塔 / 蜂鳴器命令（IPC 決定燈號與閃爍）</summary>
         public const ushort DoCmd = 10;
         [System.Flags] public enum DoCmdBits : ushort
         {
@@ -281,6 +292,7 @@ public static class MainBoard
             TowerRed = 1 << 1,
             TowerYellow = 1 << 2,
             TowerGreen = 1 << 3,
+            TowerBlue = 1 << 4,
         }
         public const ushort TvMode = 20;
         public enum TvModeValues : ushort

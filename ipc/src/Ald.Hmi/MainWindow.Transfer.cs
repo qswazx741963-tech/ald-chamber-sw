@@ -47,8 +47,10 @@ public partial class MainWindow
         if (_m is null || _wafers is null || Busy) { _status = "已有流程在執行"; return; }
         _xfer = new TransferSequencer(_m, _wafers, _m.Config.Transfer, _m.Config.Interlock.LoadlockZEnabled);
         lock (_xferLog) _xferLog.Clear();
+        _needOp = false;
         _xfer.Progress += p =>
         {
+            TowerEvent(p, doneNeedsOperator: dir == TransferDirection.UnloadToLoadlock);
             _status = $"傳片：{p.Step} {p.Message}";
             lock (_xferLog) _xferLog.Insert(0, $"{p.Time:HH:mm:ss} {p.Step} {p.Message}".TrimEnd());
             _alarmLog?.Add("傳片", p.State == SequencerState.Failed ? "Alarm" : "Info", $"{p.Step} {p.Message}".Trim(), evt: "STEP");
