@@ -192,13 +192,14 @@ public partial class MainWindow
     private void RenderRecipe()
     {
         bool running = SequenceRunning;
-        C<Button>("BtnRecipeRun").IsEnabled = _m is not null && !Busy && Can(Permission.RunRecipe);
+        bool off = _mode == ControlMode.Offline;   // ONLINE 時從主頁 Sequence 執行
+        C<Button>("BtnRecipeRun").IsEnabled = off && _m is not null && !Busy && Can(Permission.RunRecipe);
         bool edit = Can(Permission.EditRecipe);
         C<StackPanel>("PnlRecipeForm").IsEnabled = edit;
         C<Button>("BtnRecipeSave").IsEnabled = edit;
         C<Button>("BtnRecipeNew").IsEnabled = edit;
         C<Button>("BtnRecipeAbort").IsEnabled = running;
-        C<Button>("BtnRecipeAuto").IsEnabled = _m is not null && !Busy && Can(Permission.RunRecipe) && Can(Permission.Transfer);
+        C<Button>("BtnRecipeAuto").IsEnabled = off && _m is not null && !Busy && Can(Permission.RunRecipe) && Can(Permission.Transfer);
         C<TextBlock>("TxtRunState").Text = RunState switch
         {
             SequencerState.Running => $"執行中：{_runName}",

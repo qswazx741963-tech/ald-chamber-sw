@@ -19,7 +19,8 @@ public partial class MainWindow
     private bool _defaultPw;
 
     private TimeSpan IdleLogout => TimeSpan.FromMinutes(_m?.Config.Hmi.IdleLogoutMinutes ?? 30);
-    private bool Can(Permission p) => Access.Can(_role, p);
+    /// <summary>權限 = 登入等級夠 且 目前控制模式允許（ONLINE 鎖手動 / 編輯 / 保養）。</summary>
+    private bool Can(Permission p) => Access.Can(_role, p) && ControlModes.Allowed(_mode, p);
     /// <summary>選單的「登入 / 登出」。</summary>
     private Action LoginClicked = () => { };
     private string OpSource => $"操作:{_user ?? "未登入"}";
@@ -139,8 +140,6 @@ public partial class MainWindow
 
         C<TextBlock>("TxtUser").Text = _user is null ? "未登入（檢視）" : $"{_user}（{Access.Text(_role)}）";
         C<Button>("BtnReset").IsEnabled = Can(Permission.Reset);
-        C<Button>("BtnPump").IsEnabled = Can(Permission.RunRecipe) && !Busy;
-        C<Button>("BtnVent").IsEnabled = Can(Permission.RunRecipe) && !Busy;
         foreach (var b in new[] { "BtnLlPump", "BtnLlVent", "BtnSvOpen", "BtnSvClose" }) C<Button>(b).IsEnabled = Can(Permission.Loadlock) && !XferRunning && _auto?.State != SequencerState.Running && !BatchRunning;
         C<StackPanel>("PnlUsers").IsEnabled = Can(Permission.ManageUsers);
         C<Button>("BtnMyPw").IsEnabled = _user is not null;

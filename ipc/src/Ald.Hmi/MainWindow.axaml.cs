@@ -48,6 +48,7 @@ public partial class MainWindow : Window
         WireHeater();
         WireHistory();
         WireHeader();
+        WireMode();
         _timer.Tick += (_, _) => Render();
         _timer.Start();
         Closed += (_, _) => _timer.Stop();
@@ -60,8 +61,6 @@ public partial class MainWindow : Window
         if (_m is null) return;
         C<Button>("BtnReset").Click += async (_, _) => await Do("Reset", () => _m.ResetAsync());
         C<Button>("BtnSafe").Click += (_, _) => _ = Do("安全停止", () => { AbortAll(); _m.EnterSafe(); return Task.CompletedTask; });
-        C<Button>("BtnPump").Click += (_, _) => RunRecipe(new ProcessRecipe { Name = "抽真空" });
-        C<Button>("BtnVent").Click += (_, _) => RunRecipe(new ProcessRecipe { Name = "回填大氣", PumpDown = false, VentAfter = true });
         C<Button>("BtnAbort").Click += (_, _) => AbortAll();
         C<Button>("BtnLlPump").Click += (_, _) => Ll(LoadlockCommand.Pump);
         C<Button>("BtnLlVent").Click += (_, _) => Ll(LoadlockCommand.Vent);
@@ -166,6 +165,7 @@ public partial class MainWindow : Window
         RenderMaint(s);
         RenderBatch();
         RenderHeater(s);
+        RenderMode();
         RenderHistory();
         RenderTower(s);
     }

@@ -148,6 +148,7 @@ public partial class MainWindow
         bool locked = !s.Connected || Busy || !allowed;
         C<Grid>("PnlManual").IsEnabled = !locked;
         C<TextBlock>("TxtManualLock").Text =
+            _mode == ControlMode.Online ? "ONLINE（生產模式）：手動操作已鎖住，請從主頁 Sequence 執行；要手動請先切 OFFLINE（手動需工程師登入）" :
             !allowed ? "手動操作需要工程師以上權限，請先登入" :
             !s.Connected ? "主控板未連線" :
             SequenceRunning ? $"流程「{_runName}」執行中，手動操作已鎖住（要操作請先中止流程）" :

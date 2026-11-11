@@ -72,7 +72,7 @@ public partial class MainWindow
         C<TextBlock>("TxtWaferSv").Text = s.SlitValve == LoadlockSv.Open ? "⇄ SV 開" : "｜ SV 關";
         C<TextBlock>("TxtWaferNote").Text = _wafers.Updated == default ? _wafers.Note : $"{_wafers.Updated:MM-dd HH:mm:ss} {_wafers.Note}";
 
-        bool canRun = Can(Permission.Transfer) && !Busy;
+        bool canRun = Can(Permission.Transfer) && !Busy && _mode == ControlMode.Offline;   // ONLINE 時從主頁 Sequence 執行
         var whyLoad = TransferSequencer.Precheck(TransferDirection.LoadToPm, s, _wafers).ToList();
         var whyUnload = TransferSequencer.Precheck(TransferDirection.UnloadToLoadlock, s, _wafers).ToList();
         C<Button>("BtnXferLoad").IsEnabled = canRun && whyLoad.Count == 0;
@@ -81,6 +81,7 @@ public partial class MainWindow
         // 兩個方向都不能按時說明原因（PM 有片看取片的原因，否則看送片的）
         var why = _wafers.Pm == true ? whyUnload : whyLoad;
         C<TextBlock>("TxtXferWhy").Text =
+            _mode == ControlMode.Online ? "ONLINE（生產模式）：請從主頁 Sequence 送片 / 取片" :
             !Can(Permission.Transfer) ? "傳片需要操作員以上權限，請先登入" :
             SequenceRunning ? "配方流程執行中" :
             XferRunning || whyLoad.Count == 0 || whyUnload.Count == 0 ? "" :

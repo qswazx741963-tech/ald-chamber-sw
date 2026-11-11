@@ -26,6 +26,10 @@ public enum Permission
     ManageUsers,
     /// <summary>漏率測試、保養計數歸零 / 改提醒上限。</summary>
     Maintenance,
+    /// <summary>切到 ONLINE（生產）。</summary>
+    GoOnline,
+    /// <summary>切回 OFFLINE（工程 / 保養）。</summary>
+    GoOffline,
 }
 
 /// <summary>權限表：等級 ≥ 需求等級即可。改權限分配只改這裡。</summary>
@@ -34,7 +38,7 @@ public static class Access
     public static UserRole Required(Permission p) => p switch
     {
         Permission.Stop => UserRole.Viewer,
-        Permission.Reset or Permission.RunRecipe or Permission.Loadlock or Permission.Transfer => UserRole.Operator,
+        Permission.Reset or Permission.RunRecipe or Permission.Loadlock or Permission.Transfer or Permission.GoOnline or Permission.GoOffline => UserRole.Operator,
         Permission.ManualControl or Permission.EditRecipe or Permission.EditWaferMap or Permission.Maintenance => UserRole.Engineer,
         Permission.ManageUsers => UserRole.Admin,
         _ => UserRole.Admin,

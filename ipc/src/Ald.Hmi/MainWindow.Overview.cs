@@ -35,22 +35,33 @@ public partial class MainWindow
         string llId = _wafers?.Loadlock == true ? _wafers.LoadlockId : "", pmId = _wafers?.Pm == true ? _wafers.PmId : "";
         string elapsed = _busySince is { } t0 ? (DateTime.Now - t0).ToString(@"hh\:mm\:ss") : "";
 
-        // 作業卡
-        C<TextBlock>("TxtRunNow").Text = run.Length == 0
-            ? (_status.Length > 0 ? $"待機\n最後：{_status}" : "待機")
-            : $"{run}\n{step}\n經過 {elapsed}" + (BatchWaiting ? $"\n⚠ {_batch!.Prompt}" : "");
+        // Chamber 卡：狀態、晶圓、配方 / 步驟、經過時間、進度（ALD cycle 或批次片數）
+        var c = new StringBuilder();
+        c.AppendLine($"狀態  {(!s.Connected ? "未連線" : s.SafeState ? "安全狀態" : run.Length > 0 ? "執行中" : "待機")}");
+        c.AppendLine($"晶圓  PM {WaferMap.Text(_wafers?.Pm)}{(pmId.Length > 0 ? " " + pmId : "")}");
+        c.AppendLine($"流程  {(run.Length > 0 ? run : "-")}");
+        if (step.Length > 0) c.AppendLine($"步驟  {step}");
+        if (elapsed.Length > 0) c.AppendLine($"經過  {elapsed}");
+        c.Append($"Heater {(s.HeaterAtProcess ? "Process" : s.HeaterDown ? "下位" : "移動中")}  Lift {(s.WaferLiftUp ? "上" : s.WaferLiftDown ? "下" : "動作中")}");
+        if (BatchWaiting) c.Append($"\n⚠ 等人員：{_batch!.Prompt}");
+        C<TextBlock>("TxtChamber").Text = c.ToString();
 
-        // PM 卡
-        var pm = new StringBuilder();
-        pm.AppendLine($"晶圓   {WaferMap.Text(_wafers?.Pm)}{(pmId.Length > 0 ? " " + pmId : "")}");
-        pm.AppendLine($"流程   {(run.Length > 0 ? run : "-")}");
-        if (step.Length > 0) pm.AppendLine($"步驟   {step}");
-        int cycles = m.LastAld?.Cycles ?? 0;
-        pm.AppendLine($"ALD    {(s.AldRunning ? $"執行中 {s.AldCycle}/{(cycles > 0 ? cycles : "?")}" : "停")}");
-        if (elapsed.Length > 0) pm.AppendLine($"經過   {elapsed}");
-        pm.AppendLine($"Heater {s.HeaterPosSteps} step {(s.HeaterAtProcess ? "Process" : s.HeaterDown ? "下位" : "")} ({s.HeaterAxis})");
-        pm.Append($"Lift   {(s.WaferLiftUp ? "上" : s.WaferLiftDown ? "下" : "動作中")}  上蓋 {(s.ChamberLidClosed ? "關" : "開")}");
-        C<TextBlock>("TxtMech").Text = pm.ToString();
+        var ald = m.LastAld;
+        var prg = C<ProgressBar>("PrgRun");
+        if (s.AldRunning && ald is { Cycles: > 0 })
+        {
+            double cycleMs = ald.Steps.Sum(x => (double)x.DurationMs);
+            int left = Math.Max(0, ald.Cycles - s.AldCycle);
+            prg.Value = 100.0 * s.AldCycle / ald.Cycles;
+            C<TextBlock>("TxtProgress").Text = $"ALD cycle {s.AldCycle} / {ald.Cycles}，剩餘約 {TimeSpan.FromMilliseconds(left * cycleMs):hh\\:mm\\:ss}";
+        }
+        else if (BatchRunning && _batch!.Results.Count > 0)
+        {
+            int done = _batch.Results.Count(x => x.State == BatchItemState.Done);
+            prg.Value = 100.0 * done / _batch.Results.Count;
+            C<TextBlock>("TxtProgress").Text = $"批次 {done} / {_batch.Results.Count} 片完成";
+        }
+        else { prg.Value = 0; C<TextBlock>("TxtProgress").Text = run.Length > 0 ? "" : "沒有流程在執行"; }
 
         var v = new StringBuilder();
         v.AppendLine($"PM 互鎖  {PmP(s)}");
@@ -84,16 +95,7 @@ public partial class MainWindow
         h.Append(off == 16 ? "全部未加熱" : $"（未開 {off} 組；實際/設定 °C 輸出）");
         C<TextBlock>("TxtHeat").Text = h.ToString();
 
-        var g = new StringBuilder();
         var mfc = m.Config.Mfc.Channels;
-        for (int i = 0; i < 8; i++)
-        {
-            string n = mfc[i].Name.Length > 10 ? mfc[i].Name[..10] : mfc[i].Name;
-            g.AppendLine($"{i + 1} {n,-10}{s.MfcValue[i],7:0.0}{((s.MfcUpstreamValves >> i & 1) != 0 ? " ●" : "")}");
-        }
-        g.Append("（● = 上游閥開）");
-        C<TextBlock>("TxtMfc").Text = g.ToString();
-
         C<OverviewView>("Ov").Update(new OverviewModel(s, _wafers?.Loadlock, _wafers?.Pm,
             llId, pmId,
             s.AldRunning || s.SysState == SystemState.Process, m.Config.Transfer.ArmPmSteps,
