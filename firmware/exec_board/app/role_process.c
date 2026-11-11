@@ -18,6 +18,7 @@
 
 static ald_seq_t s_seq;
 static volatile uint16_t s_ald_out;
+static uint16_t s_mfc_up_out;   /* MFC 上游閥實際輸出（bit0 = MFC_UP_V1） */
 
 static void write_ald(uint16_t mask)
 {
@@ -38,6 +39,7 @@ static void safe(void)
     uint16_t purge = g_hr[PROC_HR_PURGE_VALVES] & ALD_MASK;
     write_ald(purge);
     for (uint16_t i = 0; i < N_MFC; i++) hal_do_write(N_ALD + i, false);
+    s_mfc_up_out = 0;
     for (uint16_t i = 0; i < N_MFC; i++) hal_ao_write_mv(i, 0);
     exec_set_status(COM_IR_STATUS_BIT_RUNNING, false);
 }
@@ -70,7 +72,9 @@ static void loop(uint32_t now)
     if (!exec_in_safe()) {
         if (!running) write_ald(g_hr[PROC_HR_DO_CMD] & ALD_MASK);   /* 手動模式 */
         for (uint16_t i = 0; i < N_MFC; i++) {
-            hal_do_write(N_ALD + i, (g_hr[PROC_HR_DO_CMD] >> (PROC_HR_DO_CMD_BIT_MFC_UP_V1 + i)) & 1u);
+            bool up = (g_hr[PROC_HR_DO_CMD] >> (PROC_HR_DO_CMD_BIT_MFC_UP_V1 + i)) & 1u;
+            hal_do_write(N_ALD + i, up);
+            if (up) s_mfc_up_out |= (uint16_t)(1u << i); else s_mfc_up_out &= (uint16_t)~(1u << i);
             uint32_t sp = g_hr[PROC_HR_MFC_SP + i];
             if (sp > PROC_HR_MFC_SP_MAX_RAW) sp = 0;
             hal_ao_write_mv(i, (uint16_t)(sp * MFC_FS_MV / MFC_PCT_X100));
@@ -81,7 +85,7 @@ static void loop(uint32_t now)
     g_ir[PROC_IR_MANOMETER_RAW] = hal_ai_read_mv(N_MFC);
     g_ir[PROC_IR_DI] = (uint16_t)(hal_di_read(0) | (hal_di_read(1) << 1));
     /* DO 回授：TODO 改讀實際輸出回授腳 */
-    g_ir[PROC_IR_DO_FB] = (uint16_t)((s_ald_out & ALD_MASK) | (g_hr[PROC_HR_DO_CMD] & (uint16_t)~ALD_MASK));
+    g_ir[PROC_IR_DO_FB] = (uint16_t)((s_ald_out & ALD_MASK) | (s_mfc_up_out << PROC_HR_DO_CMD_BIT_MFC_UP_V1));
 }
 
 const role_ops_t role_process = {

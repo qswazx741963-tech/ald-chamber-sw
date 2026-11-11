@@ -84,3 +84,58 @@ typedef struct { uint8_t slot; uint16_t addr; uint16_t len; uint16_t pdo_off; } 
     { 4u, 40u, 2u, 149u }, /* motion */ \
 }
 #define ALD_PDO_TX_SEG_COUNT 27u
+
+/* HR 開機預設值 { 絕對位址, 原始值 }（registers.yaml 的 default）：主控板 reg_image_init 與 IPC 主站程式 bridge_init 都載入 */
+typedef struct { uint16_t addr; uint16_t value; } ald_hr_default_t;
+#define ALD_HR_DEFAULTS { \
+    { 2u, 1000u }, /* main.WATCHDOG_MS */ \
+    { 150u, 50u }, /* main.IL_SV_DP_MAX_MTORR */ \
+    { 151u, 1u }, /* main.IL_LL_Z_ENABLE */ \
+    { 152u, 500u }, /* main.IL_LL_STALE_MS */ \
+    { 154u, 5894u }, /* main.IL_ARM_SAFE_POS */ \
+    { 156u, 1000u }, /* main.IL_SV_BELOW_MTORR */ \
+    { 157u, 10000u }, /* main.IL_LL_JUMP_MTORR */ \
+    { 160u, 2u }, /* main.PM_GAUGE_MODEL */ \
+    { 161u, 633u }, /* main.PM_GAUGE_AI_ADDR */ \
+    { 162u, 15u }, /* main.PM_GAUGE_FS_MTORR */ \
+    { 163u, 16960u }, /* main.PM_GAUGE_FS_MTORR */ \
+    { 202u, 1000u }, /* process.WATCHDOG_MS */ \
+    { 402u, 1000u }, /* heater.WATCHDOG_MS */ \
+    { 500u, 800u }, /* heater.PID_KP */ \
+    { 501u, 800u }, /* heater.PID_KP */ \
+    { 502u, 800u }, /* heater.PID_KP */ \
+    { 503u, 800u }, /* heater.PID_KP */ \
+    { 504u, 800u }, /* heater.PID_KP */ \
+    { 505u, 800u }, /* heater.PID_KP */ \
+    { 506u, 800u }, /* heater.PID_KP */ \
+    { 507u, 800u }, /* heater.PID_KP */ \
+    { 508u, 800u }, /* heater.PID_KP */ \
+    { 509u, 800u }, /* heater.PID_KP */ \
+    { 510u, 800u }, /* heater.PID_KP */ \
+    { 511u, 800u }, /* heater.PID_KP */ \
+    { 512u, 800u }, /* heater.PID_KP */ \
+    { 513u, 800u }, /* heater.PID_KP */ \
+    { 514u, 800u }, /* heater.PID_KP */ \
+    { 515u, 800u }, /* heater.PID_KP */ \
+    { 520u, 50u }, /* heater.PID_KI */ \
+    { 521u, 50u }, /* heater.PID_KI */ \
+    { 522u, 50u }, /* heater.PID_KI */ \
+    { 523u, 50u }, /* heater.PID_KI */ \
+    { 524u, 50u }, /* heater.PID_KI */ \
+    { 525u, 50u }, /* heater.PID_KI */ \
+    { 526u, 50u }, /* heater.PID_KI */ \
+    { 527u, 50u }, /* heater.PID_KI */ \
+    { 528u, 50u }, /* heater.PID_KI */ \
+    { 529u, 50u }, /* heater.PID_KI */ \
+    { 530u, 50u }, /* heater.PID_KI */ \
+    { 531u, 50u }, /* heater.PID_KI */ \
+    { 532u, 50u }, /* heater.PID_KI */ \
+    { 533u, 50u }, /* heater.PID_KI */ \
+    { 534u, 50u }, /* heater.PID_KI */ \
+    { 535u, 50u }, /* heater.PID_KI */ \
+    { 602u, 1000u }, /* vacuum.WATCHDOG_MS */ \
+    { 802u, 1000u }, /* motion.WATCHDOG_MS */ \
+    { 830u, 1000u }, /* motion.AXIS_SPEED */ \
+    { 831u, 1000u }, /* motion.AXIS_SPEED */ \
+}
+#define ALD_HR_DEFAULT_COUNT 49u

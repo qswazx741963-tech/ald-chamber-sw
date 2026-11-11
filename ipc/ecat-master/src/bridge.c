@@ -5,7 +5,15 @@
 static const ald_pdo_seg_t s_rx[] = ALD_PDO_RX_SEGS;
 static const ald_pdo_seg_t s_tx[] = ALD_PDO_TX_SEGS;
 
-void bridge_init(bridge_t *b) { memset(b, 0, sizeof *b); }
+/* HR 先載入 registers.yaml 的預設值（與主控板相同），C# 連上後再用 config 覆寫。
+ * 不這樣做的話，RxPDO 會把主控板開機預設的互鎖參數（壓力門檻、手臂安全位置…）全部洗成 0。 */
+void bridge_init(bridge_t *b)
+{
+    static const ald_hr_default_t defs[] = ALD_HR_DEFAULTS;
+    memset(b, 0, sizeof *b);
+    for (unsigned i = 0; i < ALD_HR_DEFAULT_COUNT; i++)
+        if (defs[i].addr < BRIDGE_IMAGE_SIZE) b->hr[defs[i].addr] = defs[i].value;
+}
 
 void bridge_build_rx(bridge_t *b, uint16_t *rx)
 {

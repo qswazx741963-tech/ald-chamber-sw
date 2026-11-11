@@ -5,6 +5,7 @@
 #include "fake_hal.h"
 #include "pid.h"
 #include "registers_process.h"
+#include "registers_motion.h"
 #include "slot_table.h"
 #include "unit.h"
 
@@ -118,6 +119,39 @@ static void test_process_io(void)
     CHECK_EQ(g_ir[PROC_IR_MANOMETER_RAW], 4321);
 }
 
+/* 馬達板：MOVE 要「值改變」才觸發一次；到位後回 IDLE；驅動器故障 → ERROR；HOME 清 ERROR */
+static void test_motion_axis(void)
+{
+    fake_reset();
+    fake_slot = 4; fake_board_type = BOARD_TYPE_MOTION;
+    exec_app_init();
+    uint8_t buf[64];
+    bp_sync_t sy = {1, 0, BP_SYNC_RUN_OK};
+    uint16_t hr[42] = {0};
+    hr[COM_HR_WATCHDOG_MS] = 1000;
+    hr[COM_HR_COMMAND] = COM_HR_COMMAND_RESET_ALARM;
+    hr[MOT_HR_AXIS_TARGET] = 0; hr[MOT_HR_AXIS_TARGET + 1] = 20000;
+    hr[MOT_HR_AXIS_SPEED] = 3000;
+    hr[MOT_HR_AXIS_CMD] = MOT_HR_AXIS_CMD_MOVE;
+    fake_can_rx_push(bp_make_id(BP_T_SYNC, BP_BROADCAST_SLOT, 0), buf, bp_pack_sync(buf, &sy));
+    fake_can_rx_push(bp_make_id(BP_T_HR, 4, 0), buf, bp_pack_regs(buf, 0, hr, 30));
+    fake_can_rx_push(bp_make_id(BP_T_HR, 4, 1), buf, bp_pack_regs(buf, 30, hr + 30, 12));
+    fake_now = 10; exec_app_loop();
+    CHECK(!exec_in_safe());
+    CHECK(fake_step_busy[0]);
+    CHECK_EQ(fake_step_target[0], 20000);
+    CHECK_EQ(g_ir[MOT_IR_AXIS_STATE], 1);
+    fake_step_busy[0] = false; fake_step_pos[0] = 20000;   /* 到位 */
+    fake_now = 20; exec_app_loop();
+    CHECK_EQ(g_ir[MOT_IR_AXIS_STATE], 0);
+    CHECK_EQ(g_ir[MOT_IR_AXIS_POS + 1], 20000);
+    fake_now = 30; exec_app_loop();
+    CHECK(!fake_step_busy[0]);                    /* MOVE 沒變 → 不會再走一次 */
+    fake_step_fault[0] = true;
+    fake_now = 40; exec_app_loop();
+    CHECK_EQ(g_ir[MOT_IR_AXIS_STATE], 3);
+}
+
 static void test_exec_bad_slot(void)
 {
     fake_reset();
@@ -140,6 +174,7 @@ int main(void)
     RUN(test_exec_watchdog);
     RUN(test_exec_bad_slot);
     RUN(test_process_io);
+    RUN(test_motion_axis);
     printf("執行板：%d 項檢查，%d 項失敗\n", g_checks, g_fail);
     return g_fail != 0;
 }

@@ -1,6 +1,6 @@
 /*
  * 加熱板：16 組 SSR + 16 組 K 型熱電偶（14 用 + 2 預留）、4 個過溫開關
- * 邏輯通道：DO 0–15 SSR；DI 0–3 過溫開關（true = 過溫）；熱電偶讀值 TODO（MAX31856 ×16，SPI，K type）
+ * 邏輯通道：DO 0–15 SSR；DI 0–3 過溫開關（true = 過溫）；熱電偶讀值 hal_tc_read（MAX31856 ×16，SPI，K type）
  * 各組溫度上限 HEATER_LIMIT（前驅物 200、main valve 250、其他 300~350、Chuck 600 °C），0 = 不准加熱。
  * 過溫開關「同時」要用硬體直接切 SSR 電源，這裡只是軟體回報 + 第二道保護。
  */
@@ -19,7 +19,7 @@
 static pid_t_ s_pid[N];
 static uint32_t s_last_pid_ms;
 
-static float read_tc_degc(uint16_t ch) { (void)ch; return NAN; }   /* TODO MAX31856；讀不到回 NAN */
+static float read_tc_degc(uint16_t ch) { float t; return hal_tc_read(ch, &t) ? t : NAN; }   /* 讀不到回 NAN */
 
 static void setup(void) { for (uint16_t i = 0; i < N; i++) hal_do_write(i, false); }
 

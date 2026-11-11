@@ -20,6 +20,18 @@ bool     hal_di_read(uint16_t ch);          /* 已處理極性：true = 感測�
 uint16_t hal_ai_read_mv(uint16_t ch);
 void     hal_ao_write_mv(uint16_t ch, uint16_t mv);
 
+/* ---- 熱電偶（加熱板：MAX31856 ×16，SPI，K type；冷端補償在 MAX31856 內）---- */
+bool     hal_tc_read(uint16_t ch, float *degc);   /* false = 斷線 / 故障 / 讀不到 */
+
+/* ---- 步進馬達（馬達板：計時器產生 STEP 脈衝 + DIR，梯形加減速在這層）----
+ * 原點復歸：往負方向走到原點感測器（HEATER_DOWN）停，位置歸零。 */
+void     hal_step_move(uint8_t axis, int32_t target, uint16_t speed_sps);
+void     hal_step_home(uint8_t axis, uint16_t speed_sps);
+void     hal_step_stop(uint8_t axis);              /* 減速停（安全狀態用） */
+int32_t  hal_step_pos(uint8_t axis);
+bool     hal_step_busy(uint8_t axis);
+bool     hal_step_fault(uint8_t axis);             /* 驅動器 ALM / 失步 */
+
 /* ---- 背板 ---- */
 int      hal_can_send(uint16_t id, const uint8_t *data, uint8_t len);   /* CAN FD，回傳 0 = 成功 */
 int      hal_can_recv(uint16_t *id, uint8_t *data, uint8_t *len);       /* 沒資料回傳 -1 */

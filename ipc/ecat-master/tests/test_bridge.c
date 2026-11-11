@@ -63,13 +63,27 @@ static void test_pdo_and_command(void)
     bridge_apply_tx(&b, tx);
     CHECK(b.ir[COM_IR_HEARTBEAT_ECHO] == 7);
     CHECK(b.ir[COM_IR_BOARD_TYPE] == MAIN_BOARD_TYPE);
-    CHECK(b.ir[MAIN_IR_SLOT_ONLINE] == 1);
+    CHECK(b.ir[MAIN_IR_SLOT_ONLINE] == 1);   /* 執行板還沒送過 IR → 不算在線 */
+}
+
+/* 啟動時 HR 已載入 registers.yaml 預設值（否則 RxPDO 會把主控板的互鎖參數洗成 0） */
+static void test_defaults(void)
+{
+    static bridge_t b;
+    bridge_init(&b);
+    CHECK(b.hr[COM_HR_WATCHDOG_MS] == 1000);
+    CHECK(b.hr[MAIN_HR_IL_SV_BELOW_MTORR] == 1000);
+    CHECK(b.hr[MAIN_HR_PM_GAUGE_MODEL] == MAIN_HR_PM_GAUGE_MODEL_APGX_H);
+    CHECK(b.hr[MAIN_HR_PM_GAUGE_AI_ADDR] == 633);
+    CHECK(b.hr[MAIN_HR_IL_ARM_SAFE_POS + 1] == 5894);
+    CHECK(b.hr[1 * ALD_SLOT_STRIDE + COM_HR_WATCHDOG_MS] == 1000);   /* 各槽也有 */
 }
 
 int main(void)
 {
     test_modbus();
     test_pdo_and_command();
+    test_defaults();
     printf("ald-ecat bridge：%d 項檢查，%d 項失敗\n", g_checks, g_fail);
     return g_fail != 0;
 }

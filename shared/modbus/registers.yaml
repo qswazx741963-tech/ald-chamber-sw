@@ -22,6 +22,8 @@
 #    min/max: 允許的「實際值」範圍，IPC 寫入前與板子收到後都會檢查
 #    bits   : 位元欄位，依序 bit0, bit1 ...
 #    values : 列舉值（命令碼）
+#    default: HR 開機預設值（實際值或 values 名稱）。主控板開機、IPC 主站程式啟動都先載入這組值，
+#             IPC config 再覆寫。沒寫 = 0
 #
 #  ■ 區內位址格局（每槽相同）
 #    IR 0-9    共用表頭        HR 0-9    共用命令
@@ -54,7 +56,7 @@ common:
     - name: COMMAND
       addr: 1
       values: { NONE: 0, START: 1, STOP: 2, RESET_ALARM: 3, ENTER_SAFE: 4 }
-    - { name: WATCHDOG_MS, addr: 2, unit: ms, min: 200, max: 10000, desc: "預設 1000，TODO 確認" }
+    - { name: WATCHDOG_MS, addr: 2, unit: ms, min: 200, max: 10000, default: 1000, desc: "預設 1000，TODO 確認" }
 
 boards:
   # ------------------------------------------------------------------
@@ -152,26 +154,29 @@ boards:
       - { name: LL_CMD_ARG, addr: 101, type: i32, desc: "ARM_GOTO 目標步數" }
       - { name: LL_CMD_SEQ, addr: 103, desc: "命令序號，改變才會執行一次（主控板開機時先記下目前值，不會執行舊命令）" }
       # ---- 互鎖參數（主控板執行，IPC 只是顯示 / 修改）
-      - { name: IL_SV_DP_MAX_MTORR, addr: 150, unit: mTorr, min: 1, max: 10000, desc: "開 SV 前 Loadlock 與 PM 壓差上限，預設 50（config 可改）" }
+      - { name: IL_SV_DP_MAX_MTORR, addr: 150, unit: mTorr, min: 1, max: 10000, default: 50, desc: "開 SV 前 Loadlock 與 PM 壓差上限，預設 50（config 可改）" }
       - name: IL_LL_Z_ENABLE
         addr: 151
+        default: ENABLED
         desc: "SLK Z 軸是否啟用；之後取消 Z 軸（改用 PM Wafer lift）時設 DISABLED，Z 相關互鎖就不檢查"
         values: { DISABLED: 0, ENABLED: 1 }
-      - { name: IL_LL_STALE_MS,    addr: 152, unit: ms, min: 100, max: 5000, desc: "Loadlock TLM 超過此時間沒更新 → 視為狀態不明，預設 500" }
-      - { name: IL_ARM_SAFE_POS,   addr: 153, type: i32, unit: step, desc: "手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm）" }
+      - { name: IL_LL_STALE_MS,    addr: 152, unit: ms, min: 100, max: 5000, default: 500, desc: "Loadlock TLM 超過此時間沒更新 → 視為狀態不明，預設 500" }
+      - { name: IL_ARM_SAFE_POS,   addr: 153, type: i32, unit: step, default: 5894, desc: "手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm）" }
       - name: IL_SV_MODE
         addr: 155
+        default: BELOW
         desc: "開 SV 的壓力條件：BELOW = LL 與 PM 都低於 IL_SV_BELOW_MTORR（預設，SLK 壓力計低於下限算低於 1 Torr）；DIFF = 壓差 ≤ IL_SV_DP_MAX_MTORR（LL 需有 mTorr 級壓力計）"
         values: { BELOW: 0, DIFF: 1 }
-      - { name: IL_SV_BELOW_MTORR, addr: 156, unit: mTorr, min: 1, max: 10000, desc: "BELOW 模式門檻，預設 1000（1 Torr）" }
-      - { name: IL_LL_JUMP_MTORR,  addr: 157, unit: mTorr, min: 1000, max: 60000, desc: "LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr）" }
+      - { name: IL_SV_BELOW_MTORR, addr: 156, unit: mTorr, min: 1, max: 10000, default: 1000, desc: "BELOW 模式門檻，預設 1000（1 Torr）" }
+      - { name: IL_LL_JUMP_MTORR,  addr: 157, unit: mTorr, min: 1000, max: 60000, default: 10000, desc: "LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr）" }
       # ---- PM 壓力計（config 型號選單寫進來，主控板用來換算互鎖壓力）
       - name: PM_GAUGE_MODEL
         addr: 160
+        default: APGX_H
         desc: "換算公式見 docs/gauges.md"
         values: { NONE: 0, LINEAR: 1, APGX_H: 2, WRG200_X: 3, WRG200_G: 4, WRG200_Q: 5 }
-      - { name: PM_GAUGE_AI_ADDR,  addr: 161, desc: "壓力計電壓（mV）所在的 IR 絕對位址，預設 633 = 槽 3 AI_RAW[3] Chamber APGX-H" }
-      - { name: PM_GAUGE_FS_MTORR, addr: 162, type: i32, unit: mTorr, desc: "LINEAR（電容式 0~10 V）滿刻度，例 1000 Torr = 1000000" }
+      - { name: PM_GAUGE_AI_ADDR,  addr: 161, default: 633, desc: "壓力計電壓（mV）所在的 IR 絕對位址，預設 633 = 槽 3 AI_RAW[3] Chamber APGX-H" }
+      - { name: PM_GAUGE_FS_MTORR, addr: 162, type: i32, unit: mTorr, default: 1000000, desc: "LINEAR（電容式 0~10 V）滿刻度，例 1000 Torr = 1000000" }
       # ---- LL 壓力計擴充（預留，預設 NONE = 用 SLK 讀值；SLK 不動。接上獨立壓力計例如 APGX-H 到真空板 AI 時才設定）
       - name: LL_GAUGE_MODEL
         addr: 165
@@ -240,9 +245,9 @@ boards:
           desc: "安全狀態時的保溫溫度（避免前驅物在管路冷凝），0 = 安全狀態關閉該組。TODO 依製程" }
       - { name: HEATER_LIMIT, addr: 80, count: 16, scale: 0.1, unit: degC, min: 0, max: 650,
           desc: "各組溫度上限（config 寫入）：前驅物 200、main valve 250、其他 300~350、Chuck 600；0 = 該組不准加熱" }
-      - { name: PID_KP, addr: 100, count: 16, scale: 0.01 }
-      - { name: PID_KI, addr: 120, count: 16, scale: 0.001 }
-      - { name: PID_KD, addr: 140, count: 16, scale: 0.01 }
+      - { name: PID_KP, addr: 100, count: 16, scale: 0.01,  default: 8.0,  desc: "預設值只是起點，實機要整定（config 覆寫）" }
+      - { name: PID_KI, addr: 120, count: 16, scale: 0.001, default: 0.05 }
+      - { name: PID_KD, addr: 140, count: 16, scale: 0.01,  default: 0 }
 
   # ------------------------------------------------------------------
   vacuum:
@@ -291,7 +296,7 @@ boards:
         addr: 10
         bits: [WAFER_LIFT_UP, WAFER_LIFT_DOWN]
       - { name: AXIS_TARGET, addr: 20, count: 2, type: i32, unit: step }
-      - { name: AXIS_SPEED,  addr: 30, count: 2, unit: step/s, min: 1, max: 20000 }
+      - { name: AXIS_SPEED,  addr: 30, count: 2, unit: step/s, min: 1, max: 20000, default: 1000 }
       - name: AXIS_CMD
         addr: 40
         count: 2

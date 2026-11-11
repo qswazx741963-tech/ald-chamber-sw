@@ -36,11 +36,14 @@ static const fieldbus_ops_t *s_bus;
 static const ald_slot_def_t s_slots[] = ALD_SLOT_TABLE;
 static uint32_t s_slot_rx_ms[ALD_MAX_SLOTS];
 static bool     s_slot_hello_ok[ALD_MAX_SLOTS];
+static bool     s_slot_ir_seen[ALD_MAX_SLOTS];   /* 收過至少一次 IR（只有 HELLO 不算在線，表裡還是 0） */
 static uint8_t  s_cmd_hold[ALD_MAX_SLOTS];
 static uint16_t s_hr_out[ALD_SLOT_STRIDE];
 static uint16_t s_ipc_hb, s_bp_hb;
 static uint32_t s_ipc_hb_ms, s_last_sync_ms;
 static bool     s_ipc_seen, s_safe = true;
+static bool     s_reset_pending;   /* 收到 RESET_ALARM：先放開自己拉的 SAFE 線，等一下再看線是不是真的回高 */
+static uint32_t s_reset_ms;
 static ll_gateway_t s_llg;
 static uint16_t s_lift_out;   /* 上一次核准送出的 Wafer lift 氣缸命令 */
 
@@ -53,7 +56,7 @@ static const ald_slot_def_t *slot_def(uint8_t slot)
 
 static bool slot_online(uint8_t slot, uint32_t now)
 {
-    return s_slot_hello_ok[slot] && now - s_slot_rx_ms[slot] <= SLOT_TIMEOUT_MS;
+    return s_slot_hello_ok[slot] && s_slot_ir_seen[slot] && now - s_slot_rx_ms[slot] <= SLOT_TIMEOUT_MS;
 }
 
 /* ---------------------------------------------------------------- 背板接收 */
@@ -72,7 +75,7 @@ static void bp_receive(uint32_t now)
             s_slot_hello_ok[slot] = bp_unpack_hello(buf, len, &h)
                 && h.board_type == def->board_type && h.map_version == ALD_MAP_VERSION;
         } else if (t == BP_T_IR && s_slot_hello_ok[slot]) {
-            if (bp_unpack_regs(buf, len, ir_slot(slot), def->ir_size) > 0) s_slot_rx_ms[slot] = now;
+            if (bp_unpack_regs(buf, len, ir_slot(slot), def->ir_size) > 0) { s_slot_rx_ms[slot] = now; s_slot_ir_seen[slot] = true; }
         } else if (t == BP_T_SAFE) {
             s_safe = true;   /* 任何一塊板喊 SAFE，全部進安全狀態 */
         }
@@ -267,16 +270,23 @@ static void ipc_watchdog(uint32_t now)
     bool ok = s_ipc_seen && now - s_ipc_hb_ms < wd && s_bus->link_up();
     reg_bit(&ir0[COM_IR_STATUS], COM_IR_STATUS_BIT_WATCHDOG_TRIPPED, s_ipc_seen && !ok);
     if (!ok) s_safe = true;
-    if (!hal_safe_line_ok() || !hal_di_read(DI_EMO_OK)) s_safe = true;
+    if (!hal_safe_line_ok() || !hal_di_read(DI_EMO_OK)) { if (!s_safe) s_reset_pending = false; s_safe = true; }
 
-    /* 解除安全狀態：IPC 連線正常 + 硬體線正常 + IPC 下 RESET_ALARM */
+    /* 解除安全狀態：IPC 連線正常 + 硬體線正常 + IPC 下 RESET_ALARM。
+     * SAFE 線是開集極線，主控板在安全狀態時自己也在拉低，所以要先放開 SAFE_RELEASE_MS
+     * 再讀：線回高 = 沒有別人（EMO 迴路、其他板）在拉，才真的解除；否則維持安全狀態、重新拉低。 */
     if (hr0[COM_HR_COMMAND] == COM_HR_COMMAND_RESET_ALARM) {
         hr0[COM_HR_COMMAND] = COM_HR_COMMAND_NONE;
-        if (ok && hal_safe_line_ok() && hal_di_read(DI_EMO_OK)) s_safe = false;
+        if (s_safe && ok && hal_di_read(DI_EMO_OK)) { s_reset_pending = true; s_reset_ms = now; }
     } else if (hr0[COM_HR_COMMAND] == COM_HR_COMMAND_ENTER_SAFE) {
         hr0[COM_HR_COMMAND] = COM_HR_COMMAND_NONE;
         s_safe = true;
     }
+    if (s_reset_pending && now - s_reset_ms >= SAFE_RELEASE_MS) {
+        s_reset_pending = false;
+        if (ok && hal_safe_line_ok() && hal_di_read(DI_EMO_OK)) s_safe = false;
+    }
+    if (!s_safe) s_reset_pending = false;
     ir0[COM_IR_HEARTBEAT_ECHO] = s_ipc_hb;
 }
 
@@ -312,7 +322,7 @@ void main_app_loop(void)
 
     bool permit = !(react & IL_REACT_PERMIT_OFF);
     hal_do_write(DO_TRANSFER_PERMIT, permit);
-    hal_safe_line_pull(s_safe);
+    hal_safe_line_pull(s_safe && !s_reset_pending);
     bp_send_all(&in, react, now);
 
     /* 狀態回報 */

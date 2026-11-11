@@ -28,6 +28,10 @@ void fake_reset(void)
     fake_uart_tx[0] = 0;
     fake_can_sent = 0;
     rx_head = rx_len = 0;
+    memset(fake_tc_ok, 0, sizeof fake_tc_ok);
+    memset(fake_step_busy, 0, sizeof fake_step_busy);
+    memset(fake_step_fault, 0, sizeof fake_step_fault);
+    memset(fake_step_pos, 0, sizeof fake_step_pos);
     can_head = can_len = 0;
 }
 
@@ -64,7 +68,7 @@ int hal_can_recv(uint16_t *id, uint8_t *data, uint8_t *len)
 }
 uint8_t hal_slot_id(void) { return fake_slot; }
 uint8_t hal_board_type_straps(void) { return fake_board_type; }
-bool hal_safe_line_ok(void) { return fake_safe_line; }
+bool hal_safe_line_ok(void) { return fake_safe_line && !fake_safe_pulled; }   /* 開集極線：自己拉低也讀到低 */
 void hal_safe_line_pull(bool pull_low) { fake_safe_pulled = pull_low; }
 int hal_uart_write(uint8_t port, const char *s, uint16_t len)
 {
@@ -80,3 +84,16 @@ void hal_iwdg_kick(void) {}
 bool hal_ecat_init(void) { return true; }
 void hal_ecat_poll(void) {}
 uint8_t hal_ecat_al_state(void) { return fake_ecat_al_state; }
+
+/* 熱電偶 / 步進：測試用簡單假實作 */
+float   fake_tc[16];
+bool    fake_tc_ok[16];
+int32_t fake_step_pos[2], fake_step_target[2];
+bool    fake_step_busy[2], fake_step_fault[2];
+bool hal_tc_read(uint16_t ch, float *degc) { if (ch >= 16 || !fake_tc_ok[ch]) return false; *degc = fake_tc[ch]; return true; }
+void hal_step_move(uint8_t a, int32_t target, uint16_t sps) { (void)sps; if (a < 2) { fake_step_target[a] = target; fake_step_busy[a] = true; } }
+void hal_step_home(uint8_t a, uint16_t sps) { (void)sps; if (a < 2) { fake_step_target[a] = 0; fake_step_busy[a] = true; } }
+void hal_step_stop(uint8_t a) { if (a < 2) fake_step_busy[a] = false; }
+int32_t hal_step_pos(uint8_t a) { return a < 2 ? fake_step_pos[a] : 0; }
+bool hal_step_busy(uint8_t a) { return a < 2 && fake_step_busy[a]; }
+bool hal_step_fault(uint8_t a) { return a < 2 && fake_step_fault[a]; }

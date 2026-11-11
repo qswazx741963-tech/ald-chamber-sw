@@ -11,6 +11,14 @@
 #define NDO 6u
 #define NDI 8u
 
+static uint16_t s_out;   /* 實際輸出（DO 回授用；TODO 改讀輸出回授腳） */
+
+static void out(uint8_t bit, bool on)
+{
+    hal_do_write(bit, on);
+    if (on) s_out |= (uint16_t)(1u << bit); else s_out &= (uint16_t)~(1u << bit);
+}
+
 static bool di(uint8_t bit) { return (g_ir[VAC_IR_DI] >> bit) & 1u; }
 
 /* 板內互鎖（第二層之內的最快一層）。TODO 依製程確認 */
@@ -28,14 +36,14 @@ static bool allowed(uint8_t bit)
     }
 }
 
-static void setup(void) { for (uint16_t i = 0; i < NDO; i++) hal_do_write(i, false); }
+static void setup(void) { for (uint8_t i = 0; i < NDO; i++) out(i, false); }
 
 /* 安全狀態：閥全關、泵維持運轉；Turbo GV TODO（目前關） */
 static void safe(void)
 {
     for (uint8_t i = 0; i < NDO; i++) {
         if (i == VAC_HR_DO_CMD_BIT_DRYPUMP_ON || i == VAC_HR_DO_CMD_BIT_TURBO_ON) continue;
-        hal_do_write(i, false);
+        out(i, false);
     }
 }
 
@@ -47,15 +55,15 @@ static void loop(uint32_t now)
     g_ir[VAC_IR_DI] = d;
     for (uint16_t i = 0; i < 8; i++) g_ir[VAC_IR_AI_RAW + i] = hal_ai_read_mv(i);
 
-    if (exec_in_safe()) return;
-    uint16_t fb = 0, blocked = 0;
-    for (uint8_t i = 0; i < NDO; i++) {
-        bool want = (g_hr[VAC_HR_DO_CMD] >> i) & 1u, ok = allowed(i), out = want && ok;
-        hal_do_write(i, out);
-        if (out) fb |= (uint16_t)(1u << i);
-        if (want && !ok) blocked |= (uint16_t)(1u << i);
+    uint16_t blocked = 0;
+    if (!exec_in_safe()) {
+        for (uint8_t i = 0; i < NDO; i++) {
+            bool want = (g_hr[VAC_HR_DO_CMD] >> i) & 1u, ok = allowed(i);
+            out(i, want && ok);
+            if (want && !ok) blocked |= (uint16_t)(1u << i);
+        }
     }
-    g_ir[VAC_IR_DO_FB] = fb;
+    g_ir[VAC_IR_DO_FB] = s_out;   /* 安全狀態中也要更新，畫面才看得到閥真的關了 */
     g_ir[VAC_IR_DO_BLOCKED] = blocked;
     exec_set_status(COM_IR_STATUS_BIT_LOCAL_INTERLOCK, blocked != 0);
 }

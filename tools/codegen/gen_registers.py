@@ -86,6 +86,11 @@ def load():
                 names.add(r["name"])
                 if len(r.get("bits", [])) > 16:
                     errors.append(f"{bname}.{r['name']}: bits 超過 16 個")
+                if "default" in r:
+                    try:
+                        _default_raw(r)
+                    except ValueError as e:
+                        errors.append(f"{bname}.{r['name']}: default {e}")
                 if r["addr"] + r["span"] > stride:
                     errors.append(f"{bname}.{r['name']}: 超出槽位範圍（區內位址需 < {stride}）")
                 for a in range(r["addr"], r["addr"] + r["span"]):
@@ -95,6 +100,41 @@ def load():
     if errors:
         sys.exit("registers.yaml 有錯誤：\n  " + "\n  ".join(errors))
     return data
+
+
+def _default_raw(r):
+    """HR 預設值 → 原始值（單一 word 的值；i32 由呼叫端拆成兩個 word）"""
+    d = r["default"]
+    if isinstance(d, str):
+        if d not in r.get("values", {}):
+            raise ValueError(f"{d} 不在 values")
+        v = r["values"][d]
+    else:
+        if ("min" in r and d < r["min"]) or ("max" in r and d > r["max"]):
+            raise ValueError(f"{d} 超出 min/max")
+        v = round(d / r["scale"])
+    lo, hi = {"u16": (0, 0xFFFF), "i16": (-0x8000, 0x7FFF), "i32": (-0x80000000, 0x7FFFFFFF)}[r["type"]]
+    if not lo <= v <= hi:
+        raise ValueError(f"{d} 超出 {r['type']} 範圍")
+    return v
+
+
+def hr_defaults(data):
+    """所有槽的 HR 預設值：[(絕對位址, 原始 word, 說明)]，依位址排序、不含 0"""
+    out = []
+    stride = data["slot_stride"]
+    for bname, b in data["boards"].items():
+        base = b["slot"] * stride
+        for r in regs_of(data, bname, "holding"):
+            if "default" not in r:
+                continue
+            v = _default_raw(r)
+            words = [(v >> 16) & 0xFFFF, v & 0xFFFF] if r["type"] == "i32" else [v & 0xFFFF]
+            for i in range(r["count"]):
+                for k, w in enumerate(words):
+                    if w:
+                        out.append((base + r["addr"] + i * len(words) + k, w, f"{bname}.{r['name']}"))
+    return sorted(out)
 
 
 def regs_of(data, bname, area, with_common=True):
@@ -185,7 +225,10 @@ def gen_cs(data):
          "public static class RegisterMap", "{",
          f"    public const ushort MapVersion = {data['map_version']};",
          f"    public const ushort SlotStride = {stride};",
-         f"    public const int MaxSlots = {data['max_slots']};", "}", "",
+         f"    public const int MaxSlots = {data['max_slots']};",
+         "    /// <summary>HR 開機預設值（絕對位址, 原始值），與主控板 / 主站程式同一份</summary>",
+         "    public static readonly (ushort Addr, ushort Value)[] HoldingDefaults =",
+         "    {"] + [f"        ({a}, {w}), // {n}" for a, w, n in hr_defaults(data)] + ["    };", "}", "",
          "public enum BoardType : ushort", "{"]
     for k, v in data["board_types"].items():
         L.append(f"    {pascal(k)} = {v},")
@@ -338,6 +381,13 @@ def gen_h_pdo(data):
             L.append(f"    {{ {slot}u, {addr}u, {n}u, {off}u }}, /* {bname} */ \\")
             off += n
         L += ["}", f"#define ALD_PDO_{tag}_SEG_COUNT {len(segs)}u", ""]
+    defs = hr_defaults(data)
+    L += ["/* HR 開機預設值 { 絕對位址, 原始值 }（registers.yaml 的 default）：主控板 reg_image_init 與 IPC 主站程式 bridge_init 都載入 */",
+          "typedef struct { uint16_t addr; uint16_t value; } ald_hr_default_t;",
+          "#define ALD_HR_DEFAULTS { \\"]
+    for a, w, n in defs:
+        L.append(f"    {{ {a}u, {w}u }}, /* {n} */ \\")
+    L += ["}", f"#define ALD_HR_DEFAULT_COUNT {len(defs)}u", ""]
     return "\n".join(L)
 
 

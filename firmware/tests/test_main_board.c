@@ -431,6 +431,33 @@ static void test_main_loop_safe_without_ipc(void)
     CHECK_EQ(ir_slot(0)[MAIN_IR_LL_GAUGE_STATUS], MAIN_IR_LL_GAUGE_STATUS_OFFLINE);   /* 真空板沒在線 */
 }
 
+/* 解除安全狀態：主控板自己也在拉 SAFE 線（開集極），要先放開再確認；外部還在拉（EMO 迴路等）就不能解除 */
+static void test_main_reset_safe_line(void)
+{
+    fake_reset();
+    fake_di[0] = true;   /* EMO OK */
+    main_app_init(&fake_bus);
+    uint16_t *hr0 = hr_slot(0);
+    for (int i = 0; i < 20; i++) { fake_now += 10; hr0[COM_HR_HEARTBEAT]++; main_app_loop(); }
+    CHECK_EQ(ir_slot(0)[MAIN_IR_SYS_STATE], MAIN_IR_SYS_STATE_SAFE);
+    CHECK(fake_safe_pulled);
+
+    fake_safe_line = false;                          /* 外部有人拉低 */
+    hr0[COM_HR_COMMAND] = COM_HR_COMMAND_RESET_ALARM;
+    for (int i = 0; i < 10; i++) { fake_now += 10; hr0[COM_HR_HEARTBEAT]++; main_app_loop(); }
+    CHECK_EQ(ir_slot(0)[MAIN_IR_SYS_STATE], MAIN_IR_SYS_STATE_SAFE);
+    CHECK(fake_safe_pulled);                         /* 確認失敗 → 重新拉低 */
+
+    fake_safe_line = true;
+    hr0[COM_HR_COMMAND] = COM_HR_COMMAND_RESET_ALARM;
+    fake_now += 10; hr0[COM_HR_HEARTBEAT]++; main_app_loop();
+    CHECK(!fake_safe_pulled);                        /* 放開中 */
+    CHECK_EQ(ir_slot(0)[MAIN_IR_SYS_STATE], MAIN_IR_SYS_STATE_SAFE);
+    for (int i = 0; i < 5; i++) { fake_now += 10; hr0[COM_HR_HEARTBEAT]++; main_app_loop(); }
+    CHECK(ir_slot(0)[MAIN_IR_SYS_STATE] != MAIN_IR_SYS_STATE_SAFE);
+    CHECK(!fake_safe_pulled);
+}
+
 int main(void)
 {
     RUN(test_bp_id);
@@ -448,6 +475,7 @@ int main(void)
     RUN(test_gateway);
     RUN(test_ecat_pdo);
     RUN(test_main_loop_safe_without_ipc);
+    RUN(test_main_reset_safe_line);
     printf("主控板：%d 項檢查，%d 項失敗\n", g_checks, g_fail);
     return g_fail != 0;
 }

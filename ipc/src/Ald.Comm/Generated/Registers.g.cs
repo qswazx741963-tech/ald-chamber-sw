@@ -6,6 +6,59 @@ public static class RegisterMap
     public const ushort MapVersion = 2;
     public const ushort SlotStride = 200;
     public const int MaxSlots = 9;
+    /// <summary>HR 開機預設值（絕對位址, 原始值），與主控板 / 主站程式同一份</summary>
+    public static readonly (ushort Addr, ushort Value)[] HoldingDefaults =
+    {
+        (2, 1000), // main.WATCHDOG_MS
+        (150, 50), // main.IL_SV_DP_MAX_MTORR
+        (151, 1), // main.IL_LL_Z_ENABLE
+        (152, 500), // main.IL_LL_STALE_MS
+        (154, 5894), // main.IL_ARM_SAFE_POS
+        (156, 1000), // main.IL_SV_BELOW_MTORR
+        (157, 10000), // main.IL_LL_JUMP_MTORR
+        (160, 2), // main.PM_GAUGE_MODEL
+        (161, 633), // main.PM_GAUGE_AI_ADDR
+        (162, 15), // main.PM_GAUGE_FS_MTORR
+        (163, 16960), // main.PM_GAUGE_FS_MTORR
+        (202, 1000), // process.WATCHDOG_MS
+        (402, 1000), // heater.WATCHDOG_MS
+        (500, 800), // heater.PID_KP
+        (501, 800), // heater.PID_KP
+        (502, 800), // heater.PID_KP
+        (503, 800), // heater.PID_KP
+        (504, 800), // heater.PID_KP
+        (505, 800), // heater.PID_KP
+        (506, 800), // heater.PID_KP
+        (507, 800), // heater.PID_KP
+        (508, 800), // heater.PID_KP
+        (509, 800), // heater.PID_KP
+        (510, 800), // heater.PID_KP
+        (511, 800), // heater.PID_KP
+        (512, 800), // heater.PID_KP
+        (513, 800), // heater.PID_KP
+        (514, 800), // heater.PID_KP
+        (515, 800), // heater.PID_KP
+        (520, 50), // heater.PID_KI
+        (521, 50), // heater.PID_KI
+        (522, 50), // heater.PID_KI
+        (523, 50), // heater.PID_KI
+        (524, 50), // heater.PID_KI
+        (525, 50), // heater.PID_KI
+        (526, 50), // heater.PID_KI
+        (527, 50), // heater.PID_KI
+        (528, 50), // heater.PID_KI
+        (529, 50), // heater.PID_KI
+        (530, 50), // heater.PID_KI
+        (531, 50), // heater.PID_KI
+        (532, 50), // heater.PID_KI
+        (533, 50), // heater.PID_KI
+        (534, 50), // heater.PID_KI
+        (535, 50), // heater.PID_KI
+        (602, 1000), // vacuum.WATCHDOG_MS
+        (802, 1000), // motion.WATCHDOG_MS
+        (830, 1000), // motion.AXIS_SPEED
+        (831, 1000), // motion.AXIS_SPEED
+    };
 }
 
 public enum BoardType : ushort
@@ -632,6 +685,7 @@ public static class HeaterBoard
         public const double HeaterLimitScale = 0.1;
         public const double HeaterLimitMin = 0;
         public const double HeaterLimitMax = 650;
+        /// <summary>預設值只是起點，實機要整定（config 覆寫）</summary>
         public const ushort PidKp = 500;
         public const ushort PidKpCount = 16;
         public const double PidKpScale = 0.01;
