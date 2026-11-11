@@ -217,6 +217,21 @@
     "loadlockStepTimeoutS": 60,
     "waferMapPath": "data/wafer.json"
   },
+  "leakTest": {
+    "_note": "漏率測試（壓升法）。抽到 startBelowTorr 以下 → 再抽 pumpS → 關 Turbo GV → 等 settleS → 記錄 measureS 秒 → 直線擬合。合格上限 limitMtorrPerMin 為暫定值，請依規格調整；量測時間與上限在人機可以臨時改。",
+    "gauge": "chamberIonGauge",
+    "_gauge": "用哪一顆量壓升。Barocel 1000 Torr 滿刻度解析度不夠、APGX 互鎖暫存器只到 1 mTorr，所以預設用 WRG（Ion gauge，精度約 ±30 %，適合看趨勢）。之後若加低量程電容式真空計，改成 chamberManometer 並改它的 fullScaleTorr。",
+    "chamberVolumeL": 20,
+    "_chamberVolumeL": "PM 腔體 + 管路體積（L），換算漏氣量 Q = 壓升速率 × V。實機請依圖面填。",
+    "startBelowTorr": 5e-5,
+    "crossoverTorr": 0.5,
+    "pumpTimeoutS": 1800,
+    "pumpS": 60,
+    "settleS": 30,
+    "measureS": 300,
+    "limitMtorrPerMin": 1.0,
+    "abortAboveTorr": 1e-2
+  },
   "hmi": {
     "_defaultAdminPasswordHash": "帳號資料庫是空的（第一次開機）時建立 admin 帳號用的出廠密碼，只存雜湊不存明碼。換密碼：AldChamber --hash-password 新密碼，把輸出貼到這裡。已建立的帳號請在「使用者」頁改。",
     "defaultAdminPasswordHash": "pbkdf2-sha256$100000$vRbIMHBnZj5hC9f3I7CnTQ==$ot7KNS5i82EhHIJwoGVaGuefWUEcvxGMlOJgoAtJ5do=",

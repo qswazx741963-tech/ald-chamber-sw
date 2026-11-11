@@ -17,7 +17,7 @@ public partial class MainWindow
     private static readonly bool?[] WaferChoices = { true, false, null };
 
     private bool XferRunning => _xfer?.State == SequencerState.Running;
-    private bool Busy => SequenceRunning || XferRunning;
+    private bool Busy => SequenceRunning || XferRunning || LeakRunning;
 
     private void WireTransfer()
     {

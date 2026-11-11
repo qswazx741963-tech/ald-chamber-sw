@@ -175,4 +175,27 @@ public sealed class SimEndToEndTests : IDisposable
         Assert.True(m.Snapshot.SlitClosed);
         Assert.DoesNotContain(m.Alarms.Active, a => a.Info.Level == AlarmLevel.Alarm);
     }
+
+    [Fact]
+    public async Task LeakTest_OnVirtualMachine()
+    {
+        if (_ecat is null) { _out.WriteLine("略過：ald-ecat 沒有編譯"); return; }
+        using var m = NewService();
+        m.Start();
+        Assert.True(await Until(() => m.Snapshot.AllOnline && m.Snapshot.LoadlockFresh, 10), "連線 / 各槽上線");
+        await m.ResetAsync();
+        Assert.True(await Until(() => !m.Snapshot.SafeState && m.Snapshot.SlotStatus.Skip(1).All(st => (st & 4) == 0), 5), "Reset");
+
+        // 虛擬機台預設漏氣 1e-5 Torr·L/s ÷ 20 L = 0.03 mTorr/min（模擬時間）；模擬加速，實際量到的是倍數
+        var seq = new LeakTestSequencer(m, m.Config.LeakTest with { PumpS = 1, SettleS = 1, MeasureS = 6 }, TimeSpan.FromMilliseconds(100));
+        seq.Progress += p => _out.WriteLine($"{p.Time:HH:mm:ss.fff} {p.State} {p.Step} {p.Message}");
+        Assert.Equal(SequencerState.Done, await seq.RunAsync());
+        var r = seq.Result!;
+        _out.WriteLine(r.Text());
+        Assert.True(r.Pass, r.Text());
+        Assert.True(r.RorMtorrPerMin > 0);
+        Assert.True(r.Samples > 20);
+        Assert.True(await Until(() => m.Snapshot.TurboGateOpened, 10), "量完 GV 開回");
+        Assert.DoesNotContain(m.Alarms.Active, a => a.Info.Level == AlarmLevel.Alarm);
+    }
 }

@@ -11,7 +11,7 @@ internal sealed class FakeMachine : IMachine
         Connected = true, SlotOnline = new[] { true, true, true, true, true }, SysState = SystemState.Idle,
         LoadlockFresh = true, SlitValve = LoadlockSv.Closed, ArmZ = LoadlockZ.Down, ChamberPressureTorr = 760,
         TurboGateClosed = true, ChamberGaugeStatus = GaugeStatus.OverRange, ManometerTorr = 760,
-        TempC = Enumerable.Repeat(25.0, 16).ToArray(),
+        TempC = Enumerable.Repeat(25.0, 16).ToArray(), ChamberLidClosed = true,
     };
     public readonly double[] HeaterSp = new double[16];
     public readonly bool[] HeaterOn = new bool[16];
@@ -29,6 +29,9 @@ internal sealed class FakeMachine : IMachine
     public int ArmPos;
     public LoadlockCommand? FailLl;
     public int HeaterBroken = -1;   // 這一組加熱升不上去
+    // 漏率測試用：PM 隔離（GV / 粗抽 / vent 都關）時壓力每秒上升多少 Torr
+    public double LeakTorrPerS;
+    private DateTime _lastRead = DateTime.Now;
 
     public MachineSnapshot Snapshot
     {
@@ -40,15 +43,19 @@ internal sealed class FakeMachine : IMachine
             for (int i = 0; i < 16; i++) t[i] = HeaterOn[i] && i != HeaterBroken ? HeaterSp[i] : 25;
             double p = s.ChamberPressureTorr;
             var o = VacuumCommand;
+            var now = DateTime.Now;
+            double dt = (now - _lastRead).TotalSeconds;
+            _lastRead = now;
             if (o.HasFlag(VacuumOutputs.ChamberVent)) p = Math.Min(760, p * 4 + 10);
             else if (o.HasFlag(VacuumOutputs.TurboGv) && s.TurboAtSpeed) p = Math.Max(1e-6, p / 10);
             else if (o.HasFlag(VacuumOutputs.ChamberRough)) p = Math.Max(0.02, p / 4);
+            else p += LeakTorrPerS * dt;
             bool turbo = o.HasFlag(VacuumOutputs.TurboOn) && !BrokenTurbo;
             int cycle = s.AldCycle;
             if (AldRunning && ++AldTicks > 3) { AldRunning = false; cycle = Downloaded!.Cycles; }
             _s = s with
             {
-                TempC = t, ChamberPressureTorr = p, ManometerTorr = p, DryPumpRunning = o.HasFlag(VacuumOutputs.DryPumpOn),
+                TempC = t, ChamberPressureTorr = p, ManometerTorr = p, IonGaugeTorr = p, DryPumpRunning = o.HasFlag(VacuumOutputs.DryPumpOn),
                 TurboAtSpeed = turbo, TurboGateOpened = o.HasFlag(VacuumOutputs.TurboGv), TurboGateClosed = !o.HasFlag(VacuumOutputs.TurboGv),
                 ChamberVenting = o.HasFlag(VacuumOutputs.ChamberVent), AldRunning = AldRunning, AldCycle = cycle,
                 ChamberGaugeStatus = p > 700 ? GaugeStatus.OverRange : GaugeStatus.Ok,

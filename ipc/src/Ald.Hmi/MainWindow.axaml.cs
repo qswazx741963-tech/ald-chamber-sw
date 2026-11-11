@@ -23,9 +23,9 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private static readonly string[] SvText = { "未知", "關", "開啟中", "開", "關閉中", "錯誤" };
 
-    public MainWindow() : this(null, null, null, null, "recipes") { }
+    public MainWindow() : this(null, null, null, null, null, "recipes") { }
 
-    public MainWindow(MachineService? machine, AlarmLog? alarmLog, TrendLog? trend, UserStore? users, string recipeDir)
+    public MainWindow(MachineService? machine, AlarmLog? alarmLog, TrendLog? trend, UserStore? users, MaintenanceStore? maint, string recipeDir)
     {
         AvaloniaXamlLoader.Load(this);
         _m = machine;
@@ -33,12 +33,14 @@ public partial class MainWindow : Window
         _trend = trend;
         _recipeDir = recipeDir;
         _users = users;
+        _maint = maint;
         Wire();
         WireAccess();
         WireTrend();
         WireTransfer();
         WireManual();
         WireRecipe();
+        WireMaint();
         _timer.Tick += (_, _) => Render();
         _timer.Start();
         Closed += (_, _) => _timer.Stop();
@@ -81,7 +83,7 @@ public partial class MainWindow : Window
     private string RunStep => (_runIsAuto ? _auto?.Step : _seq?.Step) ?? "";
 
     /// <summary>中止所有流程（安全停止、中止按鈕）。</summary>
-    private void AbortAll() { _seq?.Abort(); _auto?.Abort(); _xfer?.Abort(); }
+    private void AbortAll() { _seq?.Abort(); _auto?.Abort(); _xfer?.Abort(); _leak?.Abort(); }
 
     private void LogRun(string name, SequencerProgress p)
     {
@@ -177,5 +179,6 @@ public partial class MainWindow : Window
         RenderAccess();
         RenderTrend();
         RenderTransfer(s);
+        RenderMaint(s);
     }
 }

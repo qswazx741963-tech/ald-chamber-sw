@@ -24,6 +24,8 @@ public enum Permission
     EditRecipe,
     /// <summary>使用者管理。</summary>
     ManageUsers,
+    /// <summary>漏率測試、保養計數歸零 / 改提醒上限。</summary>
+    Maintenance,
 }
 
 /// <summary>權限表：等級 ≥ 需求等級即可。改權限分配只改這裡。</summary>
@@ -33,7 +35,7 @@ public static class Access
     {
         Permission.Stop => UserRole.Viewer,
         Permission.Reset or Permission.RunRecipe or Permission.Loadlock or Permission.Transfer => UserRole.Operator,
-        Permission.ManualControl or Permission.EditRecipe or Permission.EditWaferMap => UserRole.Engineer,
+        Permission.ManualControl or Permission.EditRecipe or Permission.EditWaferMap or Permission.Maintenance => UserRole.Engineer,
         Permission.ManageUsers => UserRole.Admin,
         _ => UserRole.Admin,
     };

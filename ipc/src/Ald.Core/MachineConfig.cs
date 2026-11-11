@@ -20,6 +20,7 @@ public sealed record MachineConfig
     public DataLogConfig DataLog { get; init; } = new();
     public HmiConfig Hmi { get; init; } = new();
     public TransferConfig Transfer { get; init; } = new();
+    public LeakTestConfig LeakTest { get; init; } = new();
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -54,6 +55,12 @@ public sealed record MachineConfig
         foreach (var (h, i) in Heaters.Channels.Select((h, i) => (h, i)))
             if (h.LimitDegC is < 0 or > 650) yield return $"heaters.channels[{i}].limitDegC 需在 0–650";
         if (Interlock.SvBelowTorr is <= 0 or > 10) yield return "interlock.svBelowTorr 需在 0–10";
+        if (LeakTest.Gauge.ToLowerInvariant() is not ("chamberiongauge" or "chambermanometer" or "chamberconvectron"))
+            yield return "leakTest.gauge 需為 chamberIonGauge / chamberManometer / chamberConvectron";
+        if (!(LeakTest.ChamberVolumeL > 0)) yield return "leakTest.chamberVolumeL 需 > 0";
+        if (!(LeakTest.StartBelowTorr > 0) || !(LeakTest.AbortAboveTorr > LeakTest.StartBelowTorr))
+            yield return "leakTest 壓力設定錯誤（需 abortAboveTorr > startBelowTorr > 0）";
+        if (LeakTest.MeasureS is < 10 or > 7200) yield return "leakTest.measureS 需在 10–7200";
         if (Gauges.Find(Gauges.PmInterlockGauge) is null) yield return $"gauges.pmInterlockGauge 指到不存在的壓力計 {Gauges.PmInterlockGauge}";
     }
 
@@ -164,6 +171,29 @@ public sealed record TransferConfig
     public double LoadlockStepTimeoutS { get; init; } = 60;
     /// <summary>晶圓位置檔（重開機讀回）。</summary>
     public string WaferMapPath { get; init; } = "data/wafer.json";
+}
+
+/// <summary>漏率測試（壓升法，LeakTestSequencer）。數值待依實機調整。</summary>
+public sealed record LeakTestConfig
+{
+    /// <summary>用哪一顆量壓升：chamberIonGauge（WRG，可量到高真空）/ chamberManometer / chamberConvectron。</summary>
+    public string Gauge { get; init; } = "chamberIonGauge";
+    /// <summary>PM 腔體 + 管路體積（L），換算漏氣量 Q = 壓升速率 × V。</summary>
+    public double ChamberVolumeL { get; init; } = 20;
+    /// <summary>抽到這個壓力以下才開始測。</summary>
+    public double StartBelowTorr { get; init; } = 5e-5;
+    public double CrossoverTorr { get; init; } = 0.5;
+    public double PumpTimeoutS { get; init; } = 1800;
+    /// <summary>到 base 後再多抽幾秒（讓壁面放氣穩定）。</summary>
+    public double PumpS { get; init; } = 60;
+    /// <summary>關 GV 後先等幾秒才開始記錄（壓力計、閥動作穩定）。</summary>
+    public double SettleS { get; init; } = 30;
+    /// <summary>量測時間（秒）。</summary>
+    public double MeasureS { get; init; } = 300;
+    /// <summary>合格上限：壓升速率（mTorr/min）。</summary>
+    public double LimitMtorrPerMin { get; init; } = 1.0;
+    /// <summary>量測中壓力超過這個值就提前結束、判定大漏。</summary>
+    public double AbortAboveTorr { get; init; } = 1e-2;
 }
 
 /// <summary>人機設定。</summary>

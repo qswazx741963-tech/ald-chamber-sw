@@ -193,10 +193,14 @@ public sealed class MachineService : IMachine, IDisposable
         }
     }
 
+    /// <summary>最後下載到製程板的 ALD 步驟表（保養計數用來算每顆 ALD 閥的動作次數）。</summary>
+    public AldRecipe? LastAld { get; private set; }
+
     public void DownloadAld(AldRecipe r)
     {
         var errors = r.Validate().ToList();
         if (errors.Count > 0) throw new ArgumentException(string.Join("；", errors));
+        LastAld = r;
         _link.Write(ProcessBoard.Holding.AldCycles, (ushort)r.Cycles, (ushort)r.Steps.Count);
         _link.Write(ProcessBoard.Holding.AldStepValves, r.Steps.Select(s => s.ValveMask).ToArray());
         _link.Write(ProcessBoard.Holding.AldStepMs, r.Steps.Select(s => (ushort)s.DurationMs).ToArray());

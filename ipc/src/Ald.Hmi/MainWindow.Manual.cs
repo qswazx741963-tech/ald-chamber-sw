@@ -144,6 +144,7 @@ public partial class MainWindow
             !s.Connected ? "主控板未連線" :
             SequenceRunning ? $"流程「{_runName}」執行中，手動操作已鎖住（要操作請先中止流程）" :
             XferRunning ? "傳片執行中，手動操作已鎖住" :
+            LeakRunning ? "漏率測試執行中，手動操作已鎖住" :
             s.SafeState ? "系統在安全狀態：執行板會擋下大部分輸出，請先按 Reset" : "";
 
         var cmd = _m.VacuumCommand;

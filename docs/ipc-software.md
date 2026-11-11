@@ -85,6 +85,36 @@ Recipe 頁「自動跑片」：準備（LL 抽氣、PM 抽到 base）→ 送片 
 任一段失敗 / 中止就整個停下，停在該段的安全處理，**不會自動取片或 vent**（片在哪由晶圓位置記錄顯示）。
 需要：Loadlock 手臂上有片、PM 無片。「只跑製程」給片已在 PM 或空跑時用。
 
+## 3d. 漏率測試（`LeakTestSequencer`）與保養計數（`Maintenance` / `MaintenanceStore`）
+
+**漏率測試（壓升法 rate-of-rise）**，保養頁「開始漏率測試」（工程師）：
+
+1. 關 ALD 閥、MFC 與上游閥。
+2. 不在 `leakTest.startBelowTorr`（預設 5E-5 Torr）以下就先抽真空（用 ProcessSequencer 的抽真空段）。
+3. 再抽 `pumpS` 秒 → **關 Turbo GV 隔離 PM**（Turbo 保持全速）→ 等 `settleS` 秒。
+4. 記錄 `measureS` 秒壓力（預設 Ion gauge / WRG），最小平方法直線擬合：
+   壓升速率 mTorr/min = 斜率 × 60000；漏氣量 Q（Torr·L/s）= 斜率 × `chamberVolumeL`；R² 看是不是直線。
+5. 開回 Turbo GV。結果存 SQLite `leak_test`，並寫一筆事件記錄。
+
+- 壓升 ≤ `limitMtorrPerMin` 合格；量測中超過 `abortAboveTorr` 立刻結束、判大漏。
+- 量到的是**真漏 + 壁面放氣**：剛開腔、溫度不同時會偏高，比較請固定溫度與抽氣時間。曲線往下彎（R² 偏低）通常是放氣。
+- 壓力計：Barocel 1000 Torr 滿刻度解析度不夠，APGX 互鎖暫存器只到 1 mTorr，所以預設用 WRG（精度約 ±30 %，看趨勢夠用）。
+  要做準確的驗收，建議加一顆 0.1 或 1 Torr 的電容式真空計，`leakTest.gauge` 改成它。
+- 中止 / 失敗：關氣體，Turbo 還在全速就把 GV 開回去（主控板互鎖會再檢查），不會 vent。
+
+**保養計數**：每筆狀態（MachineService.Updated）算增量，只看主控板回報的**實際狀態**：
+
+| 項目 | 計法 |
+| --- | --- |
+| Dry pump / Turbo 運轉時數 | 運轉中（Turbo 為全速）累計；兩筆間隔 > 5 s（斷線）不算 |
+| Turbo GV、Slit valve、PM 回填、手臂伸入 PM、Wafer lift、Heater module 升到 Process | 開啟 / 到位的上升緣次數 |
+| ALD 製程、ALD cycle | AldRunning 上升緣、AldCycle 增量 |
+| ALD V1~V7 動作次數 | cycle 增量 × 該步驟表每 cycle 每顆閥從關到開的次數（整個 cycle 都開的不算） |
+
+- 每項有「保養後累計」（保養完成按歸零）與「總累計」（不歸零）；提醒上限 0 = 不提醒，**請依各零件原廠手冊設定**（預設都不提醒）。
+- 超過上限：事件記錄一筆 Warning、保養頁頁籤顯示「保養 ⚠n」，只提醒一次（歸零或改上限後重新判斷，重開程式不重複提醒）。
+- 增量先放記憶體，每 60 秒與關程式時寫回 SQLite `maint`，斷電最多少算一分鐘。歸零 / 改上限記在事件記錄。
+
 ## 4. 人機（Ald.Hmi）
 
 - **總覽**：真空、Loadlock、16 組加熱、8 路 MFC、PM 機構 / ALD 一頁看完。
@@ -106,13 +136,15 @@ Recipe 頁「自動跑片」：準備（LL 抽氣、PM 抽到 base）→ 送片 
   | --- | --- |
   | 檢視（未登入） | 看畫面、**安全停止 / 中止流程（永遠不鎖）** |
   | 操作員 | + Reset、執行配方、抽真空 / 回填、Loadlock、傳片 |
-  | 工程師 | + 手動操作、編輯 / 存檔配方、修正晶圓位置 |
+  | 工程師 | + 手動操作、編輯 / 存檔配方、修正晶圓位置、漏率測試、保養計數歸零 / 上限 |
   | 管理員 | + 使用者管理 |
 
   密碼只存 PBKDF2-SHA256 雜湊。第一次開機建立 `admin`，出廠密碼由 config `hmi.defaultAdminPasswordHash` 決定
   （**只放雜湊不放明碼**；換出廠密碼：`AldChamber --hash-password 新密碼`，把輸出貼進 config）。
   admin 還是出廠密碼時登入會提醒改。至少留一個管理員；`hmi.idleLogoutMinutes`（預設 30）沒操作自動登出。
   登入 / 登出 / 帳號異動 / 每個操作都記在事件記錄（來源「操作:帳號」）。
+- **保養**：左邊漏率測試（量測時間、合格上限可臨時改；即時畫壓升點與擬合線；歷史記錄），右邊保養計數
+  （選項目 → 設提醒上限 / 保養完成歸零）。漏率測試與配方 / 傳片互斥，執行中手動操作頁鎖住。
 - 配方格式（`RecipeFile`）：一個 JSON = 一個 `ProcessRecipe`，範例 `recipes/example_al2o3.json`；
   `recipes/sim_quick_test.json` 是給模擬器用的短配方（10 倍速約 35 秒跑完）。
 
@@ -120,6 +152,7 @@ Recipe 頁「自動跑片」：準備（LL 抽氣、PM 抽到 base）→ 送片 
 
 - `alarm`：警報發生 / 解除、互鎖擋下原因（中文）、流程步驟、操作紀錄。
 - `trend`：每 `dataLog.intervalMs` 一筆寬表（各壓力、16 組溫度與輸出、8 路 MFC、閥狀態、ALD cycle、Heater 位置、SV）。
+- `maint`：保養計數（保養後累計、總累計、提醒上限、上次保養時間 / 人）。`leak_test`：漏率測試結果。
 - WAL 模式（斷電不壞），保存 `keepDays` 天。
 
 ## 6. 測試
@@ -129,10 +162,11 @@ Recipe 頁「自動跑片」：準備（LL 抽氣、PM 抽到 base）→ 送片 
 | `make -C firmware/tests` | 韌體邏輯單元測試（主控板 186、執行板 40） |
 | `make -C sim` | 整機模擬整合測試 42 項：開機上線、Reset、抽真空、開 SV 互鎖、Turbo GV 聯動、加熱上限、馬達、心跳中斷 |
 | `make -C ipc/ecat-master test` | ald-ecat bridge（含 HR 預設值） |
-| `cd ipc && dotnet test` | C# 96 項（含配方檔、帳號 / 權限、趨勢、傳片、自動跑片），含**端到端**：MachineService ↔ ald-ecat --sim（20 倍速）跑完整段配方、送片 + 取片、從大氣自動跑片、心跳中斷進安全狀態 |
+| `cd ipc && dotnet test` | C# 106 項（含配方檔、帳號 / 權限、趨勢、傳片、自動跑片、漏率測試、保養計數），含**端到端**：MachineService ↔ ald-ecat --sim（20 倍速）跑完整段配方、送片 + 取片、從大氣自動跑片、漏率測試、心跳中斷進安全狀態 |
 
 ## 待做
 
 - RF（鎧泰 600 W / 300 W）協議確認後：主控板 UART 驅動 + 模擬。
 - 晶圓感測器（WAFER_PRESENT）接上後與 WaferMap 比對；Heater module Process 位置實機確認。
 - STM32 HAL（`hal_port_stm32.c`）：等腳位分配。
+- 漏率測試：實機 PM 體積、合格上限；是否加低量程電容式真空計。保養提醒上限依各零件原廠手冊填。
