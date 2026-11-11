@@ -32,6 +32,9 @@ deploy/build-package.sh                      # 只有模擬（展示 / 教育訓
 IGH=/opt/etherlab deploy/build-package.sh    # 正式（連結 IgH libethercat）
 ```
 
+Windows 試操作版（沒有 Linux 的電腦看畫面用，不接硬體）：`deploy/build-windows-demo.sh`（需 mingw-w64），
+產出 `dist/ALD-Demo-Windows.zip`，解壓後雙擊 `start-demo.bat`；虛擬機台是 `ipc/ecat-master/src/main_win.c` 編的 Windows 原生程式。
+
 產出 `dist/ald-ipc-<版本>.tar.gz`（約 40 MB；人機是 self-contained，**IPC 不用另裝 .NET**）。
 複製到 IPC 後：
 
