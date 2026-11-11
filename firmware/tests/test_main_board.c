@@ -1,5 +1,7 @@
 /* 主控板模組測試：背板格式、互鎖、Loadlock 狀態鏡像、主迴圈 */
 #include "bp_proto.h"
+#include "ecat_pdo.h"
+#include "fieldbus_if.h"
 #include "fake_hal.h"
 #include "interlock.h"
 #include "ll_mirror.h"
@@ -182,6 +184,54 @@ static void test_mirror(void)
     CHECK(il_check(IL_ACT_PM_PROCESS, &in) & IL_DENY(SV_NOT_CLOSED));
 }
 
+/* ------------------------------------------------------------ EtherCAT PDO */
+static int rx_off(uint8_t slot, uint16_t addr)
+{
+    static const ald_pdo_seg_t segs[] = ALD_PDO_RX_SEGS;
+    for (unsigned i = 0; i < ALD_PDO_RX_SEG_COUNT; i++)
+        if (segs[i].slot == slot && addr >= segs[i].addr && addr < segs[i].addr + segs[i].len)
+            return segs[i].pdo_off + (addr - segs[i].addr);
+    return -1;
+}
+
+static void test_ecat_pdo(void)
+{
+    reg_image_init();
+    ecat_pdo_reset();
+    uint16_t rx[ALD_PDO_RX_WORDS] = {0}, tx[ALD_PDO_TX_WORDS];
+    CHECK(ALD_PDO_RX_WORDS * 2u * 3u + ALD_PDO_TX_WORDS * 2u * 3u <= 4096u - 0x100u);   /* 3-buffer 放得進 LAN9252 */
+
+    int hb = rx_off(0, COM_HR_HEARTBEAT), dp = rx_off(0, MAIN_HR_IL_SV_DP_MAX_MTORR);
+    int cmd = rx_off(1, COM_HR_COMMAND), steps = rx_off(1, PROC_HR_ALD_STEP_MS + 15);
+    CHECK(hb >= 0 && dp >= 0 && cmd >= 0 && steps >= 0);
+    CHECK_EQ(rx_off(1, 199), -1);                                /* 沒定義的位址不佔 PDO */
+    rx[hb] = 77; rx[dp] = 40; rx[steps] = 1234; rx[cmd] = COM_HR_COMMAND_START;
+    ecat_rx_to_image(rx);
+    CHECK_EQ(hr_slot(0)[COM_HR_HEARTBEAT], 77);
+    CHECK_EQ(hr_slot(0)[MAIN_HR_IL_SV_DP_MAX_MTORR], 40);
+    CHECK_EQ(hr_slot(1)[PROC_HR_ALD_STEP_MS + 15], 1234);
+    CHECK_EQ(hr_slot(1)[COM_HR_COMMAND], COM_HR_COMMAND_START);
+
+    /* 主控板轉送完把命令清回 NONE；下一包 PDO 還是 START，不能再寫回去（避免重複啟動） */
+    hr_slot(1)[COM_HR_COMMAND] = COM_HR_COMMAND_NONE;
+    ecat_rx_to_image(rx);
+    CHECK_EQ(hr_slot(1)[COM_HR_COMMAND], COM_HR_COMMAND_NONE);
+    rx[cmd] = COM_HR_COMMAND_NONE; ecat_rx_to_image(rx);        /* IPC 清回 NONE */
+    rx[cmd] = COM_HR_COMMAND_START; ecat_rx_to_image(rx);       /* 再下一次 START → 有效 */
+    CHECK_EQ(hr_slot(1)[COM_HR_COMMAND], COM_HR_COMMAND_START);
+
+    /* IR → TxPDO：第一個 word = 槽 0 BOARD_TYPE */
+    ir_slot(0)[COM_IR_BOARD_TYPE] = 0xABCD;
+    ecat_image_to_tx(tx);
+    CHECK_EQ(tx[0], 0xABCD);
+
+    /* 主站不在 OP → link_up false */
+    fake_reset();
+    CHECK(fieldbus_ethercat.init());
+    fieldbus_ethercat.poll();                    CHECK(!fieldbus_ethercat.link_up());
+    fake_ecat_al_state = 8; fieldbus_ethercat.poll(); CHECK(fieldbus_ethercat.link_up());
+}
+
 /* ------------------------------------------------------------ 主迴圈（冒煙測試） */
 static bool fb_init(void) { return true; }
 static void fb_poll(void) {}
@@ -212,6 +262,7 @@ int main(void)
     RUN(test_il_pm_side);
     RUN(test_il_pm_motion_and_gv);
     RUN(test_mirror);
+    RUN(test_ecat_pdo);
     RUN(test_main_loop_safe_without_ipc);
     printf("主控板：%d 項檢查，%d 項失敗\n", g_checks, g_fail);
     return g_fail != 0;

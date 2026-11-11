@@ -33,5 +33,11 @@ enum { HAL_UART_THROTTLE = 0, HAL_UART_RF = 1 };
 int      hal_uart_write(uint8_t port, const char *s, uint16_t len);   /* 非阻塞，緩衝不夠回傳 -1 */
 int      hal_uart_read_byte(uint8_t port);                           /* 沒資料回傳 -1 */
 
+/* ---- EtherCAT 從站（主控板，LAN9252 + Beckhoff SSC）----
+ * SSC 的 PDO 對應回呼要呼叫 ecat_rx_to_image / ecat_image_to_tx（見 main_board/app/ecat_pdo.h） */
+bool     hal_ecat_init(void);               /* 初始化 LAN9252 SPI + SSC */
+void     hal_ecat_poll(void);               /* SSC MainLoop（主迴圈每圈呼叫） */
+uint8_t  hal_ecat_al_state(void);           /* AL 狀態：1 INIT、2 PREOP、4 SAFEOP、8 OP */
+
 /* ---- 看門狗 ---- */
 void     hal_iwdg_kick(void);               /* 硬體看門狗（IWDG），主迴圈每圈呼叫 */

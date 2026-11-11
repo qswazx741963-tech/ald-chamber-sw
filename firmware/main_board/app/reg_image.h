@@ -1,7 +1,7 @@
 /*
  * reg_image.h — 主控板上的「整台機台暫存器表」
  *
- * IPC 用 Modbus TCP 讀寫的就是這兩個陣列（以後換 EtherCAT 也一樣，只是換成 PDO 對應）。
+ * IPC 經 EtherCAT PDO 讀寫的就是這兩個陣列（對應表見 pdo_map.h；Modbus TCP 備用時直接用絕對位址）。
  *   g_ir[slot * ALD_SLOT_STRIDE + 區內位址]：板子 → IPC
  *   g_hr[slot * ALD_SLOT_STRIDE + 區內位址]：IPC → 板子
  * 槽 1~8 的內容由背板（bp_proto）週期性跟執行板同步。

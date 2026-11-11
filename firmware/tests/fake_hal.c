@@ -14,9 +14,12 @@ static size_t rx_head, rx_len;
 static struct { uint16_t id; uint8_t d[64]; uint8_t len; } can_q[64];
 static int can_head, can_len;
 
+uint8_t fake_ecat_al_state;
+
 void fake_reset(void)
 {
     fake_now = 0;
+    fake_ecat_al_state = 1;
     memset(fake_do, 0, sizeof fake_do);
     memset(fake_di, 0, sizeof fake_di);
     memset(fake_ai, 0, sizeof fake_ai);
@@ -73,3 +76,6 @@ int hal_uart_write(uint8_t port, const char *s, uint16_t len)
 }
 int hal_uart_read_byte(uint8_t port) { (void)port; return rx_head < rx_len ? (unsigned char)rx_buf[rx_head++] : -1; }
 void hal_iwdg_kick(void) {}
+bool hal_ecat_init(void) { return true; }
+void hal_ecat_poll(void) {}
+uint8_t hal_ecat_al_state(void) { return fake_ecat_al_state; }

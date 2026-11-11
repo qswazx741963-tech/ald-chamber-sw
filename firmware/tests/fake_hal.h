@@ -13,6 +13,8 @@ extern uint8_t  fake_slot, fake_board_type;
 extern char     fake_uart_tx[4096];          /* 主控板送給 Loadlock 的字串（累加） */
 extern int      fake_can_sent;
 
+extern uint8_t  fake_ecat_al_state;
+
 void fake_reset(void);
 void fake_uart_rx_push(const char *s);       /* 模擬 Loadlock 回傳 */
 void fake_can_rx_push(uint16_t id, const uint8_t *d, uint8_t len);
