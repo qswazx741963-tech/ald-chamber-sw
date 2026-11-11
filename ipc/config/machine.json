@@ -1,8 +1,8 @@
 {
   "_comment": "換機台只改這個檔。TODO 數值待確認",
   "mainBoard": {
-    "_comment": "IPC 第二網口直連主控板（點對點，不經過 Switch）",
-    "host": "192.168.10.10",
+    "_comment": "方案 B：人機連本機 ald-ecat 主站程式（ipc/ecat-master），它再經 EtherCAT（IPC 第二網口直連）跟主控板交換 PDO",
+    "host": "127.0.0.1",
     "port": 502,
     "unitId": 1,
     "pollMs": 50

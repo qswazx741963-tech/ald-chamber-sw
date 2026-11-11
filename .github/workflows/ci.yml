@@ -19,6 +19,13 @@ jobs:
       - uses: actions/checkout@v4
       - run: make -C firmware/tests
 
+  ecat-master:
+    name: IPC EtherCAT 主站程式（模擬版編譯 + 單元測試）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C ipc/ecat-master test all
+
   ipc:
     name: 編譯 IPC 並跑單元測試
     runs-on: windows-latest
