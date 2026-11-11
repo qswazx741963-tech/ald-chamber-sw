@@ -90,6 +90,7 @@ internal sealed class FakeMachine : IMachine
             case LoadlockCommand.ArmToLoadlock: ArmPos = 0; break;
             case LoadlockCommand.RoughOff: _s = _s with { LoadlockRoughOpen = false }; break;
             case LoadlockCommand.Pump: _s = _s with { LoadlockPressureUnderRange = true, LoadlockRoughOpen = true }; break;
+            case LoadlockCommand.Vent: _s = _s with { LoadlockPressureUnderRange = false, LoadlockPressureTorr = 760, LoadlockRoughOpen = false }; break;
         }
         return Task.FromResult(true);
     }

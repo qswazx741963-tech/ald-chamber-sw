@@ -55,8 +55,8 @@ public partial class MainWindow
             UnackedAlarm: a.UnackedAlarm || _seqFault,
             AnyWarning: a.AnyWarning,
             UnackedWarning: a.UnackedWarning,
-            Running: Busy,
-            NeedOperator: _needOp || waferUnknown);
+            Running: Busy && !BatchWaiting,
+            NeedOperator: _needOp || waferUnknown || BatchWaiting);
         var cfg = _m.Config.Tower;
         try { _m.SetTower(Tower.Compute(input, cfg, Tower.BlinkOn(DateTime.Now, cfg))); }
         catch (Exception) { /* 斷線時寫不進去；主控板會自己只亮紅燈 */ }

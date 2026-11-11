@@ -215,4 +215,36 @@ public sealed class SimEndToEndTests : IDisposable
         m.SetTower(TowerLamp.Blue | TowerLamp.Buzzer | TowerLamp.Yellow);
         Assert.True(await Until(() => m.Snapshot.Tower == (TowerLamp.Blue | TowerLamp.Buzzer | TowerLamp.Yellow), 5), $"{m.Snapshot.Tower}");
     }
+
+    [Fact]
+    public async Task Batch_TwoWafers_OnVirtualMachine()
+    {
+        if (_ecat is null) { _out.WriteLine("略過：ald-ecat 沒有編譯"); return; }
+        using var m = NewService();
+        m.Start();
+        Assert.True(await Until(() => m.Snapshot.AllOnline && m.Snapshot.LoadlockFresh, 10), "連線 / 各槽上線");
+        await m.ResetAsync();
+        Assert.True(await Until(() => !m.Snapshot.SafeState && m.Snapshot.SlotStatus.Skip(1).All(st => (st & 4) == 0), 5), "Reset");
+        Assert.True(await m.LoadlockAsync(LoadlockCommand.ArmHome, 0, TimeSpan.FromSeconds(10), default));
+
+        var r = RecipeFile.Load(Path.Combine(Repo.Root, "recipes", "sim_quick_test.json"));
+        var map = new WaferMap();
+        map.Set(false, false, "測試");
+        var job = new BatchJob(m, map, m.Config.Transfer with { LoadlockStepTimeoutS = 20, HeaterTimeoutS = 20 },
+                               m.Config.Interlock.LoadlockZEnabled, TimeSpan.FromMilliseconds(50));
+        int prompts = 0;
+        job.Progress += p =>
+        {
+            if (!p.Step.Contains("ALD：cycle")) _out.WriteLine($"{p.Time:HH:mm:ss.fff} {p.State} {p.Step} {p.Message}");
+            if (p.Step.EndsWith("等待人員")) { prompts++; _ = Task.Run(async () => { await Task.Delay(100); job.Confirm(); }); }
+        };
+        var st = await job.RunAsync(new[] { new BatchItem("W01", r), new BatchItem("W02", r) }, ventPmAtEnd: true);
+        Assert.Equal(SequencerState.Done, st);
+        Assert.Equal(3, prompts);
+        Assert.All(job.Results, x => Assert.Equal(BatchItemState.Done, x.State));
+        Assert.Equal((false, false), (map.Loadlock, map.Pm));
+        Assert.True(m.Snapshot.ManometerTorr > 700, "最後 PM 回填");
+        Assert.True(m.Snapshot.SlitClosed);
+        Assert.DoesNotContain(m.Alarms.Active, a => a.Info.Level == AlarmLevel.Alarm);
+    }
 }

@@ -67,6 +67,13 @@ public sealed class AutoRunJob
                 Report(SequencerState.Running, Phase, "Loadlock 抽氣", "");
                 if (!await _m.LoadlockAsync(LoadlockCommand.Pump, 0, TimeSpan.FromSeconds(_xferCfg.LoadlockStepTimeoutS * 5), token))
                     throw new AutoRunException($"Loadlock 抽氣沒有完成：{_m.LastLoadlockError}");
+                // SLK 回「完成」可能只是收到命令：等序列結束、壓力低於 1 Torr
+                var end = DateTime.Now.AddSeconds(_xferCfg.LoadlockStepTimeoutS * 5);
+                while (_m.Snapshot is var ls && (ls.LoadlockBusy || !(ls.LoadlockPressureUnderRange || ls.LoadlockPressureTorr < 1)))
+                {
+                    if (DateTime.Now > end) throw new AutoRunException("Loadlock 抽氣逾時（序列沒有結束或壓力沒有低於 1 Torr）");
+                    await Task.Delay(_poll ?? TimeSpan.FromMilliseconds(200), token);
+                }
             }
             if (r.PumpDown)
                 await Sub(new ProcessRecipe

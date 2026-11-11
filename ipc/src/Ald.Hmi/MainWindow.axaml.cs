@@ -42,6 +42,7 @@ public partial class MainWindow : Window
         WireRecipe();
         WireMaint();
         WireTower();
+        WireBatch();
         _timer.Tick += (_, _) => Render();
         _timer.Start();
         Closed += (_, _) => _timer.Stop();
@@ -84,7 +85,7 @@ public partial class MainWindow : Window
     private string RunStep => (_runIsAuto ? _auto?.Step : _seq?.Step) ?? "";
 
     /// <summary>中止所有流程（安全停止、中止按鈕）。</summary>
-    private void AbortAll() { _seq?.Abort(); _auto?.Abort(); _xfer?.Abort(); _leak?.Abort(); }
+    private void AbortAll() { _seq?.Abort(); _auto?.Abort(); _xfer?.Abort(); _leak?.Abort(); _batch?.Abort(); }
 
     private void LogRun(string name, SequencerProgress p)
     {
@@ -186,6 +187,7 @@ public partial class MainWindow : Window
         RenderTrend();
         RenderTransfer(s);
         RenderMaint(s);
+        RenderBatch();
         RenderTower(s);
     }
 }

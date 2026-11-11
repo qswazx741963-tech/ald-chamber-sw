@@ -254,6 +254,52 @@
                     </DockPanel>
                 </Grid>
             </TabItem>
+            <TabItem Header="批次">
+                <Grid ColumnDefinitions="*,*" Margin="8">
+                    <!-- 左：排片 -->
+                    <DockPanel Grid.Column="0" Margin="4">
+                        <StackPanel DockPanel.Dock="Top" Spacing="6" x:Name="PnlBatchEdit">
+                            <TextBlock Text="多片批次" FontSize="18" FontWeight="Bold" />
+                            <TextBlock Foreground="Gray" TextWrapping="Wrap" Text="每一片：Loadlock 洩壓 → 藍燈提示放片 / 取片、按確認 → 自動跑片（LL 抽氣 → 送片 → 製程 → 取片）。各片 PM 保持真空，回填只在整批結束後。任一片失敗整批停下。" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="配方" VerticalAlignment="Center" />
+                                <ComboBox x:Name="CmbBatchRecipe" Width="260" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="晶圓編號" VerticalAlignment="Center" />
+                                <TextBox x:Name="TxtBatchId" Width="140" Text="W01" />
+                                <TextBlock Text="片數" VerticalAlignment="Center" />
+                                <NumericUpDown x:Name="NumBatchCount" Minimum="1" Maximum="50" Value="1" FormatString="0" Width="110" />
+                                <Button x:Name="BtnBatchAdd" Content="加入" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="BtnBatchDel" Content="刪除選取" />
+                                <Button x:Name="BtnBatchClear" Content="清空" />
+                                <CheckBox x:Name="ChkBatchVent" Content="整批結束後 PM 回填" />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+                            <Button x:Name="BtnBatchStart" Content="開始批次" />
+                            <Button x:Name="BtnBatchAbort" Content="中止" />
+                            <TextBlock x:Name="TxtBatchCheck" Foreground="#B03030" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="420" />
+                        </StackPanel>
+                        <ListBox x:Name="LstBatch" FontFamily="monospace" Margin="0,6,0,0" />
+                    </DockPanel>
+                    <!-- 右：人員提示 + 狀態 -->
+                    <DockPanel Grid.Column="1" Margin="12,4,4,4">
+                        <Border DockPanel.Dock="Top" x:Name="PnlBatchPrompt" Background="#1E88E5" CornerRadius="6" Padding="12" IsVisible="False">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="需要人員處理" Foreground="White" FontSize="18" FontWeight="Bold" />
+                                <TextBlock x:Name="TxtBatchPrompt" Foreground="White" FontSize="16" TextWrapping="Wrap" />
+                                <Button x:Name="BtnBatchConfirm" Content="確認（已完成）" FontSize="16" Padding="16,8" Background="White" Foreground="Black" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock DockPanel.Dock="Top" x:Name="TxtBatchState" FontWeight="Bold" FontSize="16" Margin="0,8,0,4" TextWrapping="Wrap" />
+                        <TextBlock DockPanel.Dock="Top" Text="步驟記錄" FontWeight="Bold" />
+                        <ListBox x:Name="LstBatchLog" FontSize="12" />
+                    </DockPanel>
+                </Grid>
+            </TabItem>
             <TabItem Header="趨勢">
                 <Grid ColumnDefinitions="230,*" Margin="8">
                     <!-- 左：選訊號 -->
