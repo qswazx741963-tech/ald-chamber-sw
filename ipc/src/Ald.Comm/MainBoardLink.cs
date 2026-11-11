@@ -66,6 +66,19 @@ public sealed class MainBoardLink : IDisposable
         }
     }
 
+    /// <summary>讀 Holding Register（絕對位址），例如重新連線後讀回目前的命令值。</summary>
+    public ushort[] ReadHolding(ushort absAddr, ushort count)
+    {
+        lock (_lock)
+        {
+            if (_master is null) throw new InvalidOperationException("主控板未連線");
+            return _master.ReadHoldingRegisters(_unitId, absAddr, count);
+        }
+    }
+
+    /// <summary>從斷線變成連線的那一刻（在背景執行緒、讀完第一輪之前呼叫）：用來寫 config、讀回命令值。</summary>
+    public event Action<MainBoardLink>? Connecting;
+
     /// <summary>
     /// 下一個 Loadlock 命令給主控板：一次寫 HR LL_CMD、LL_CMD_ARG（i32，高字在前）、LL_CMD_SEQ。
     /// 主控板看到 SEQ 改變才執行一次（先過 LL-01~08 互鎖，再經 RS-485 送給 SLK），結果回在 IR LL_CMD_ACK / LL_CMD_RESULT。
@@ -102,7 +115,14 @@ public sealed class MainBoardLink : IDisposable
             {
                 lock (_lock)
                 {
-                    if (!Connected) { Connect(); Connected = true; }
+                    if (!Connected)
+                    {
+                        Connect();
+                        // 先確認 ald-ecat 跟主控板是通的（主控板沒在 OP 時 ald-ecat 回例外 0x0B），再寫 config
+                        _master!.ReadInputRegisters(_unitId, 0, 1);
+                        Connected = true;
+                        Connecting?.Invoke(this);
+                    }
                     _heartbeat++;
                     // 心跳寫在槽 0 HR 0，主控板超過 WATCHDOG_MS 沒看到變化就全機進安全狀態
                     _master!.WriteSingleRegister(_unitId, MainBoard.Holding.Heartbeat, _heartbeat);

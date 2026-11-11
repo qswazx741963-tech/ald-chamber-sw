@@ -6,7 +6,8 @@
  *
  * 用法：
  *   ald-ecat              正式（IgH 主站，需 root 或 CAP_SYS_NICE + /dev/EtherCAT0 權限）
- *   ald-ecat --sim        沒有主控板時模擬（人機開發用）
+ *   ald-ecat --sim        沒有主控板時用虛擬機台（正式韌體 + 物理模型，見 sim/）
+ *   ald-ecat --sim --speed 10   模擬時間 10 倍速（測試 / 展示）
  *   ald-ecat --port 1502 --cycle-us 1000
  *
  * 安全：本程式當掉 → 主控板 SM 看門狗觸發 → 安全狀態；人機當掉 → 心跳停止 → 主控板 IPC 看門狗 → 安全狀態。
@@ -145,7 +146,8 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--bind") && i + 1 < argc) bind_ip = argv[++i];
         else if (!strcmp(argv[i], "--cycle-us") && i + 1 < argc) s_cycle_ns = atol(argv[++i]) * 1000L;
-        else { fprintf(stderr, "用法：%s [--sim] [--port 502] [--bind 127.0.0.1] [--cycle-us 1000]\n", argv[0]); return 2; }
+        else if (!strcmp(argv[i], "--speed") && i + 1 < argc) ecat_sim_speed = atoi(argv[++i]);
+        else { fprintf(stderr, "用法：%s [--sim [--speed 1]] [--port 502] [--bind 127.0.0.1] [--cycle-us 1000]\n", argv[0]); return 2; }
     }
 #ifdef HAVE_IGH
     s_master = sim ? &ecat_sim : &ecat_igh;
@@ -153,6 +155,7 @@ int main(int argc, char **argv)
     if (!sim) fprintf(stderr, "ald-ecat: 這個版本沒有編入 IgH（make IGH=/opt/etherlab），只能 --sim\n");
     s_master = &ecat_sim;
 #endif
+    if (ecat_sim_speed < 1 || ecat_sim_speed > 100) { fprintf(stderr, "ald-ecat: --speed 需在 1–100\n"); return 2; }
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
     mlockall(MCL_CURRENT | MCL_FUTURE);                       /* 避免換頁造成延遲 */

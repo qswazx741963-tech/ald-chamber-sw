@@ -111,30 +111,7 @@ public sealed class LoadlockService
 
     /// <summary>把主控板回報的 Loadlock 狀態（IR LL_*）填進 MachineSnapshot。</summary>
     public MachineSnapshot Fill(MachineSnapshot s)
-    {
-        if (Main is not { Online: true } m) return s with { LoadlockFresh = false };
-        var link = (MainBoard.Input.LlLinkBits)m[MainBoard.Input.LlLink];
-        if (!link.HasFlag(MainBoard.Input.LlLinkBits.TlmFresh)) return s with { LoadlockFresh = false };
-        var flags = (MainBoard.Input.LlFlagsBits)m[MainBoard.Input.LlFlags];
-        int pres = (m[MainBoard.Input.LlPres] << 16) | m[(ushort)(MainBoard.Input.LlPres + 1)];
-        int pos = (m[MainBoard.Input.LlPos] << 16) | m[(ushort)(MainBoard.Input.LlPos + 1)];
-        ushort arm = m[MainBoard.Input.LlArm];
-        return s with
-        {
-            LoadlockFresh = true,
-            LoadlockAlarm = m[MainBoard.Input.LlAlm],
-            SlitValve = (LoadlockSv)m[MainBoard.Input.LlSv],
-            ArmZ = (LoadlockZ)m[MainBoard.Input.LlZ],
-            ArmMoving = arm is 1 or 3,             // HOMING / MOVING
-            ArmPosSteps = pos,
-            ArmSafePosSteps = ArmSafePosSteps,
-            LoadlockPressureTorr = pres < 0 ? double.NaN : pres / 1000.0,   // -1 = 低於 SLK 量測下限
-            LoadlockPressureUnderRange = pres < 0,
-            LoadlockPressureSuspect = flags.HasFlag(MainBoard.Input.LlFlagsBits.PresSuspect),
-            LoadlockLidOpen = flags.HasFlag(MainBoard.Input.LlFlagsBits.LidOpen),
-            LoadlockRoughOpen = flags.HasFlag(MainBoard.Input.LlFlagsBits.RoughOpen),
-            LoadlockVentOpen = flags.HasFlag(MainBoard.Input.LlFlagsBits.VentOpen),
-            LoadlockBusy = m[MainBoard.Input.LlSeq] != 0 || LastResult == LlResult.Sent,
-        };
-    }
+        => Main is { Online: true } m
+            ? SnapshotBuilder.FillLoadlock(s, m.Input, ArmSafePosSteps, LastResult == LlResult.Sent)
+            : s with { LoadlockFresh = false };
 }

@@ -40,5 +40,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "8.0.x" }
+      - name: 編 ald-ecat（端到端測試要用虛擬機台）
+        run: make -C ipc/ecat-master
       - run: dotnet test AldChamber.sln
         working-directory: ipc

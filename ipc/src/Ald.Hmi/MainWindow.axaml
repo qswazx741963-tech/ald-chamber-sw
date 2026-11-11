@@ -1,18 +1,82 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Ald.Hmi.MainWindow"
-        Title="ALD Chamber" Width="1280" Height="800">
+        Title="ALD Chamber" Width="1280" Height="800" FontSize="14">
+    <!-- 底層版主畫面：狀態一覽 + 基本操作。完整的手動操作頁、Recipe 編輯、趨勢圖、權限之後再加。 -->
     <DockPanel>
-        <!-- TODO 畫面：設備總覽、手動操作、Recipe、警報、趨勢、權限 -->
-        <Border DockPanel.Dock="Bottom" Padding="8,4" Background="#EEEEEE">
-            <TextBlock x:Name="LinkStatus" Text="主控板：未連線" />
+        <!-- 頂部：連線 / 系統狀態 / 系統操作 -->
+        <Border DockPanel.Dock="Top" Padding="10,6" Background="#20303F">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="BtnReset" Content="Reset（解除安全狀態）" Background="#E0E0E0" Foreground="Black" />
+                    <Button x:Name="BtnSafe" Content="安全停止" Background="#B03030" Foreground="White" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="24" VerticalAlignment="Center">
+                    <TextBlock x:Name="TxtLink" Foreground="White" FontWeight="Bold" Text="主控板：未連線" />
+                    <TextBlock x:Name="TxtState" Foreground="White" Text="狀態：-" />
+                    <TextBlock x:Name="TxtSlots" Foreground="White" Text="控制板：-" />
+                    <TextBlock x:Name="TxtLl" Foreground="White" Text="Loadlock：-" />
+                </StackPanel>
+            </DockPanel>
         </Border>
+
+        <!-- 底部：目前流程 / 最後訊息 -->
+        <Border DockPanel.Dock="Bottom" Padding="10,4" Background="#EEEEEE">
+            <TextBlock x:Name="TxtStatusBar" Text="" />
+        </Border>
+
         <TabControl>
-            <TabItem Header="總覽" />
-            <TabItem Header="手動操作" />
-            <TabItem Header="Recipe" />
-            <TabItem Header="警報" />
-            <TabItem Header="趨勢" />
+            <TabItem Header="總覽">
+                <Grid ColumnDefinitions="*,*,*" Margin="8">
+                    <!-- 真空 -->
+                    <StackPanel Grid.Column="0" Spacing="6" Margin="4">
+                        <TextBlock Text="真空" FontSize="18" FontWeight="Bold" />
+                        <TextBlock x:Name="TxtVac" FontFamily="monospace" />
+                        <WrapPanel>
+                            <Button x:Name="BtnPump" Content="抽真空" Margin="0,0,6,6" />
+                            <Button x:Name="BtnVent" Content="回填大氣" Margin="0,0,6,6" />
+                            <Button x:Name="BtnAbort" Content="中止流程" Margin="0,0,6,6" />
+                        </WrapPanel>
+                        <TextBlock Text="Loadlock" FontSize="18" FontWeight="Bold" Margin="0,12,0,0" />
+                        <TextBlock x:Name="TxtLlDetail" FontFamily="monospace" />
+                        <WrapPanel>
+                            <Button x:Name="BtnLlPump" Content="LL 抽氣" Margin="0,0,6,6" />
+                            <Button x:Name="BtnLlVent" Content="LL 洩壓" Margin="0,0,6,6" />
+                            <Button x:Name="BtnSvOpen" Content="開 SV" Margin="0,0,6,6" />
+                            <Button x:Name="BtnSvClose" Content="關 SV" Margin="0,0,6,6" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <!-- 加熱 -->
+                    <StackPanel Grid.Column="1" Spacing="6" Margin="4">
+                        <TextBlock Text="加熱（K 型）" FontSize="18" FontWeight="Bold" />
+                        <TextBlock x:Name="TxtHeat" FontFamily="monospace" />
+                    </StackPanel>
+                    <!-- 氣體 / PM 機構 -->
+                    <StackPanel Grid.Column="2" Spacing="6" Margin="4">
+                        <TextBlock Text="氣體（MFC）" FontSize="18" FontWeight="Bold" />
+                        <TextBlock x:Name="TxtMfc" FontFamily="monospace" />
+                        <TextBlock Text="PM 機構 / ALD" FontSize="18" FontWeight="Bold" Margin="0,12,0,0" />
+                        <TextBlock x:Name="TxtMech" FontFamily="monospace" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+            <TabItem Header="警報">
+                <Grid RowDefinitions="Auto,*,Auto,2*" Margin="8">
+                    <TextBlock Grid.Row="0" Text="目前警報" FontWeight="Bold" />
+                    <ListBox Grid.Row="1" x:Name="LstActive" />
+                    <TextBlock Grid.Row="2" Text="事件記錄（最新在上）" FontWeight="Bold" Margin="0,8,0,0" />
+                    <ListBox Grid.Row="3" x:Name="LstLog" />
+                </Grid>
+            </TabItem>
+            <TabItem Header="手動操作">
+                <TextBlock Margin="12" Text="TODO：各閥 / 加熱 / MFC / 馬達手動頁（命令一律走 MachineService，被互鎖擋下會顯示原因）" />
+            </TabItem>
+            <TabItem Header="Recipe">
+                <TextBlock Margin="12" Text="TODO：Recipe 編輯與執行（ProcessSequencer）" />
+            </TabItem>
+            <TabItem Header="趨勢">
+                <TextBlock Margin="12" Text="TODO：趨勢圖（資料已記錄在 SQLite trend 表）" />
+            </TabItem>
         </TabControl>
     </DockPanel>
 </Window>

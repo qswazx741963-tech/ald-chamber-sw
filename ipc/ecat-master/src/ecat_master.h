@@ -16,6 +16,7 @@ typedef struct {
 } ecat_master_t;
 
 extern const ecat_master_t ecat_sim;
+extern int ecat_sim_speed;   /* 模擬時間倍速（預設 1） */
 #ifdef HAVE_IGH
 extern const ecat_master_t ecat_igh;
 #endif

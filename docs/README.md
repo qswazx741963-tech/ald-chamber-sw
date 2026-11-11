@@ -3,6 +3,7 @@
 | 檔案 | 內容 |
 | --- | --- |
 | `architecture.md` | 三階架構、各層分工、通訊、EtherCAT 設計、穩定度原則 |
+| `ipc-software.md` | IPC 底層：MachineService、警報、流程引擎、SQLite 記錄、整機模擬器（`ald-ecat --sim`） |
 | `linux-ipc-setup.md` | IPC（ARK-1222）Linux + PREEMPT_RT + IgH EtherCAT 主站安裝 |
 | `backplane.md` | 背板訊號與 CAN FD 訊框格式 |
 | `interlocks.md` | 互鎖清單：硬體 / 主控板 / IPC 三層，含 Loadlock ↔ PM |

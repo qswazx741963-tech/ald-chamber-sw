@@ -7,11 +7,16 @@
  */
 #include "ecat_master.h"
 #include "vm.h"
+#include <stddef.h>
+
+int ecat_sim_speed = 1;
 
 static bool sim_open(void) { vm_init(); return true; }
 
+/* --speed N：每個週期推進 N ms（測試 / 展示用，抽真空、升溫不用等真實時間） */
 static bool sim_cycle(const uint16_t *rx, uint16_t *tx)
 {
+    for (int i = 1; i < ecat_sim_speed; i++) vm_step(rx, NULL);
     vm_step(rx, tx);
     return true;
 }
