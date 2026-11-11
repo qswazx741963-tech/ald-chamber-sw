@@ -1,8 +1,51 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:sp="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
+        xmlns:local="clr-namespace:Ald.Hmi"
         x:Class="Ald.Hmi.MainWindow"
-        Title="ALD Chamber" Width="1280" Height="800" FontSize="14">
+        Title="ALD Chamber" Width="1280" Height="800" MinWidth="1280" MinHeight="760" FontSize="14">
+    <Window.Styles>
+        <!-- 分頁標籤藏起來，改用底部導覽列切換 -->
+        <Style Selector="TabControl#Tabs /template/ ItemsPresenter#PART_ItemsPresenter">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#AEB9C5" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+        <Style Selector="TextBlock.cardHead">
+            <Setter Property="Background" Value="#D5DDE6" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.cardBody">
+            <Setter Property="FontFamily" Value="monospace" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Margin" Value="8,6" />
+        </Style>
+        <Style Selector="Button.nav">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#E6ECF2" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="BorderThickness" Value="0,0,0,3" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#34475B" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.nav.sel">
+            <Setter Property="Background" Value="#3D5A78" />
+            <Setter Property="BorderBrush" Value="#F2D22E" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+    </Window.Styles>
     <!-- 底層版主畫面：狀態一覽 + 基本操作。完整的手動操作頁、Recipe 編輯、趨勢圖、權限之後再加。 -->
     <Grid>
     <DockPanel>
@@ -23,12 +66,22 @@
                     <Button x:Name="BtnReset" Content="Reset（解除安全狀態）" Background="#E0E0E0" Foreground="Black" />
                     <Button x:Name="BtnSafe" Content="安全停止" Background="#B03030" Foreground="White" />
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="24" VerticalAlignment="Center">
-                    <TextBlock x:Name="TxtLink" Foreground="White" FontWeight="Bold" Text="主控板：未連線" />
-                    <TextBlock x:Name="TxtState" Foreground="White" Text="狀態：-" />
-                    <TextBlock x:Name="TxtSlots" Foreground="White" Text="控制板：-" />
-                    <TextBlock x:Name="TxtLl" Foreground="White" Text="Loadlock：-" />
-                </StackPanel>
+                <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,16,0">
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <TextBlock x:Name="TxtState" Foreground="White" FontWeight="Bold" FontSize="16" Text="狀態：-" />
+                            <TextBlock x:Name="TxtClock" Foreground="#C8D3DE" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <TextBlock x:Name="TxtLink" Foreground="#C8D3DE" FontSize="12" Text="主控板：未連線" />
+                            <TextBlock x:Name="TxtSlots" Foreground="#C8D3DE" FontSize="12" Text="控制板：-" />
+                            <TextBlock x:Name="TxtLl" Foreground="#C8D3DE" FontSize="12" Text="Loadlock：-" />
+                        </StackPanel>
+                    </StackPanel>
+                    <Border Grid.Column="1" Background="#2B3D50" CornerRadius="3" Padding="8,2">
+                        <TextBlock x:Name="TxtRecent" Foreground="#E6ECF2" FontSize="12" FontFamily="monospace" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                    </Border>
+                </Grid>
             </DockPanel>
         </Border>
 
@@ -43,44 +96,74 @@
             </DockPanel>
         </Border>
 
-        <!-- 底部：目前流程 / 最後訊息 -->
-        <Border DockPanel.Dock="Bottom" Padding="10,4" Background="#EEEEEE">
+        <!-- 底部：最後訊息 + 導覽列（按鈕在程式裡依分頁產生） -->
+        <Border DockPanel.Dock="Bottom" Padding="10,3" Background="#EEEEEE">
             <TextBlock x:Name="TxtStatusBar" Text="" />
         </Border>
+        <Border DockPanel.Dock="Bottom" Background="#20303F">
+            <StackPanel x:Name="PnlNav" Orientation="Horizontal" />
+        </Border>
 
-        <TabControl>
+        <TabControl x:Name="Tabs" Padding="0">
             <TabItem Header="總覽">
-                <Grid ColumnDefinitions="*,*,*" Margin="8">
-                    <!-- 真空 -->
-                    <StackPanel Grid.Column="0" Spacing="6" Margin="4">
-                        <TextBlock Text="真空" FontSize="18" FontWeight="Bold" />
-                        <TextBlock x:Name="TxtVac" FontFamily="monospace" />
-                        <WrapPanel>
-                            <Button x:Name="BtnPump" Content="抽真空" Margin="0,0,6,6" />
-                            <Button x:Name="BtnVent" Content="回填大氣" Margin="0,0,6,6" />
-                            <Button x:Name="BtnAbort" Content="中止流程" Margin="0,0,6,6" />
-                        </WrapPanel>
-                        <TextBlock Text="Loadlock" FontSize="18" FontWeight="Bold" Margin="0,12,0,0" />
-                        <TextBlock x:Name="TxtLlDetail" FontFamily="monospace" />
-                        <WrapPanel>
-                            <Button x:Name="BtnLlPump" Content="LL 抽氣" Margin="0,0,6,6" />
-                            <Button x:Name="BtnLlVent" Content="LL 洩壓" Margin="0,0,6,6" />
-                            <Button x:Name="BtnSvOpen" Content="開 SV" Margin="0,0,6,6" />
-                            <Button x:Name="BtnSvClose" Content="關 SV" Margin="0,0,6,6" />
-                        </WrapPanel>
-                    </StackPanel>
-                    <!-- 加熱 -->
-                    <StackPanel Grid.Column="1" Spacing="6" Margin="4">
-                        <TextBlock Text="加熱（K 型）" FontSize="18" FontWeight="Bold" />
-                        <TextBlock x:Name="TxtHeat" FontFamily="monospace" />
-                    </StackPanel>
-                    <!-- 氣體 / PM 機構 -->
-                    <StackPanel Grid.Column="2" Spacing="6" Margin="4">
-                        <TextBlock Text="氣體（MFC）" FontSize="18" FontWeight="Bold" />
-                        <TextBlock x:Name="TxtMfc" FontFamily="monospace" />
-                        <TextBlock Text="PM 機構 / ALD" FontSize="18" FontWeight="Bold" Margin="0,12,0,0" />
-                        <TextBlock x:Name="TxtMech" FontFamily="monospace" />
-                    </StackPanel>
+                <!-- 俯視圖總覽：左 作業 / Loadlock / MFC，中 俯視圖（OverviewView），右 PM / 真空 / 加熱 -->
+                <Grid ColumnDefinitions="250,*,280" Margin="6" Background="#E4EAF1">
+                    <ScrollViewer Grid.Column="0">
+                        <StackPanel Spacing="8">
+                            <Border Classes="card">
+                                <StackPanel>
+                                    <TextBlock Classes="cardHead" Text="作業" />
+                                    <TextBlock x:Name="TxtRunNow" Classes="cardBody" TextWrapping="Wrap" />
+                                    <WrapPanel Margin="6,0,6,6">
+                                        <Button x:Name="BtnPump" Content="抽真空" Margin="0,0,6,6" />
+                                        <Button x:Name="BtnVent" Content="回填大氣" Margin="0,0,6,6" />
+                                        <Button x:Name="BtnAbort" Content="中止流程" Margin="0,0,6,6" Background="#F3D0D0" />
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Classes="card">
+                                <StackPanel>
+                                    <TextBlock Classes="cardHead" Text="Loadlock" />
+                                    <TextBlock x:Name="TxtLlDetail" Classes="cardBody" />
+                                    <WrapPanel Margin="6,0,6,6">
+                                        <Button x:Name="BtnLlPump" Content="LL 抽氣" Margin="0,0,6,6" />
+                                        <Button x:Name="BtnLlVent" Content="LL 洩壓" Margin="0,0,6,6" />
+                                        <Button x:Name="BtnSvOpen" Content="開 SV" Margin="0,0,6,6" />
+                                        <Button x:Name="BtnSvClose" Content="關 SV" Margin="0,0,6,6" />
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Classes="card">
+                                <StackPanel>
+                                    <TextBlock Classes="cardHead" Text="氣體（MFC）" />
+                                    <TextBlock x:Name="TxtMfc" Classes="cardBody" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <local:OverviewView Grid.Column="1" x:Name="Ov" Margin="6,0" />
+                    <ScrollViewer Grid.Column="2">
+                        <StackPanel Spacing="8">
+                            <Border Classes="card">
+                                <StackPanel>
+                                    <TextBlock Classes="cardHead" Text="PM" />
+                                    <TextBlock x:Name="TxtMech" Classes="cardBody" />
+                                </StackPanel>
+                            </Border>
+                            <Border Classes="card">
+                                <StackPanel>
+                                    <TextBlock Classes="cardHead" Text="真空" />
+                                    <TextBlock x:Name="TxtVac" Classes="cardBody" />
+                                </StackPanel>
+                            </Border>
+                            <Border Classes="card">
+                                <StackPanel>
+                                    <TextBlock Classes="cardHead" Text="加熱" />
+                                    <TextBlock x:Name="TxtHeat" Classes="cardBody" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
             </TabItem>
             <TabItem Header="警報">

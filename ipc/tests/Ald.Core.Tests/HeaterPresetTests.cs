@@ -76,3 +76,31 @@ public sealed class HeaterPresetTests : IDisposable
         Assert.NotEmpty(p.Note);
     }
 }
+
+public sealed class WaferIdTests
+{
+    [Fact]
+    public void Id_FollowsWafer_LlToPmAndBack_ClearedWhenRemoved()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ald-wafer-{Guid.NewGuid():N}.json");
+        try
+        {
+            var m = new WaferMap(path);
+            m.Set(true, false, "放入", "W01");
+            Assert.Equal(("W01", ""), (m.LoadlockId, m.PmId));
+            m.Set(false, true, "送片");
+            Assert.Equal(("", "W01"), (m.LoadlockId, m.PmId));
+            var r = WaferMap.Load(path);                           // 重開機讀回
+            Assert.Equal("W01", r.PmId);
+            m.Set(true, false, "取片");
+            Assert.Equal(("W01", ""), (m.LoadlockId, m.PmId));
+            m.SetIds(null, "X");                                    // PM 無片，不記
+            Assert.Equal("", m.PmId);
+            m.Set(false, false, "取出");
+            Assert.Equal(("", ""), (m.LoadlockId, m.PmId));
+            m.Set(null, null, "不明");
+            Assert.Equal(("", ""), (m.LoadlockId, m.PmId));
+        }
+        finally { File.Delete(path); }
+    }
+}

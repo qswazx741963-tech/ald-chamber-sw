@@ -47,6 +47,7 @@ public partial class MainWindow : Window
         WireEvents();
         WireHeater();
         WireHistory();
+        WireNav();
         _timer.Tick += (_, _) => Render();
         _timer.Start();
         Closed += (_, _) => _timer.Stop();
@@ -112,6 +113,7 @@ public partial class MainWindow : Window
         _alarmLog?.Add(OpSource, "Info", _runName, evt: "OPERATOR");
         var job = _auto;
         long? id = RunStart("自動跑片", waferId, r);
+        if (waferId.Length > 0) _wafers.SetIds(waferId, null);
         await job.RunAsync(r);
         RunEnd(id, job.State, fail);
     }
@@ -129,6 +131,7 @@ public partial class MainWindow : Window
         _seq.Progress += p => { LogRun($"流程 {r.Name}", p); TowerEvent(p, doneNeedsOperator: false); if (p.State == SequencerState.Failed) fail = $"{p.Step} {p.Message}".Trim(); };
         var seq = _seq;
         long? id = waferId is null ? null : RunStart("製程", waferId, r);
+        if (waferId is { Length: > 0 }) _wafers?.SetIds(null, waferId);
         await seq.RunAsync(r);
         RunEnd(id, seq.State, fail);
     }
@@ -143,48 +146,10 @@ public partial class MainWindow : Window
 
     private void Render()
     {
+        C<TextBlock>("TxtClock").Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         if (_m is null) { C<TextBlock>("TxtLink").Text = "主控板：未設定"; return; }
         var s = _m.Snapshot;
-        C<TextBlock>("TxtLink").Text = s.Connected ? "主控板：連線" : "主控板：未連線";
-        C<TextBlock>("TxtState").Text = $"狀態：{s.SysState}";
-        C<TextBlock>("TxtSlots").Text = "控制板：" + string.Join(" ", s.SlotOnline.Select((o, i) => $"{i}{(o ? "●" : "○")}"));
-        C<TextBlock>("TxtLl").Text = s.LoadlockFresh ? $"Loadlock：SV {SvText[(int)s.SlitValve % 6]}" : "Loadlock：未連線";
-
-        var v = new StringBuilder();
-        v.AppendLine($"PM 互鎖壓力  {PmP(s)} Torr  ({s.ChamberGaugeStatus})");
-        v.AppendLine($"Barocel      {P(s.ManometerTorr)} Torr");
-        v.AppendLine($"Ion gauge    {P(s.IonGaugeTorr)} Torr");
-        v.AppendLine($"Foreline     {P(s.ForelineTorr)} Torr");
-        v.AppendLine($"Dry pump {(s.DryPumpRunning ? "運轉" : "停")}  Turbo {(s.TurboAtSpeed ? "全速" : "未到速")}");
-        v.AppendLine($"Turbo GV {(s.TurboGateOpened ? "開" : s.TurboGateClosed ? "關" : "動作中")}  輸出 {s.VacuumOutputs}");
-        C<TextBlock>("TxtVac").Text = v.ToString();
-
-        var l = new StringBuilder();
-        string llp = s.LoadlockPressureUnderRange ? "< 1 Torr" : double.IsNaN(s.LoadlockPressureTorr) ? "---" : $"{s.LoadlockPressureTorr:0.0} Torr";
-        l.AppendLine($"壓力 {llp}{(s.LoadlockPressureSuspect ? "（不可信）" : "")}");
-        l.AppendLine($"SV {SvText[(int)s.SlitValve % 6]}  手臂 {s.ArmPosSteps} step  Z {s.ArmZ}");
-        l.AppendLine($"粗抽 {(s.LoadlockRoughOpen ? "開" : "關")}  洩壓 {(s.LoadlockVentOpen ? "開" : "關")}  警報 {s.LoadlockAlarm}");
-        C<TextBlock>("TxtLlDetail").Text = l.ToString();
-
-        var h = new StringBuilder();
-        var names = _m.Config.Heaters.Channels;
-        for (int i = 0; i < 16; i++)
-        {
-            string t = double.IsNaN(s.TempC[i]) ? "  斷線" : $"{s.TempC[i],6:0.0}";
-            h.AppendLine($"{names[i].Name,-17}{t} °C {s.HeaterDutyPct[i],5:0}%");
-        }
-        C<TextBlock>("TxtHeat").Text = h.ToString();
-
-        var g = new StringBuilder();
-        var mfc = _m.Config.Mfc.Channels;
-        for (int i = 0; i < 8; i++)
-            g.AppendLine($"{i + 1} {mfc[i].Name,-18}{s.MfcValue[i],8:0.0} {mfc[i].Unit}{((s.MfcUpstreamValves >> i & 1) != 0 ? " ●" : "")}");
-        C<TextBlock>("TxtMfc").Text = g.ToString();
-
-        C<TextBlock>("TxtMech").Text =
-            $"Heater module {s.HeaterPosSteps} step ({s.HeaterAxis}){(s.HeaterDown ? " 下位" : s.HeaterAtProcess ? " Process" : "")}\n" +
-            $"Wafer lift {(s.WaferLiftUp ? "上" : s.WaferLiftDown ? "下" : "動作中")}  交接位置 {(s.PmAtTransfer ? "是" : "否")}\n" +
-            $"ALD {(s.AldRunning ? "執行中" : "停")}  cycle {s.AldCycle}  閥 0x{s.AldValves:X2}";
+        RenderOverview(s);
 
         C<ListBox>("LstActive").ItemsSource = _m.Alarms.Active.OrderByDescending(a => a.Info.Level)
             .Select(a => $"{(a.Acked ? "  " : "● ")}[{a.Info.Level}] {a.Since:HH:mm:ss} {a.Info.Source}：{a.Info.Message}{(a.Acked ? "" : "（未確認）")}")

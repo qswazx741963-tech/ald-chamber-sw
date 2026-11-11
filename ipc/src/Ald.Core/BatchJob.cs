@@ -104,7 +104,7 @@ public sealed class BatchJob
                 await OperatorAsync(tag, prev is null
                     ? $"請打開 Loadlock，放入晶圓 {it.WaferId}，關好上蓋後按「確認」"
                     : $"請打開 Loadlock，取出 {prev}，放入晶圓 {it.WaferId}，關好上蓋後按「確認」", token);
-                _map.Set(true, false, $"批次放入 {it.WaferId}");
+                _map.Set(true, false, $"批次放入 {it.WaferId}", it.WaferId);
 
                 // 自動跑片
                 Set(i, BatchItemState.Running, DateTime.Now, null, "");

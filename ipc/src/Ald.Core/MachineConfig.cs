@@ -173,6 +173,8 @@ public sealed record TransferConfig
     public double LiftTimeoutS { get; init; } = 10;
     /// <summary>每個 SLK 動作（SV、手臂、Z）的逾時。</summary>
     public double LoadlockStepTimeoutS { get; init; } = 60;
+    /// <summary>手臂伸到 PM 的位置（step，SLK ARM_PM），只用在總覽圖畫手臂長度。</summary>
+    public int ArmPmSteps { get; init; } = 18420;
     /// <summary>晶圓位置檔（重開機讀回）。</summary>
     public string WaferMapPath { get; init; } = "data/wafer.json";
 }
