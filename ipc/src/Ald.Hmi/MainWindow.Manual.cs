@@ -28,8 +28,8 @@ public partial class MainWindow
     /// <summary>同步命令：成功寫狀態列 + 操作記錄；被拒（超上限、互鎖）顯示原因。</summary>
     private void Cmd(string what, Action act)
     {
-        try { act(); _status = $"{what}：已送出"; _alarmLog?.Add("操作", "Info", what, evt: "OPERATOR"); }
-        catch (Exception e) { _status = $"{what}：被拒（{e.Message}）"; _alarmLog?.Add("操作", "Warning", _status, evt: "OPERATOR"); }
+        try { act(); _status = $"{what}：已送出"; _alarmLog?.Add(OpSource, "Info", what, evt: "OPERATOR"); }
+        catch (Exception e) { _status = $"{what}：被拒（{e.Message}）"; _alarmLog?.Add(OpSource, "Warning", _status, evt: "OPERATOR"); }
     }
 
     private void WireManual()
@@ -136,9 +136,11 @@ public partial class MainWindow
     private void RenderManual(MachineSnapshot s)
     {
         if (_m is null) return;
-        bool locked = !s.Connected || SequenceRunning;
+        bool allowed = Can(Permission.ManualControl);
+        bool locked = !s.Connected || SequenceRunning || !allowed;
         C<Grid>("PnlManual").IsEnabled = !locked;
         C<TextBlock>("TxtManualLock").Text =
+            !allowed ? "手動操作需要工程師以上權限，請先登入" :
             !s.Connected ? "主控板未連線" :
             SequenceRunning ? $"流程「{_runName}」執行中，手動操作已鎖住（要操作請先中止流程）" :
             s.SafeState ? "系統在安全狀態：執行板會擋下大部分輸出，請先按 Reset" : "";

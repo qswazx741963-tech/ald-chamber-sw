@@ -168,7 +168,7 @@ public partial class MainWindow
             _recipePath = path;
             ReloadRecipeList(Path.GetFileName(path));
             Msg($"已存檔：{Path.GetFileName(path)}");
-            _alarmLog?.Add("操作", "Info", $"Recipe 存檔 {Path.GetFileName(path)}", evt: "OPERATOR");
+            _alarmLog?.Add(OpSource, "Info", $"Recipe 存檔 {Path.GetFileName(path)}", evt: "OPERATOR");
         }
         catch (Exception e) { Msg($"存檔失敗：{e.Message}"); }
     }
@@ -178,7 +178,11 @@ public partial class MainWindow
     private void RenderRecipe()
     {
         bool running = SequenceRunning;
-        C<Button>("BtnRecipeRun").IsEnabled = _m is not null && !running;
+        C<Button>("BtnRecipeRun").IsEnabled = _m is not null && !running && Can(Permission.RunRecipe);
+        bool edit = Can(Permission.EditRecipe);
+        C<StackPanel>("PnlRecipeForm").IsEnabled = edit;
+        C<Button>("BtnRecipeSave").IsEnabled = edit;
+        C<Button>("BtnRecipeNew").IsEnabled = edit;
         C<Button>("BtnRecipeAbort").IsEnabled = running;
         C<TextBlock>("TxtRunState").Text = _seq is null ? "待機" : _seq.State switch
         {

@@ -1,13 +1,17 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sp="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
         x:Class="Ald.Hmi.MainWindow"
         Title="ALD Chamber" Width="1280" Height="800" FontSize="14">
     <!-- 底層版主畫面：狀態一覽 + 基本操作。完整的手動操作頁、Recipe 編輯、趨勢圖、權限之後再加。 -->
+    <Grid>
     <DockPanel>
         <!-- 頂部：連線 / 系統狀態 / 系統操作 -->
         <Border DockPanel.Dock="Top" Padding="10,6" Background="#20303F">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                    <TextBlock x:Name="TxtUser" Foreground="White" VerticalAlignment="Center" Text="未登入（檢視）" />
+                    <Button x:Name="BtnLogin" Content="登入" Background="#E0E0E0" Foreground="Black" />
                     <Button x:Name="BtnReset" Content="Reset（解除安全狀態）" Background="#E0E0E0" Foreground="Black" />
                     <Button x:Name="BtnSafe" Content="安全停止" Background="#B03030" Foreground="White" />
                 </StackPanel>
@@ -147,7 +151,7 @@
                             <Button x:Name="BtnRecipeSave" Content="存檔" />
                         </StackPanel>
                         <ScrollViewer>
-                            <StackPanel Spacing="6">
+                            <StackPanel x:Name="PnlRecipeForm" Spacing="6">
                                 <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto">
                                     <TextBlock Text="名稱" VerticalAlignment="Center" Margin="0,0,8,0" />
                                     <TextBox Grid.Column="1" Grid.ColumnSpan="3" x:Name="TxtRName" />
@@ -201,8 +205,70 @@
                 </Grid>
             </TabItem>
             <TabItem Header="趨勢">
-                <TextBlock Margin="12" Text="TODO：趨勢圖（資料已記錄在 SQLite trend 表）" />
+                <Grid ColumnDefinitions="230,*" Margin="8">
+                    <!-- 左：選訊號 -->
+                    <ScrollViewer Grid.Column="0">
+                        <StackPanel x:Name="PnlTrendSignals" Spacing="0" />
+                    </ScrollViewer>
+                    <!-- 右：時間範圍 + 兩張圖 -->
+                    <DockPanel Grid.Column="1" Margin="8,0,0,0">
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+                            <ComboBox x:Name="CmbTrendRange" Width="150" />
+                            <CheckBox x:Name="ChkTrendLive" Content="即時更新" IsChecked="True" />
+                            <Button x:Name="BtnTrendRefresh" Content="更新" />
+                            <Button x:Name="BtnTrendCsv" Content="匯出 CSV" />
+                            <TextBlock x:Name="TxtTrendInfo" VerticalAlignment="Center" Foreground="Gray" />
+                        </StackPanel>
+                        <Grid RowDefinitions="*,*">
+                            <sp:AvaPlot Grid.Row="0" x:Name="PlotPressure" />
+                            <sp:AvaPlot Grid.Row="1" x:Name="PlotTemp" />
+                        </Grid>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+            <TabItem Header="使用者">
+                <Grid ColumnDefinitions="*,*" Margin="8">
+                    <StackPanel Grid.Column="0" Spacing="6" Margin="4">
+                        <TextBlock Text="變更我的密碼" FontSize="18" FontWeight="Bold" />
+                        <TextBlock x:Name="TxtMe" />
+                        <TextBox x:Name="TxtMyOld" PasswordChar="●" Watermark="目前密碼" Width="260" HorizontalAlignment="Left" />
+                        <TextBox x:Name="TxtMyNew" PasswordChar="●" Watermark="新密碼（4–64 字）" Width="260" HorizontalAlignment="Left" />
+                        <TextBox x:Name="TxtMyNew2" PasswordChar="●" Watermark="再輸入一次新密碼" Width="260" HorizontalAlignment="Left" />
+                        <Button x:Name="BtnMyPw" Content="變更密碼" />
+                        <TextBlock Text="權限說明" FontSize="18" FontWeight="Bold" Margin="0,16,0,0" />
+                        <TextBlock FontFamily="monospace" Text="檢視（未登入）：看畫面、安全停止、中止流程&#10;操作員：+ Reset、執行配方、抽真空 / 回填、Loadlock&#10;工程師：+ 手動操作、編輯 / 存檔配方&#10;管理員：+ 使用者管理&#10;一段時間沒有操作自動登出（config hmi.idleLogoutMinutes）" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" x:Name="PnlUsers" Spacing="6" Margin="4">
+                        <TextBlock Text="使用者管理（管理員）" FontSize="18" FontWeight="Bold" />
+                        <ListBox x:Name="LstUsers" Height="220" />
+                        <TextBox x:Name="TxtUName" Watermark="帳號" Width="260" HorizontalAlignment="Left" />
+                        <ComboBox x:Name="CmbURole" Width="260" />
+                        <TextBox x:Name="TxtUPw" PasswordChar="●" Watermark="密碼（新增 / 重設時填）" Width="260" HorizontalAlignment="Left" />
+                        <WrapPanel>
+                            <Button x:Name="BtnUAdd" Content="新增" Margin="0,0,6,6" />
+                            <Button x:Name="BtnURole" Content="改等級" Margin="0,0,6,6" />
+                            <Button x:Name="BtnUPw" Content="重設密碼" Margin="0,0,6,6" />
+                            <Button x:Name="BtnUDel" Content="刪除" Margin="0,0,6,6" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Grid>
             </TabItem>
         </TabControl>
     </DockPanel>
+    <!-- 登入視窗（蓋在畫面上） -->
+    <Border x:Name="PnlLogin" IsVisible="False" Background="#80000000">
+        <Border Background="White" Padding="24" CornerRadius="6" HorizontalAlignment="Center" VerticalAlignment="Center" Width="360">
+            <StackPanel Spacing="8">
+                <TextBlock Text="登入" FontSize="20" FontWeight="Bold" />
+                <TextBox x:Name="TxtLoginName" Watermark="帳號" />
+                <TextBox x:Name="TxtLoginPw" PasswordChar="●" Watermark="密碼" />
+                <TextBlock x:Name="TxtLoginErr" Foreground="#B03030" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                    <Button x:Name="BtnLoginOk" Content="登入" IsDefault="True" />
+                    <Button x:Name="BtnLoginCancel" Content="取消" IsCancel="True" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Border>
+    </Grid>
 </Window>

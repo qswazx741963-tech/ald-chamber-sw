@@ -88,6 +88,58 @@ public sealed class TrendLog : IDisposable
         }
     }
 
+    /// <summary>
+    /// 一次讀多個欄位（趨勢圖用）。點數超過 maxPoints 時平均抽樣（每 k 筆取 1 筆），24 小時的資料也能很快畫出來。
+    /// 沒有值（斷線 / 未設定）回傳 NaN。
+    /// </summary>
+    public (DateTime[] Time, Dictionary<string, double[]> Data) QueryMany(IReadOnlyList<string> columns, DateTime from, DateTime to, int maxPoints = 4000)
+    {
+        foreach (var c in columns) if (!Columns.Contains(c)) throw new ArgumentException($"沒有欄位 {c}");
+        var time = new List<DateTime>();
+        var vals = columns.Select(_ => new List<double>()).ToArray();
+        lock (_lock)
+        {
+            using var cnt = _db.CreateCommand();
+            cnt.CommandText = "SELECT COUNT(*) FROM trend WHERE time >= $a AND time <= $b";
+            cnt.Parameters.AddWithValue("$a", from.ToString("O"));
+            cnt.Parameters.AddWithValue("$b", to.ToString("O"));
+            long n = (long)(cnt.ExecuteScalar() ?? 0L);
+            long step = Math.Max(1, (n + maxPoints - 1) / Math.Max(1, maxPoints));
+
+            using var cmd = _db.CreateCommand();
+            var cols = columns.Count == 0 ? "" : ", " + string.Join(", ", columns);
+            cmd.CommandText = $"SELECT time{cols} FROM trend WHERE time >= $a AND time <= $b ORDER BY time";
+            cmd.Parameters.AddWithValue("$a", from.ToString("O"));
+            cmd.Parameters.AddWithValue("$b", to.ToString("O"));
+            using var r = cmd.ExecuteReader();
+            long i = 0;
+            while (r.Read())
+            {
+                if (i++ % step != 0) continue;
+                time.Add(DateTime.Parse(r.GetString(0)));
+                for (int c = 0; c < columns.Count; c++) vals[c].Add(r.IsDBNull(c + 1) ? double.NaN : r.GetDouble(c + 1));
+            }
+        }
+        var data = new Dictionary<string, double[]>();
+        for (int c = 0; c < columns.Count; c++) data[columns[c]] = vals[c].ToArray();
+        return (time.ToArray(), data);
+    }
+
+    /// <summary>匯出 CSV（全部欄位，UTF-8 含 BOM，Excel 直接開）。回傳筆數。</summary>
+    public int ExportCsv(string path, DateTime from, DateTime to)
+    {
+        var (t, d) = QueryMany(Columns, from, to, int.MaxValue);
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        using var w = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
+        w.WriteLine("time," + string.Join(",", Columns));
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        for (int i = 0; i < t.Length; i++)
+            w.WriteLine(t[i].ToString("yyyy-MM-dd HH:mm:ss.fff", inv) + "," +
+                        string.Join(",", Columns.Select(c => double.IsNaN(d[c][i]) ? "" : d[c][i].ToString("G6", inv))));
+        return t.Length;
+    }
+
     public void Purge(int keepDays)
     {
         lock (_lock)

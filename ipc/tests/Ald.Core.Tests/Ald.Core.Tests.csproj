@@ -11,5 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ald.Core\Ald.Core.csproj" />
     <ProjectReference Include="..\..\src\Ald.Comm\Ald.Comm.csproj" />
+    <ProjectReference Include="..\..\src\Ald.Data\Ald.Data.csproj" />
   </ItemGroup>
 </Project>

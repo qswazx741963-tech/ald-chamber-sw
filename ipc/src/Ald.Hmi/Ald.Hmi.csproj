@@ -11,6 +11,8 @@
     <PackageReference Include="Avalonia" Version="11.1.3" />
     <PackageReference Include="Avalonia.Desktop" Version="11.1.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.1.3" />
+    <!-- 趨勢圖：ScottPlot（MIT 授權） -->
+    <PackageReference Include="ScottPlot.Avalonia" Version="5.0.55" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Ald.Core\Ald.Core.csproj" />

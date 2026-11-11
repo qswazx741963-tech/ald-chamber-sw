@@ -71,6 +71,22 @@ dotnet run --project ipc/src/Ald.Hmi -- --port 1502
 - **Recipe**：從配方資料夾（`--recipes`，預設程式旁 `recipes/`）選檔 → 表單編常用欄位 → 檢查 / 存檔 / 執行 / 中止，
   右邊顯示步驟記錄。ALD 步驟一行一步：`名稱, 閥, ms`，閥寫 `V1+V3`、`-`（全關）或數字。
   逾時等進階欄位直接改 JSON，存檔會保留。存檔先寫暫存檔再取代（斷電不壞原檔）。
+- **趨勢**：讀 SQLite `trend` 表；上圖壓力（對數）、下圖溫度 / MFC，左邊勾選訊號；10 分鐘～7 天；
+  「即時更新」每 2 秒重畫，關掉後可滑鼠拖曳 / 滾輪縮放；超過 4000 點自動抽樣；「匯出 CSV」存到資料庫旁 `export/`（全部欄位，Excel 可直接開）。
+  圖表元件 ScottPlot（MIT）。
+- **登入 / 權限**（`Ald.Core.Access` 權限表、`Ald.Data.UserStore` 帳號）：
+
+  | 等級 | 可以做 |
+  | --- | --- |
+  | 檢視（未登入） | 看畫面、**安全停止 / 中止流程（永遠不鎖）** |
+  | 操作員 | + Reset、執行配方、抽真空 / 回填、Loadlock |
+  | 工程師 | + 手動操作、編輯 / 存檔配方 |
+  | 管理員 | + 使用者管理 |
+
+  密碼只存 PBKDF2-SHA256 雜湊。第一次開機建立 `admin`，出廠密碼由 config `hmi.defaultAdminPasswordHash` 決定
+  （**只放雜湊不放明碼**；換出廠密碼：`AldChamber --hash-password 新密碼`，把輸出貼進 config）。
+  admin 還是出廠密碼時登入會提醒改。至少留一個管理員；`hmi.idleLogoutMinutes`（預設 30）沒操作自動登出。
+  登入 / 登出 / 帳號異動 / 每個操作都記在事件記錄（來源「操作:帳號」）。
 - 配方格式（`RecipeFile`）：一個 JSON = 一個 `ProcessRecipe`，範例 `recipes/example_al2o3.json`；
   `recipes/sim_quick_test.json` 是給模擬器用的短配方（10 倍速約 35 秒跑完）。
 
@@ -87,11 +103,10 @@ dotnet run --project ipc/src/Ald.Hmi -- --port 1502
 | `make -C firmware/tests` | 韌體邏輯單元測試（主控板 186、執行板 40） |
 | `make -C sim` | 整機模擬整合測試 42 項：開機上線、Reset、抽真空、開 SV 互鎖、Turbo GV 聯動、加熱上限、馬達、心跳中斷 |
 | `make -C ipc/ecat-master test` | ald-ecat bridge（含 HR 預設值） |
-| `cd ipc && dotnet test` | C# 74 項（含配方檔讀寫與步驟格式），含**端到端**：MachineService ↔ ald-ecat --sim（20 倍速）跑完整段配方、心跳中斷進安全狀態 |
+| `cd ipc && dotnet test` | C# 80 項（含配方檔、帳號 / 權限、趨勢查詢 / CSV），含**端到端**：MachineService ↔ ald-ecat --sim（20 倍速）跑完整段配方、心跳中斷進安全狀態 |
 
 ## 待做
 
-- 人機：趨勢圖、權限登入。
 - RF（鎧泰 600 W / 300 W）協議確認後：主控板 UART 驅動 + 模擬。
 - 晶圓位置追蹤（傳片流程、WAFER_PRESENT）。
 - STM32 HAL（`hal_port_stm32.c`）：等腳位分配。

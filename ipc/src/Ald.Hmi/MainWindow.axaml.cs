@@ -23,16 +23,19 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private static readonly string[] SvText = { "未知", "關", "開啟中", "開", "關閉中", "錯誤" };
 
-    public MainWindow() : this(null, null, null, "recipes") { }
+    public MainWindow() : this(null, null, null, null, "recipes") { }
 
-    public MainWindow(MachineService? machine, AlarmLog? alarmLog, TrendLog? trend, string recipeDir)
+    public MainWindow(MachineService? machine, AlarmLog? alarmLog, TrendLog? trend, UserStore? users, string recipeDir)
     {
         AvaloniaXamlLoader.Load(this);
         _m = machine;
         _alarmLog = alarmLog;
         _trend = trend;
         _recipeDir = recipeDir;
+        _users = users;
         Wire();
+        WireAccess();
+        WireTrend();
         WireManual();
         WireRecipe();
         _timer.Tick += (_, _) => Render();
@@ -58,7 +61,7 @@ public partial class MainWindow : Window
 
     private async Task Do(string what, Func<Task> act)
     {
-        try { await act(); _status = $"{what}：已送出"; _alarmLog?.Add("操作", "Info", what, evt: "OPERATOR"); }
+        try { await act(); _status = $"{what}：已送出"; _alarmLog?.Add(OpSource, "Info", what, evt: "OPERATOR"); }
         catch (Exception e) { _status = $"{what}：失敗（{e.Message}）"; }
     }
 
@@ -67,7 +70,7 @@ public partial class MainWindow : Window
         if (_m is null) return;
         var r = _m.Loadlock.Execute(cmd);
         _status = r.Allowed ? $"Loadlock {cmd}：已送出" : $"Loadlock {cmd} 被擋：{r.Reason}";
-        _alarmLog?.Add("操作", "Info", _status, evt: "OPERATOR");
+        _alarmLog?.Add(OpSource, "Info", _status, evt: "OPERATOR");
     }
 
     private bool SequenceRunning => _seq?.State == SequencerState.Running;
@@ -147,5 +150,7 @@ public partial class MainWindow : Window
         C<TextBlock>("TxtStatusBar").Text = _status;
         RenderManual(s);
         RenderRecipe();
+        RenderAccess();
+        RenderTrend();
     }
 }

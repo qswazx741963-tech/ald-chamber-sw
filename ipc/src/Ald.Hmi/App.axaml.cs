@@ -17,6 +17,7 @@ public partial class App : Application
     private MachineService? _machine;
     private AlarmLog? _alarmLog;
     private TrendLog? _trend;
+    private UserStore? _users;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -32,6 +33,7 @@ public partial class App : Application
 
             _alarmLog = new AlarmLog(cfg.DataLog.Path);
             _trend = new TrendLog(cfg.DataLog.Path, TimeSpan.FromMilliseconds(cfg.DataLog.IntervalMs));
+            _users = new UserStore(cfg.DataLog.Path, cfg.Hmi.DefaultAdminPasswordHash);
             _alarmLog.Purge(cfg.DataLog.KeepDays);
             _trend.Purge(cfg.DataLog.KeepDays);
 
@@ -41,12 +43,13 @@ public partial class App : Application
             _machine.Start();
 
             var recipes = Arg("--recipes", Path.Combine(AppContext.BaseDirectory, "recipes"));
-            desktop.MainWindow = new MainWindow(_machine, _alarmLog, _trend, recipes);
+            desktop.MainWindow = new MainWindow(_machine, _alarmLog, _trend, _users, recipes);
             desktop.Exit += (_, _) =>
             {
                 _machine.Dispose();   // 心跳停止 → 主控板看門狗 → 全機安全狀態
                 _trend.Dispose();
                 _alarmLog.Dispose();
+                _users.Dispose();
             };
         }
         base.OnFrameworkInitializationCompleted();

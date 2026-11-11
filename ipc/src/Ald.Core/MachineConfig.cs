@@ -18,6 +18,7 @@ public sealed record MachineConfig
     public MfcConfig Mfc { get; init; } = new();
     public HeatersConfig Heaters { get; init; } = new();
     public DataLogConfig DataLog { get; init; } = new();
+    public HmiConfig Hmi { get; init; } = new();
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -44,6 +45,9 @@ public sealed record MachineConfig
         foreach (var (c, i) in Mfc.Channels.Select((c, i) => (c, i)))
             if (!(c.FullScale > 0)) yield return $"mfc.channels[{i}].fullScale 需 > 0";
         if (Heaters.Channels.Count != 16) yield return "heaters.channels 需 16 組";
+        if (Hmi.DefaultAdminPasswordHash.Length > 0 && Hmi.DefaultAdminPasswordHash.Split('$') is not ["pbkdf2-sha256", _, _, _])
+            yield return "hmi.defaultAdminPasswordHash 格式需為 pbkdf2-sha256$次數$salt$hash（用 --hash-password 產生）";
+        if (Hmi.IdleLogoutMinutes is < 1 or > 1440) yield return "hmi.idleLogoutMinutes 需在 1–1440";
         foreach (var (h, i) in Heaters.Channels.Select((h, i) => (h, i)))
             if (h.LimitDegC is < 0 or > 650) yield return $"heaters.channels[{i}].limitDegC 需在 0–650";
         if (Interlock.SvBelowTorr is <= 0 or > 10) yield return "interlock.svBelowTorr 需在 0–10";
@@ -143,6 +147,18 @@ public sealed record HeaterChannelConfig
 public sealed record HeatersConfig
 {
     public List<HeaterChannelConfig> Channels { get; init; } = new();
+}
+
+/// <summary>人機設定。</summary>
+public sealed record HmiConfig
+{
+    /// <summary>
+    /// 第一次啟動（帳號資料庫沒有任何帳號）時建立的 admin 出廠密碼，只存雜湊：
+    /// "pbkdf2-sha256$次數$salt(base64)$hash(base64)"，用 <c>AldChamber --hash-password 密碼</c> 產生。空白 = 密碼 admin。
+    /// </summary>
+    public string DefaultAdminPasswordHash { get; init; } = "";
+    /// <summary>幾分鐘沒有操作自動登出。</summary>
+    public int IdleLogoutMinutes { get; init; } = 30;
 }
 
 public sealed record DataLogConfig
