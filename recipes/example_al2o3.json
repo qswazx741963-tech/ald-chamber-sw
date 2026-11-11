@@ -22,7 +22,6 @@
       { "label": "Purge",             "valveMask": 2, "durationMs": 5000 }
     ]
   },
-  "standbySpDegC": null,
   "ventAfter": false,
   "ventTargetTorr": 740,
   "ventTimeoutS": 600,

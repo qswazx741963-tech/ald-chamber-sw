@@ -75,6 +75,7 @@ public sealed class SimEndToEndTests : IDisposable
         Assert.True(await m.LoadlockAsync(LoadlockCommand.RoughOff, 0, TimeSpan.FromSeconds(5), default));
         Assert.True(await m.LoadlockAsync(LoadlockCommand.ArmHome, 0, TimeSpan.FromSeconds(10), default));
 
+        m.SetHeater(6, 120, true);                         // 加熱是常駐設定（手動頁），配方只檢查
         var sp = new double[16]; sp[6] = 120;              // Chamber upper
         var recipe = new ProcessRecipe
         {
@@ -162,6 +163,7 @@ public sealed class SimEndToEndTests : IDisposable
         Assert.True(await Until(() => !m.Snapshot.SafeState && m.Snapshot.SlotStatus.Skip(1).All(st => (st & 4) == 0), 5), "Reset");
         Assert.True(await m.LoadlockAsync(LoadlockCommand.ArmHome, 0, TimeSpan.FromSeconds(10), default));
 
+        m.SetHeater(6, 120, true);                         // 常駐加熱（配方只檢查）
         var r = RecipeFile.Load(Path.Combine(Repo.Root, "recipes", "sim_quick_test.json"));
         var map = new WaferMap();
         map.Set(true, false, "測試");
@@ -227,6 +229,7 @@ public sealed class SimEndToEndTests : IDisposable
         Assert.True(await Until(() => !m.Snapshot.SafeState && m.Snapshot.SlotStatus.Skip(1).All(st => (st & 4) == 0), 5), "Reset");
         Assert.True(await m.LoadlockAsync(LoadlockCommand.ArmHome, 0, TimeSpan.FromSeconds(10), default));
 
+        m.SetHeater(6, 120, true);                         // 常駐加熱（配方只檢查）
         var r = RecipeFile.Load(Path.Combine(Repo.Root, "recipes", "sim_quick_test.json"));
         var map = new WaferMap();
         map.Set(false, false, "測試");

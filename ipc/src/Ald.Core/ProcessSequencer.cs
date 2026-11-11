@@ -1,7 +1,8 @@
 namespace Ald.Core;
 
 /// <summary>
-/// 整段製程配方：抽真空 → 升溫 → 通氣 → ALD 循環 → 降回待機 →（可選）回填大氣。
+/// 整段製程配方：抽真空 → 確認溫度 → 通氣 → ALD 循環 →（可選）回填大氣。
+/// 加熱是常駐設定（手動操作頁設好就不動），配方只檢查溫度到位，不會改加熱設定、製程中也不升降溫。
 /// 時間單位都是秒，壓力 Torr，溫度 °C。數值待依實機調整。
 /// </summary>
 public sealed record ProcessRecipe
@@ -15,7 +16,10 @@ public sealed record ProcessRecipe
     public double PumpTimeoutS { get; init; } = 1800;
     public double TurboSpinUpTimeoutS { get; init; } = 900;
 
-    /// <summary>升溫：每組設定（0 = 不加熱）；全部到 ±HeatToleranceC 並維持 HeatSettleS 才往下走。</summary>
+    /// <summary>
+    /// 製程需要的溫度（0 = 不檢查）：只檢查、不改加熱設定。開始時已在 ±HeatToleranceC 內就直接往下；
+    /// 不在範圍內（例如剛開加熱）就等它進範圍並維持 HeatSettleS，超過 HeatTimeoutS 失敗。
+    /// </summary>
     public double[] HeaterSpDegC { get; init; } = new double[16];
     public double HeatToleranceC { get; init; } = 3;
     public double HeatSettleS { get; init; } = 60;
@@ -27,8 +31,6 @@ public sealed record ProcessRecipe
 
     public AldRecipe? Ald { get; init; }
 
-    /// <summary>做完後加熱回到這個溫度（null = 維持製程溫度）。</summary>
-    public double[]? StandbySpDegC { get; init; }
     public bool VentAfter { get; init; }
     public double VentTargetTorr { get; init; } = 740;
     public double VentTimeoutS { get; init; } = 600;
@@ -144,10 +146,11 @@ public sealed class ProcessSequencer
     {
         var used = Enumerable.Range(0, 16).Where(i => r.HeaterSpDegC[i] > 0).ToArray();
         if (used.Length == 0) return;
-        SetStep("升溫");
-        for (int i = 0; i < 16; i++) _m.SetHeater(i, r.HeaterSpDegC[i], r.HeaterSpDegC[i] > 0);
+        SetStep("確認溫度");
+        bool Ok(MachineSnapshot s, int i) => Math.Abs(s.TempC[i] - r.HeaterSpDegC[i]) <= r.HeatToleranceC;
+        if (used.All(i => Ok(_m.Snapshot, i))) return;   // 常駐加熱已經穩定在設定溫度
 
-        bool InBand(MachineSnapshot s) => used.All(i => Math.Abs(s.TempC[i] - r.HeaterSpDegC[i]) <= r.HeatToleranceC);
+        SetStep("等待溫度到位");
         var deadline = DateTime.Now.AddSeconds(r.HeatTimeoutS);
         DateTime? inSince = null;
         while (true)
@@ -155,13 +158,12 @@ public sealed class ProcessSequencer
             ct.ThrowIfCancellationRequested();
             CheckHealthy();
             var s = _m.Snapshot;
-            if (InBand(s)) inSince ??= DateTime.Now; else inSince = null;
+            if (used.All(i => Ok(s, i))) inSince ??= DateTime.Now; else inSince = null;
             if (inSince is { } t && (DateTime.Now - t).TotalSeconds >= r.HeatSettleS) return;
             if (DateTime.Now > deadline)
             {
-                var bad = used.Where(i => !(Math.Abs(s.TempC[i] - r.HeaterSpDegC[i]) <= r.HeatToleranceC))
-                              .Select(i => $"#{i + 1} {s.TempC[i]:F1}/{r.HeaterSpDegC[i]:F0} °C");
-                throw new SequenceException($"升溫逾時：{string.Join("、", bad)}");
+                var bad = used.Where(i => !Ok(s, i)).Select(i => $"#{i + 1} {s.TempC[i]:F1}/{r.HeaterSpDegC[i]:F0} °C");
+                throw new SequenceException($"溫度沒有到位：{string.Join("、", bad)}（加熱在手動操作頁設定，配方不會改加熱）");
             }
             await Task.Delay(_poll, ct);
         }
@@ -203,9 +205,7 @@ public sealed class ProcessSequencer
         SetStep("製程結束");
         _m.SetAldValves(0);
         for (int i = 0; i < 8; i++) _m.SetMfc(i, 0, false);
-        if (r.StandbySpDegC is { Length: 16 } sb)
-            for (int i = 0; i < 16; i++) _m.SetHeater(i, sb[i], sb[i] > 0);
-        return Task.CompletedTask;
+        return Task.CompletedTask;   // 加熱維持常駐設定
     }
 
     private async Task VentAsync(ProcessRecipe r, CancellationToken ct)

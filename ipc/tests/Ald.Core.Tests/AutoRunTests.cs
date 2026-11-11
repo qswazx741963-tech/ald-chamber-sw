@@ -22,7 +22,7 @@ public class AutoRunTests
     [Fact]
     public async Task FullRun_FromAtmosphere_LoadProcessUnloadVent()
     {
-        var m = new FakeMachine();               // PM、LL 都在大氣
+        var m = FakeMachine.Hot();               // PM、LL 都在大氣
         var map = new WaferMap(); map.Set(true, false, "test");
         var job = new AutoRunJob(m, map, Cfg, true, Fast);
         var phases = new List<string>();
@@ -44,18 +44,18 @@ public class AutoRunTests
     [Fact]
     public async Task ProcessFails_StopsBeforeUnload_WaferStaysInPm()
     {
-        var m = new FakeMachine();
+        var m = FakeMachine.Hot();
         var map = new WaferMap(); map.Set(true, false, "test");
         var r = Recipe(vent: true);
         var sp = new double[16]; sp[0] = 150;
         r = r with { HeaterSpDegC = sp, HeatSettleS = 5, HeatTimeoutS = 0.05 };
-        m.HeaterBroken = 0;                                                          // #1 加熱壞了 → 升溫逾時
+        m.HeaterBroken = 0;                                                          // #1 加熱壞了 → 溫度沒有到位
         var job = new AutoRunJob(m, map, Cfg, true, Fast);
         string msg = "";
         job.Progress += p => msg = p.Message;
         Assert.Equal(SequencerState.Failed, await job.RunAsync(r));
         Assert.Contains("3/5 製程", job.Step);
-        Assert.Contains("升溫逾時", msg);
+        Assert.Contains("溫度沒有到位", msg);
         Assert.Equal((false, true), (map.Loadlock, map.Pm));                         // 片在 PM，沒有自動取片
         Assert.DoesNotContain("LIFT DOWN", m.Log);
         Assert.DoesNotContain(m.Log, l => l.Contains("ChamberVent"));               // 不自動 vent
@@ -64,7 +64,7 @@ public class AutoRunTests
     [Fact]
     public async Task Refused_WhenWaferMapWrong()
     {
-        var m = new FakeMachine();
+        var m = FakeMachine.Hot();
         var map = new WaferMap(); map.Set(false, true, "test");
         var job = new AutoRunJob(m, map, Cfg, true, Fast);
         Assert.Equal(SequencerState.Failed, await job.RunAsync(Recipe(false)));
@@ -74,7 +74,7 @@ public class AutoRunTests
     [Fact]
     public async Task Abort_DuringProcess_StopsAld_NoUnload()
     {
-        var m = new FakeMachine();
+        var m = FakeMachine.Hot();
         var map = new WaferMap(); map.Set(true, false, "test");
         var job = new AutoRunJob(m, map, Cfg, true, Fast);
         var task = job.RunAsync(Recipe(false) with { HeatSettleS = 5 });

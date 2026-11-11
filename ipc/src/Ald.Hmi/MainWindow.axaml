@@ -211,12 +211,12 @@
                                     <TextBlock Grid.Row="2" Grid.Column="2" Text="Crossover (Torr)" VerticalAlignment="Center" Margin="12,0,8,0" />
                                     <TextBox Grid.Row="2" Grid.Column="3" x:Name="TxtRCross" />
                                 </Grid>
-                                <TextBlock Text="加熱設定 °C（0 = 不用）" FontWeight="Bold" Margin="0,6,0,0" />
+                                <TextBlock Text="需要的溫度 °C（只檢查、不改加熱設定；0 = 不檢查）" FontWeight="Bold" Margin="0,6,0,0" />
                                 <Grid x:Name="GrdRHeat" ColumnDefinitions="Auto,110,Auto,110" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <TextBlock Text="容差 ±°C" VerticalAlignment="Center" />
                                     <NumericUpDown x:Name="NumRTol" Minimum="0.5" Maximum="50" Increment="0.5" FormatString="0.0" Width="110" />
-                                    <TextBlock Text="穩定 s" VerticalAlignment="Center" />
+                                    <TextBlock Text="未到位時需穩定 s" VerticalAlignment="Center" />
                                     <NumericUpDown x:Name="NumRSettle" Minimum="0" Maximum="36000" Increment="10" FormatString="0" Width="110" />
                                 </StackPanel>
                                 <TextBlock Text="MFC 設定（0 = 不用）" FontWeight="Bold" Margin="0,6,0,0" />

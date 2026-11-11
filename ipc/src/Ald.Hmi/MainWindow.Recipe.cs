@@ -158,6 +158,12 @@ public partial class MainWindow
         for (int i = 0; i < 16; i++)
             if (r.HeaterSpDegC[i] > cfg.Heaters.Channels[i].LimitDegC)
                 e.Add($"加熱 #{i + 1} {cfg.Heaters.Channels[i].Name} {r.HeaterSpDegC[i]:0} °C 超過上限 {cfg.Heaters.Channels[i].LimitDegC:0} °C");
+        // 配方不改加熱：要的溫度跟加熱板常駐設定對不上，跑了也只會等到逾時
+        if (_m.Snapshot.Connected)
+            for (int i = 0; i < 16; i++)
+                if (r.HeaterSpDegC[i] > 0 && !(Math.Abs((_m.HeaterSetpoint(i) ?? double.NaN) - r.HeaterSpDegC[i]) <= r.HeatToleranceC))
+                    e.Add($"加熱 #{i + 1} {cfg.Heaters.Channels[i].Name} 配方需要 {r.HeaterSpDegC[i]:0} °C，" +
+                          $"加熱板設定是 {(_m.HeaterSetpoint(i) is { } sp ? $"{sp:0} °C" : "關")}（請先到手動操作頁設定）");
         for (int i = 0; i < 8; i++)
             if (r.Mfc[i] > cfg.Mfc.Channels[i].FullScale)
                 e.Add($"MFC {i + 1} {r.Mfc[i]} 超過滿刻度 {cfg.Mfc.Channels[i].FullScale} {cfg.Mfc.Channels[i].Unit}");

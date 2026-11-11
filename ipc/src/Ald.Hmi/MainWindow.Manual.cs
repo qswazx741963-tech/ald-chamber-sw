@@ -6,7 +6,7 @@ using Avalonia.Interactivity;
 namespace Ald.Hmi;
 
 /// <summary>
-/// 手動操作頁：真空閥 / 泵、ALD 閥、加熱、MFC、Heater module、Wafer lift。
+/// 手動操作頁：真空閥 / 泵、ALD 閥、加熱（常駐設定，配方只檢查不改）、MFC、Heater module、Wafer lift。
 /// 命令一律走 MachineService（IPC 端先檢查上限與互鎖，主控板 / 執行板還會再擋一次）；
 /// 流程執行中整頁鎖住，避免手動命令跟流程搶。
 /// </summary>
@@ -23,7 +23,6 @@ public partial class MainWindow
     };
     private readonly CheckBox[] _vacChk = new CheckBox[VacItems.Length];
     private readonly CheckBox[] _aldChk = new CheckBox[7];
-    private readonly double?[] _heatCmd = new double?[16];   // 這台人機下過的加熱設定（null = 沒下過 / 關）
 
     /// <summary>同步命令：成功寫狀態列 + 操作記錄；被拒（超上限、互鎖）顯示原因。</summary>
     private void Cmd(string what, Action act)
@@ -80,7 +79,7 @@ public partial class MainWindow
             if (ch < 0) return;
             var num = C<NumericUpDown>("NumHeatSp");
             num.Maximum = (decimal)Math.Max(0, cfg.Heaters.Channels[ch].LimitDegC);
-            num.Value = (decimal)Math.Min(_heatCmd[ch] ?? 0, cfg.Heaters.Channels[ch].LimitDegC);
+            num.Value = (decimal)Math.Min(_m.HeaterSetpoint(ch) ?? 0, cfg.Heaters.Channels[ch].LimitDegC);
         };
         cmbH.SelectedIndex = 6;   // CHAMBER_UPPER
         C<Button>("BtnHeatOn").Click += (_, _) =>
@@ -88,16 +87,16 @@ public partial class MainWindow
             int ch = cmbH.SelectedIndex;
             double sp = (double)(C<NumericUpDown>("NumHeatSp").Value ?? 0);
             double ramp = (double)(C<NumericUpDown>("NumHeatRamp").Value ?? 0);
-            Cmd($"加熱 #{ch + 1} {cfg.Heaters.Channels[ch].Name} → {sp:0.0} °C", () => { _m.SetHeater(ch, sp, true, ramp); _heatCmd[ch] = sp; });
+            Cmd($"加熱 #{ch + 1} {cfg.Heaters.Channels[ch].Name} → {sp:0.0} °C", () => _m.SetHeater(ch, sp, true, ramp));
         };
         C<Button>("BtnHeatOff").Click += (_, _) =>
         {
             int ch = cmbH.SelectedIndex;
-            Cmd($"加熱 #{ch + 1} 關閉", () => { _m.SetHeater(ch, 0, false); _heatCmd[ch] = null; });
+            Cmd($"加熱 #{ch + 1} 關閉", () => _m.SetHeater(ch, 0, false));
         };
         C<Button>("BtnHeatAllOff").Click += (_, _) => Cmd("加熱全部關閉", () =>
         {
-            for (int i = 0; i < 16; i++) { _m.SetHeater(i, 0, false); _heatCmd[i] = null; }
+            for (int i = 0; i < 16; i++) _m.SetHeater(i, 0, false);
         });
 
         // MFC
@@ -170,7 +169,7 @@ public partial class MainWindow
         {
             string t = double.IsNaN(s.TempC[h]) ? "斷線" : $"{s.TempC[h]:0.0} °C";
             C<TextBlock>("TxtHeatInfo").Text = $"目前 {t}  輸出 {s.HeaterDutyPct[h]:0}%\n" +
-                $"本機下的設定 {(_heatCmd[h] is { } sp ? $"{sp:0.0} °C" : "關")}";
+                $"加熱板設定 {(_m.HeaterSetpoint(h) is { } sp ? $"{sp:0.0} °C（常駐，配方不會改）" : "關")}";
         }
         int m = C<ComboBox>("CmbMfc").SelectedIndex;
         if (m >= 0)

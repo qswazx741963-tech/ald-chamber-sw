@@ -70,6 +70,8 @@ public sealed class MachineService : IMachine, IDisposable
             _vac = (VacuumOutputs)link.ReadHolding(VacuumBoard.Holding.DoCmd, 1)[0];
             _procDo = link.ReadHolding(ProcessBoard.Holding.DoCmd, 1)[0];
             _heaterEnable = link.ReadHolding(HeaterBoard.Holding.HeaterEnable, 1)[0];
+            var sp = link.ReadHolding(HeaterBoard.Holding.HeaterSp, 16);
+            for (int i = 0; i < 16; i++) _heaterSp[i] = sp[i] * HeaterBoard.Holding.HeaterSpScale;
             _motDo = link.ReadHolding(MotionBoard.Holding.DoCmd, 1)[0];
             _tower = null;   // 重新連上後重寫一次燈號
         }
@@ -162,6 +164,14 @@ public sealed class MachineService : IMachine, IDisposable
         }
     }
 
+    private readonly double[] _heaterSp = new double[16];
+
+    /// <summary>加熱板目前的設定（連上時從加熱板讀回，之後跟著 SetHeater 更新）；null = 該組沒開。</summary>
+    public double? HeaterSetpoint(int ch)
+    {
+        lock (_cmdLock) return (_heaterEnable >> ch & 1) != 0 ? _heaterSp[ch] : null;
+    }
+
     public void SetHeater(int ch, double spDegC, bool enable, double rampDegCPerMin = 0)
     {
         if (ch is < 0 or > 15) throw new ArgumentOutOfRangeException(nameof(ch));
@@ -177,6 +187,7 @@ public sealed class MachineService : IMachine, IDisposable
             var en = enable ? (ushort)(_heaterEnable | 1 << ch) : (ushort)(_heaterEnable & ~(1 << ch));
             _link.Write(HeaterBoard.Holding.HeaterEnable, en);
             _heaterEnable = en;
+            _heaterSp[ch] = sp * HeaterBoard.Holding.HeaterSpScale;
         }
     }
 

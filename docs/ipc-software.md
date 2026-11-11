@@ -55,8 +55,13 @@ dotnet run --project ipc/src/Ald.Hmi -- --port 1502
 
 ## 3. 流程引擎（`ProcessSequencer`）
 
-`ProcessRecipe`：抽真空（Dry pump → 粗抽到 crossover → Turbo 到速 → 開 GV → base pressure）→ 升溫（全部進 ±容差並維持）
-→ 通氣穩定 → ALD（步驟表下載到製程板，時序由執行板 1 kHz 計時器跑）→ 製程結束（關氣、加熱回待機）→（可選）回填。
+`ProcessRecipe`：抽真空（Dry pump → 粗抽到 crossover → Turbo 到速 → 開 GV → base pressure）→ 確認溫度
+→ 通氣穩定 → ALD（步驟表下載到製程板，時序由執行板 1 kHz 計時器跑）→ 製程結束（關氣）→（可選）回填。
+
+- **加熱是常駐設定**（手動操作頁設好就不動，製程中不升降溫，2026-11-11 使用者確認）：配方的 `heaterSpDegC` 是「需要的溫度」，
+  流程**只檢查、不改加熱設定**。開始時已在 ±容差內就直接往下；不在（例如剛開加熱）就等它進範圍並維持 `heatSettleS`，
+  超過 `heatTimeoutS` 失敗並提示到手動頁設定。人機在執行前會先比對配方溫度與加熱板目前設定，對不上就不給跑。
+- 手動頁顯示的加熱設定是從加熱板讀回的值（IPC 重開也看得到）。
 
 - 每一步都有逾時；失敗 / 中止 / 進安全狀態 → 停 ALD、關前驅物閥與 MFC，**不自動 vent**，加熱與真空維持。
 - 保護不靠流程引擎：主控板與執行板的互鎖一直有效，IPC 當掉也一樣。
