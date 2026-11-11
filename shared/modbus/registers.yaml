@@ -32,7 +32,7 @@
 # =====================================================================
 map_version: 2
 slot_stride: 200          # 每槽在 IR、HR 各占 200 個位址
-max_slots: 16             # 背板最多 16 槽（槽 0 = 主控板自己）
+max_slots: 9              # 槽 0 = 主控板 + 槽 1~8 執行板（最多 8 塊）；CAN ID / SLOT_ID 仍保留 4 bit，日後要加槽只改這裡
 
 board_types: { MAIN: 0, PROCESS: 1, HEATER: 2, VACUUM: 3, MOTION: 4 }
 

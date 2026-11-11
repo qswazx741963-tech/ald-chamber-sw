@@ -54,7 +54,9 @@ void exec_app_init(void)
     memset(g_hr, 0, sizeof g_hr);
     g_hr[COM_HR_WATCHDOG_MS] = 1000;
     s_slot = hal_slot_id();
-    s_role = role_for(hal_board_type_straps());
+    /* 槽號必須是 1~8（ALD_MAX_SLOTS-1）；跳線 / 背板接錯就不啟用角色，維持安全狀態 */
+    bool slot_ok = s_slot >= 1u && s_slot < ALD_MAX_SLOTS;
+    s_role = slot_ok ? role_for(hal_board_type_straps()) : NULL;
     g_ir[COM_IR_BOARD_TYPE] = s_role ? s_role->board_type : 0xFFFF;
     g_ir[COM_IR_FW_VERSION] = EXEC_FW_VERSION;
     g_ir[COM_IR_MAP_VERSION] = ALD_MAP_VERSION;

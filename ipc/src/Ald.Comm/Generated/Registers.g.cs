@@ -5,7 +5,7 @@ public static class RegisterMap
 {
     public const ushort MapVersion = 2;
     public const ushort SlotStride = 200;
-    public const int MaxSlots = 16;
+    public const int MaxSlots = 9;
 }
 
 public enum BoardType : ushort

@@ -91,6 +91,19 @@ static void test_exec_watchdog(void)
     CHECK(g_ir[COM_IR_STATUS] & (1u << COM_IR_STATUS_BIT_WATCHDOG_TRIPPED));
 }
 
+static void test_exec_bad_slot(void)
+{
+    fake_reset();
+    fake_slot = 9; fake_board_type = BOARD_TYPE_PROCESS;   /* 只支援槽 1~8 */
+    exec_app_init();
+    CHECK_EQ(g_ir[COM_IR_BOARD_TYPE], 0xFFFF);            /* 不啟用角色 */
+    uint8_t buf[64];
+    bp_sync_t sy = {1, 0, BP_SYNC_RUN_OK};
+    fake_can_rx_push(bp_make_id(BP_T_SYNC, BP_BROADCAST_SLOT, 0), buf, bp_pack_sync(buf, &sy));
+    fake_now = 10; exec_app_loop();
+    CHECK(exec_in_safe());
+}
+
 int main(void)
 {
     RUN(test_ald_timing);
@@ -98,6 +111,7 @@ int main(void)
     RUN(test_ald_reject);
     RUN(test_pid);
     RUN(test_exec_watchdog);
+    RUN(test_exec_bad_slot);
     printf("執行板：%d 項檢查，%d 項失敗\n", g_checks, g_fail);
     return g_fail != 0;
 }

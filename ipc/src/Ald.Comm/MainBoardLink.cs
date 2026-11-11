@@ -119,7 +119,7 @@ public sealed class MainBoardLink : IDisposable
                                    && s.Input[0] == (ushort)s.ExpectedType;    // 區內 IR 0 = BOARD_TYPE
                         if (s.Online) s.LastOk = DateTime.Now;
                     }
-                    // 槽 1~15 是否真的在線，以主控板 SLOT_ONLINE 為準
+                    // 槽 1~8 是否真的在線，以主控板 SLOT_ONLINE 為準
                     var main = _slots.FirstOrDefault(x => x.Slot == 0);
                     if (main is not null)
                         foreach (var s in _slots.Where(x => x.Slot != 0))
