@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
@@ -77,7 +78,9 @@ static int start_rt(pthread_t *t)
     pthread_attr_setschedparam(&a, &sp);
     if (pthread_create(t, &a, rt_thread, NULL) == 0) return 0;
     fprintf(stderr, "ald-ecat: 無法建立 SCHED_FIFO 執行緒（需要 root / CAP_SYS_NICE），改用一般排程\n");
-    return pthread_create(t, NULL, rt_thread, NULL);
+    int e = pthread_create(t, NULL, rt_thread, NULL);
+    if (e) fprintf(stderr, "ald-ecat: 無法建立週期執行緒（%s）\n", strerror(e));
+    return e;
 }
 
 /* ---------------------------------------------------------------- Modbus TCP server */
@@ -158,7 +161,13 @@ int main(int argc, char **argv)
     if (ecat_sim_speed < 1 || ecat_sim_speed > 100) { fprintf(stderr, "ald-ecat: --speed 需在 1–100\n"); return 2; }
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
-    mlockall(MCL_CURRENT | MCL_FUTURE);                       /* 避免換頁造成延遲 */
+    /* 鎖記憶體避免換頁延遲。一般使用者的 RLIMIT_MEMLOCK 很小，鎖了 MCL_FUTURE 之後
+     * 建執行緒（配堆疊）會失敗 → 只有額度無限（root / limits.conf）時才鎖，否則照常跑。 */
+    struct rlimit ml;
+    if (geteuid() == 0 || (getrlimit(RLIMIT_MEMLOCK, &ml) == 0 && ml.rlim_cur == RLIM_INFINITY))
+        mlockall(MCL_CURRENT | MCL_FUTURE);
+    else
+        fprintf(stderr, "ald-ecat: RLIMIT_MEMLOCK 有限制，不鎖記憶體（正式機請以 root 或設 memlock unlimited 執行）\n");
 
     pthread_mutexattr_t ma;
     pthread_mutexattr_init(&ma);
