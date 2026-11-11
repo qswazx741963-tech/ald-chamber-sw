@@ -38,9 +38,25 @@ public class InterlockTests
     [Fact] public void SvOpen_Denied_WhenLoadlockAtAtm() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = 760 }));
     [Fact] public void SvOpen_Denied_WhenLoadlockPressureUnknown() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = double.NaN }));
     [Fact] public void SvOpen_Denied_WhenChamberPressureUnknown() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { ChamberPressureTorr = double.NaN }));
-    [Fact] public void SvOpen_Denied_WhenBelowSlkGaugeRange() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = -0.001 }));
-    [Fact] public void SvOpen_Denied_WhenDiffOver50mTorr() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = 0.065 }));
-    [Fact] public void SvOpen_Allowed_WhenDiffWithin50mTorr() => Assert.True(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = 0.055 }));
+    [Fact] public void SvOpen_Denied_WhenNegativePressure() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = -0.001 }));
+
+    // ---- 開 SV 壓力條件 Below（預設）：LL、PM 都 < 1 Torr
+    private static MachineSnapshot SlkUnder() => Ready() with { LoadlockPressureTorr = double.NaN, LoadlockPressureUnderRange = true };
+    [Fact] public void SvOpen_Below_Allowed_WhenSlkUnderRangeAndPmBelow1Torr() => Assert.True(Allowed(MachineAction.SlitValveOpen, SlkUnder() with { ChamberPressureTorr = 0.8 }));
+    [Fact] public void SvOpen_Below_Denied_WhenPmAt1Torr() => Assert.False(Allowed(MachineAction.SlitValveOpen, SlkUnder() with { ChamberPressureTorr = 1.0 }));
+    [Fact] public void SvOpen_Below_Denied_WhenLoadlockAt1_5Torr() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = 1.5 }));
+    [Fact] public void SvOpen_Below_Denied_WhenGaugeSuspect() => Assert.False(Allowed(MachineAction.SlitValveOpen, SlkUnder() with { LoadlockPressureSuspect = true }));
+    [Fact] public void SvOpen_Below_Denied_WhenTurboGateOpen() => Assert.False(Allowed(MachineAction.SlitValveOpen, SlkUnder() with { TurboGateClosed = false }));
+    [Fact]
+    public void SvOpen_Below_SlkUnderRangeNotEnough_WhenThresholdBelow1Torr()
+        => Assert.False(Interlocks.Check(MachineAction.SlitValveOpen, SlkUnder(), new InterlockSettings { SvBelowTorr = 0.5 }).Allowed);
+
+    // ---- 壓力條件 Diff：|LL − PM| ≤ 50 mTorr（LL 需 mTorr 級壓力計）
+    private static readonly InterlockSettings Diff = new() { SvMode = SvOpenMode.Diff };
+    private static bool AllowedDiff(MachineSnapshot s) => Interlocks.Check(MachineAction.SlitValveOpen, s, Diff).Allowed;
+    [Fact] public void SvOpen_Diff_Denied_WhenSlkUnderRange() => Assert.False(AllowedDiff(SlkUnder()));
+    [Fact] public void SvOpen_Diff_Denied_WhenDiffOver50mTorr() => Assert.False(AllowedDiff(Ready() with { LoadlockPressureTorr = 0.065 }));
+    [Fact] public void SvOpen_Diff_Allowed_WhenDiffWithin50mTorr() => Assert.True(AllowedDiff(Ready() with { LoadlockPressureTorr = 0.055 }));
     [Fact] public void SvOpen_Denied_WhenTurboGateOpen() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { TurboGateClosed = false }));
     [Fact] public void TurboGateOpen_Denied_WhenSvOpen() => Assert.False(Allowed(MachineAction.TurboGateOpen, Ready() with { SlitValve = LoadlockSv.Open }));
     [Fact] public void HeaterMove_Denied_WhenArmInPm() => Assert.False(Allowed(MachineAction.HeaterMove, Ready() with { ArmPosSteps = 9000 }));
@@ -84,4 +100,18 @@ public class LoadlockCommandTests
         Assert.Null(LoadlockCommands.ActionFor(LoadlockCommand.EStop, 0, 5894));
         Assert.Null(LoadlockCommands.ActionFor(LoadlockCommand.VentOff, 0, 5894));
     }
+}
+
+public class GaugeTests
+{
+    private static bool Near(double a, double b) => Math.Abs(a - b) <= 0.01 * Math.Abs(b);
+
+    [Fact] public void ApgxH_4V_Is_1e2mbar() { var r = Gauges.Convert(GaugeModel.ApgxH, 4000); Assert.Equal(GaugeStatus.Ok, r.Status); Assert.True(Near(r.Torr, 7.5e-3)); }
+    [Fact] public void ApgxH_FilamentBroken_IsFault() => Assert.Equal(GaugeStatus.Fault, Gauges.Convert(GaugeModel.ApgxH, 9500).Status);
+    [Fact] public void ApgxH_ZeroVolt_IsFault() => Assert.Equal(GaugeStatus.Fault, Gauges.Convert(GaugeModel.ApgxH, 0).Status);
+    [Fact] public void Wrg200X_10V_IsAtm() => Assert.True(Near(Gauges.Convert(GaugeModel.Wrg200X, 10000).Torr, 748));
+    [Fact] public void Wrg200X_FailToStrike_IsFault() => Assert.Equal(GaugeStatus.Fault, Gauges.Convert(GaugeModel.Wrg200X, 1300).Status);
+    [Fact] public void Linear_ManualExample() => Assert.True(Near(Gauges.Convert(GaugeModel.Linear, 6000, 10).Torr, 6));
+    [Fact] public void Linear_Saturated_IsOverRange() => Assert.Equal(GaugeStatus.OverRange, Gauges.Convert(GaugeModel.Linear, 9950, 1).Status);
+    [Fact] public void Linear_NoFullScale_NotConfigured() => Assert.Equal(GaugeStatus.NotConfigured, Gauges.Convert(GaugeModel.Linear, 5000).Status);
 }

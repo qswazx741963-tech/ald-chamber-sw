@@ -105,7 +105,8 @@ boards:
       - { name: LL_SEQ, addr: 106, desc: "序列步 0-22，0 = 沒在跑" }
       - name: LL_FLAGS
         addr: 107
-        bits: [WAFER_PRESENT, ROUGH_OPEN, VENT_OPEN, LID_OPEN, PRES_UNDER_RANGE]
+        bits: [WAFER_PRESENT, ROUGH_OPEN, VENT_OPEN, LID_OPEN, PRES_UNDER_RANGE, PRES_SUSPECT]
+        desc: "PRES_SUSPECT = LL 壓力從 > IL_LL_JUMP_MTORR 直接跳到「低於下限」或開機後還沒看過有效讀值，疑似壓力計斷線 → 不採信"
       - { name: LL_PRES, addr: 108, type: i32, unit: mTorr, desc: "SLK 壓力計（0~1000 Torr）；-1 = 低於量測下限 1 Torr" }
       - { name: LL_ALM,  addr: 110, desc: "SLK 警報碼，0 = 正常" }
       - { name: LL_POS,  addr: 111, type: i32, unit: step, desc: "手臂位置（36.84 step/mm）" }
@@ -116,6 +117,11 @@ boards:
         values: { NONE: 0, SENT: 1, DENIED: 2, DONE: 3, ERROR: 4, BUSY: 5 }
       - { name: LL_CMD_ACK,  addr: 116, desc: "主控板處理完的 LL_CMD_SEQ" }
       - { name: LL_LAST_EVT, addr: 117, desc: "最後一個 SLK 事件代碼（見 docs/loadlock-integration.md）" }
+      # ---- PM 壓力（主控板依 HR PM_GAUGE_* 換算，互鎖用；畫面顯示也可用）
+      - { name: PM_PRES_MTORR, addr: 120, type: i32, unit: mTorr, desc: "PM 壓力；狀態不是 OK / UNDER_RANGE 時為 2147483647" }
+      - name: PM_GAUGE_STATUS
+        addr: 122
+        values: { OK: 0, UNDER_RANGE: 1, OVER_RANGE: 2, FAULT: 3, OFFLINE: 4, NOT_CONFIGURED: 5 }
 
     holding:
       - name: DO_CMD
@@ -149,6 +155,19 @@ boards:
         values: { DISABLED: 0, ENABLED: 1 }
       - { name: IL_LL_STALE_MS,    addr: 152, unit: ms, min: 100, max: 5000, desc: "Loadlock TLM 超過此時間沒更新 → 視為狀態不明，預設 500" }
       - { name: IL_ARM_SAFE_POS,   addr: 153, type: i32, unit: step, desc: "手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm）" }
+      - name: IL_SV_MODE
+        addr: 155
+        desc: "開 SV 的壓力條件：BELOW = LL 與 PM 都低於 IL_SV_BELOW_MTORR（預設，SLK 壓力計低於下限算低於 1 Torr）；DIFF = 壓差 ≤ IL_SV_DP_MAX_MTORR（LL 需有 mTorr 級壓力計）"
+        values: { BELOW: 0, DIFF: 1 }
+      - { name: IL_SV_BELOW_MTORR, addr: 156, unit: mTorr, min: 1, max: 10000, desc: "BELOW 模式門檻，預設 1000（1 Torr）" }
+      - { name: IL_LL_JUMP_MTORR,  addr: 157, unit: mTorr, min: 1000, max: 60000, desc: "LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr）" }
+      # ---- PM 壓力計（config 型號選單寫進來，主控板用來換算互鎖壓力）
+      - name: PM_GAUGE_MODEL
+        addr: 160
+        desc: "換算公式見 docs/gauges.md"
+        values: { NONE: 0, LINEAR: 1, APGX_H: 2, WRG200_X: 3, WRG200_G: 4, WRG200_Q: 5 }
+      - { name: PM_GAUGE_AI_ADDR,  addr: 161, desc: "壓力計電壓（mV）所在的 IR 絕對位址，預設 236 = 槽 1 MANOMETER_RAW" }
+      - { name: PM_GAUGE_FS_MTORR, addr: 162, type: i32, unit: mTorr, desc: "LINEAR（電容式 0~10 V）滿刻度，例 1 Torr = 1000" }
 
   # ------------------------------------------------------------------
   process:

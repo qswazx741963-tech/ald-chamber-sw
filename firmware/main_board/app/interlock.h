@@ -41,6 +41,9 @@ typedef enum {
     IL_ACT_PM_TURBO_GV_OPEN = 25, /* Turbo gate valve 開 */
 } il_action_t;
 
+/* SLK 壓力計量測下限：讀到 -1 代表 LL < 此值 */
+#define LL_GAUGE_MIN_MTORR 1000
+
 /* 持續監看的反應（il_monitor 回傳） */
 #define IL_REACT_PM_ABORT      0x01u   /* 停 ALD、關前驅物閥、RF off、停 PM vent */
 #define IL_REACT_PERMIT_OFF    0x02u   /* TRANSFER_PERMIT 輸出 OFF（選配：接到 Loadlock 的硬體許可，目前 SLK 不接） */
@@ -54,10 +57,11 @@ typedef struct {
     bool     ll_fresh;           /* TLM 在 IL_LL_STALE_MS 內有更新 */
     int16_t  ll_alm, ll_sv, ll_z, ll_arm, ll_seq;
     int32_t  ll_pos;
-    int32_t  ll_pres_mtorr;      /* -1 = 低於量測下限（SLK 壓力計 1 Torr）= 壓力未知 */
+    int32_t  ll_pres_mtorr;      /* -1 = 低於量測下限（SLK 壓力計 1 Torr，LL_GAUGE_MIN_MTORR） */
+    bool     ll_pres_suspect;    /* 疑似壓力計斷線（跳變 / 開機未見有效值 / vent 時仍低於下限）→ 壓力未知 */
     bool     ll_rough_open, ll_vent_open, ll_lid_open;
     /* PM（來自執行板） */
-    int32_t  pm_pres_mtorr;      /* 換算後腔體壓力；未知請填 INT32_MAX */
+    int32_t  pm_pres_mtorr;      /* 換算後腔體壓力（低於量測下限時填下限值）；未知 / 超出上限請填 INT32_MAX */
     bool     pm_process_running; /* ALD 序列執行中或任何前驅物閥開 */
     bool     pm_rf_on;
     bool     pm_venting;         /* Chamber vent 閥開 */
@@ -66,7 +70,9 @@ typedef struct {
     bool     pm_heater_moving;   /* Heater module 軸移動 / 回原點中 */
     bool     pm_at_transfer;     /* 交接位置：Heater module 在下位 + Wafer lift 停在上 / 下定位（不在中間） */
     /* 參數（HR IL_*） */
-    int32_t  sv_dp_max_mtorr;    /* 開 SV 的 LL / PM 壓差上限 */
+    uint16_t sv_mode;            /* MAIN_HR_IL_SV_MODE_BELOW / _DIFF */
+    int32_t  sv_below_mtorr;     /* BELOW：LL 與 PM 都要低於此值 */
+    int32_t  sv_dp_max_mtorr;    /* DIFF：LL / PM 壓差上限 */
     bool     ll_z_enabled;       /* SLK Z 軸啟用；false = 不檢查 Z */
     int32_t  arm_safe_pos;
 } il_inputs_t;

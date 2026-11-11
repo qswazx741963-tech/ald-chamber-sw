@@ -129,6 +129,8 @@ public sealed class LoadlockService
             ArmPosSteps = pos,
             ArmSafePosSteps = ArmSafePosSteps,
             LoadlockPressureTorr = pres < 0 ? double.NaN : pres / 1000.0,   // -1 = 低於 SLK 量測下限
+            LoadlockPressureUnderRange = pres < 0,
+            LoadlockPressureSuspect = flags.HasFlag(MainBoard.Input.LlFlagsBits.PresSuspect),
             LoadlockLidOpen = flags.HasFlag(MainBoard.Input.LlFlagsBits.LidOpen),
             LoadlockRoughOpen = flags.HasFlag(MainBoard.Input.LlFlagsBits.RoughOpen),
             LoadlockVentOpen = flags.HasFlag(MainBoard.Input.LlFlagsBits.VentOpen),

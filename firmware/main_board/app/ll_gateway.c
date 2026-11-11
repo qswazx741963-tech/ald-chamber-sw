@@ -8,6 +8,7 @@ void ll_gateway_init(ll_gateway_t *g)
 {
     memset(g, 0, sizeof *g);
     slk_init(&g->slk);
+    g->pres_suspect = true;   /* 開機還沒看過有效壓力讀值 → 先當成不可信 */
 }
 
 il_action_t ll_cmd_action(uint16_t cmd, int32_t arg, int32_t arm_safe_pos)
@@ -47,6 +48,7 @@ void ll_fill_inputs(const ll_gateway_t *g, il_inputs_t *in, uint32_t now_ms, uin
     in->ll_seq = s->seq;
     in->ll_pos = s->pos;
     in->ll_pres_mtorr = s->pres_mtorr;
+    in->ll_pres_suspect = g->pres_suspect;
     in->ll_rough_open = s->rgh != 0;
     in->ll_vent_open = s->vnt != 0;
     in->ll_lid_open = s->lid != 0;
@@ -118,6 +120,7 @@ static void publish(const ll_gateway_t *g, uint16_t *ir, uint32_t now_ms, uint32
     reg_bit(&f, MAIN_IR_LL_FLAGS_BIT_VENT_OPEN, s->vnt != 0);
     reg_bit(&f, MAIN_IR_LL_FLAGS_BIT_LID_OPEN, s->lid != 0);
     reg_bit(&f, MAIN_IR_LL_FLAGS_BIT_PRES_UNDER_RANGE, s->pres_mtorr < 0);
+    reg_bit(&f, MAIN_IR_LL_FLAGS_BIT_PRES_SUSPECT, g->pres_suspect);
     ir[MAIN_IR_LL_FLAGS] = f;
     reg_put_i32(&ir[MAIN_IR_LL_PRES], s->pres_mtorr);
     ir[MAIN_IR_LL_ALM] = (uint16_t)s->alm;
@@ -128,13 +131,35 @@ static void publish(const ll_gateway_t *g, uint16_t *ir, uint32_t now_ms, uint32
     ir[MAIN_IR_LL_LAST_EVT] = (uint16_t)s->last_evt;
 }
 
+/* LL 壓力讀「低於下限」時判斷可不可信：
+ *  - 開機後還沒看過有效讀值 → 不可信（不知道之前的壓力）
+ *  - 最後一個有效讀值 > IL_LL_JUMP_MTORR（例如 760 Torr 直接變成低於 1 Torr）→ 跳變，疑似斷線
+ *  - 洩壓閥或艙蓋開著卻還是低於下限 → 不合理，疑似斷線
+ * 一旦有有效讀值就恢復可信。 */
+static void track_pressure(ll_gateway_t *g, const uint16_t *hr)
+{
+    const slk_state_t *s = &g->slk;
+    if (!s->tlm_valid) return;
+    uint32_t jump = hr[MAIN_HR_IL_LL_JUMP_MTORR];
+    if (jump < MAIN_HR_IL_LL_JUMP_MTORR_MIN_RAW || jump > MAIN_HR_IL_LL_JUMP_MTORR_MAX_RAW) jump = 10000u;
+    if (s->pres_mtorr >= 0) {
+        g->pres_seen_valid = true;
+        g->pres_last_valid = s->pres_mtorr;
+        g->pres_suspect = false;
+    } else if (!g->pres_seen_valid || g->pres_last_valid > (int32_t)jump || s->vnt != 0 || s->lid != 0) {
+        g->pres_suspect = true;
+    }
+}
+
 void ll_gateway_rx(ll_gateway_t *g, uint16_t *ir, uint32_t now_ms)
 {
     int c;
     const char *line;
     while ((c = hal_uart_read_byte(HAL_UART_LOADLOCK)) >= 0) {
         if (!slk_rx_feed(&g->rx, (char)c, &line)) continue;
-        if (slk_parse_line(&g->slk, line, now_ms) == SLK_LINE_EVT && g->pending_cmd) {
+        slk_line_t kind = slk_parse_line(&g->slk, line, now_ms);
+        if (kind == SLK_LINE_TLM) track_pressure(g, hr_slot(0));   /* 馬上更新，讓同一圈的互鎖輸入用到 */
+        if (kind == SLK_LINE_EVT && g->pending_cmd) {
             uint16_t r = completion(g->pending_cmd, g->slk.last_evt);
             if (r) { ir[MAIN_IR_LL_CMD_RESULT] = r; g->pending_cmd = 0; }
         }
@@ -149,6 +174,7 @@ void ll_gateway_step(ll_gateway_t *g, uint16_t *ir, const uint16_t *hr,
                      const il_inputs_t *in, uint32_t now_ms)
 {
     uint32_t stale = hr[MAIN_HR_IL_LL_STALE_MS] ? hr[MAIN_HR_IL_LL_STALE_MS] : 500u;
+    track_pressure(g, hr);
 
     /* 2. 定期要 TLM */
     if (now_ms - g->last_poll_ms >= LL_POLL_MS) {

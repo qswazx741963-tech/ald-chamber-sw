@@ -3,6 +3,7 @@
 #include "ecat_pdo.h"
 #include "fieldbus_if.h"
 #include "fake_hal.h"
+#include "gauge.h"
 #include "interlock.h"
 #include "ll_gateway.h"
 #include "slk_link.h"
@@ -54,6 +55,7 @@ static il_inputs_t ready(void)
     in.ll_pos = 0; in.ll_pres_mtorr = 40;        /* 假設 LL 已加 mTorr 級壓力計 */
     in.pm_pres_mtorr = 10; in.pm_at_transfer = true;
     in.pm_turbo_gv_closed = true; in.pm_heater_down = true;
+    in.sv_mode = MAIN_HR_IL_SV_MODE_DIFF; in.sv_below_mtorr = 1000;   /* 這組測試用壓差模式 */
     in.sv_dp_max_mtorr = 50; in.ll_z_enabled = true; in.arm_safe_pos = 5894;
     return in;
 }
@@ -68,7 +70,7 @@ static void test_il_sv_open(void)
     in = ready(); in.ll_pres_mtorr = 60;         CHECK_EQ(il_check(IL_ACT_SV_OPEN, &in), 0);               /* 差 50 剛好可以 */
     in = ready(); in.pm_pres_mtorr = 80;         CHECK_EQ(il_check(IL_ACT_SV_OPEN, &in), 0);               /* PM 比 LL 高也算壓差 */
     in = ready(); in.pm_pres_mtorr = 100;        CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(DP_HIGH));
-    in = ready(); in.ll_pres_mtorr = -1;         CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(PRESSURE_UNKNOWN)); /* 低於 SLK 下限 */
+    in = ready(); in.ll_pres_mtorr = -1;         CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(PRESSURE_UNKNOWN)); /* DIFF：低於 SLK 下限算不出壓差 */
     in = ready(); in.pm_pres_mtorr = INT32_MAX;  CHECK(il_check(IL_ACT_SV_OPEN, &in) & IL_DENY(PRESSURE_UNKNOWN));
     in = ready(); in.pm_turbo_gv_closed = false; CHECK_EQ(il_check(IL_ACT_SV_OPEN, &in), IL_DENY2(TURBO_GV_OPEN));
     in = ready(); in.pm_turbo_gv_closed = false; CHECK(il_check(IL_ACT_TRANSFER, &in) & IL_DENY2(TURBO_GV_OPEN));
@@ -114,6 +116,70 @@ static void test_il_pump_vent(void)
     CHECK(il_check(IL_ACT_LL_VENT, &in) & IL_DENY(SV_NOT_CLOSED));
     CHECK(il_check(IL_ACT_LL_PUMP, &in) & IL_DENY(SV_NOT_CLOSED));
     in = ready(); in.ll_rough_open = true;       CHECK(il_check(IL_ACT_LL_VENT, &in) & IL_DENY(LL_VALVE_CONFLICT));
+}
+
+/* BELOW 模式（預設，2026-11-11）：LL 與 PM 都 < 1 Torr 就可開；Turbo GV 仍必須關 */
+static void test_il_sv_below(void)
+{
+    il_inputs_t in = ready();
+    in.sv_mode = MAIN_HR_IL_SV_MODE_BELOW;
+    il_inputs_t b = in;
+    b.ll_pres_mtorr = -1; b.pm_pres_mtorr = 800;   CHECK_EQ(il_check(IL_ACT_SV_OPEN, &b), 0);   /* SLK 低於下限 + PM 0.8 Torr */
+    b = in; b.ll_pres_mtorr = 999; b.pm_pres_mtorr = 999; CHECK_EQ(il_check(IL_ACT_SV_OPEN, &b), 0);
+    b = in; b.ll_pres_mtorr = 1000;                CHECK(il_check(IL_ACT_SV_OPEN, &b) & IL_DENY(DP_HIGH));   /* 剛好 1 Torr 不算「小於」 */
+    b = in; b.ll_pres_mtorr = -1; b.pm_pres_mtorr = 1500; CHECK(il_check(IL_ACT_SV_OPEN, &b) & IL_DENY(DP_HIGH));
+    b = in; b.ll_pres_mtorr = -1; b.pm_pres_mtorr = INT32_MAX; CHECK(il_check(IL_ACT_SV_OPEN, &b) & IL_DENY(PRESSURE_UNKNOWN));
+    b = in; b.ll_pres_mtorr = -1; b.ll_pres_suspect = true;    CHECK(il_check(IL_ACT_SV_OPEN, &b) & IL_DENY(PRESSURE_UNKNOWN));
+    b = in; b.ll_pres_mtorr = -1; b.pm_turbo_gv_closed = false; CHECK_EQ(il_check(IL_ACT_SV_OPEN, &b), IL_DENY2(TURBO_GV_OPEN));
+    /* 門檻設成 0.5 Torr：SLK「低於 1 Torr」不能證明低於 0.5 Torr → 不准 */
+    b = in; b.sv_below_mtorr = 500; b.ll_pres_mtorr = -1; CHECK(il_check(IL_ACT_SV_OPEN, &b) & IL_DENY(DP_HIGH));
+}
+
+/* LL 壓力計防呆：開機未見有效值 / 從大氣直接跳到低於下限 / vent 中仍低於下限 → 不採信 */
+static void test_ll_pres_suspect(void)
+{
+    fake_reset();
+    reg_image_init();
+    ll_gateway_t g; ll_gateway_init(&g);
+    uint16_t *ir = ir_slot(0), *hr = hr_slot(0);
+    il_inputs_t in = {0};
+    g.slk.tlm_valid = true;
+
+    g.slk.pres_mtorr = -1; ll_gateway_step(&g, ir, hr, &in, 0);
+    CHECK(g.pres_suspect);                                         /* 開機就低於下限：不知道之前的壓力 */
+    CHECK(ir[MAIN_IR_LL_FLAGS] & (1u << MAIN_IR_LL_FLAGS_BIT_PRES_SUSPECT));
+    g.slk.pres_mtorr = 760000; ll_gateway_step(&g, ir, hr, &in, 0);  CHECK(!g.pres_suspect);
+    g.slk.pres_mtorr = -1;     ll_gateway_step(&g, ir, hr, &in, 0);  CHECK(g.pres_suspect);  /* 760 Torr → 低於 1 Torr：跳變 */
+    g.slk.pres_mtorr = 5000;   ll_gateway_step(&g, ir, hr, &in, 0);  CHECK(!g.pres_suspect);
+    g.slk.pres_mtorr = 1200;   ll_gateway_step(&g, ir, hr, &in, 0);
+    g.slk.pres_mtorr = -1;     ll_gateway_step(&g, ir, hr, &in, 0);  CHECK(!g.pres_suspect); /* 正常抽下來 */
+    ll_fill_inputs(&g, &in, 0, 500); CHECK(!in.ll_pres_suspect);
+    g.slk.vnt = 1;             ll_gateway_step(&g, ir, hr, &in, 0);  CHECK(g.pres_suspect);  /* vent 中還讀低於下限 */
+    g.slk.vnt = 0;             ll_gateway_step(&g, ir, hr, &in, 0);  CHECK(g.pres_suspect);  /* 要等有效讀值才恢復 */
+    ll_fill_inputs(&g, &in, 0, 500); CHECK(in.ll_pres_suspect);
+}
+
+/* 壓力計換算（公式見 docs/gauges.md） */
+static int near(float a, float b) { float d = a - b; if (d < 0) d = -d; return d <= 0.01f * (b < 0 ? -b : b) + 1e-9f; }
+
+static void test_gauge(void)
+{
+    float p;
+    CHECK_EQ(gauge_convert(GAUGE_APGX_H, 4000, 0, &p), GAUGE_OK);      CHECK(near(p, 7.499e-3f));  /* 手冊：4 V = 1e-2 mbar */
+    CHECK_EQ(gauge_convert(GAUGE_APGX_H, 9125, 0, &p), GAUGE_OK);      CHECK(near(p, 1000.0f));
+    CHECK_EQ(gauge_convert(GAUGE_APGX_H, 9500, 0, &p), GAUGE_FAULT);   /* 燈絲斷 9.5 V */
+    CHECK_EQ(gauge_convert(GAUGE_APGX_H, 1850, 0, &p), GAUGE_UNDER_RANGE);
+    CHECK_EQ(gauge_convert(GAUGE_APGX_H, 0, 0, &p), GAUGE_FAULT);      /* 斷線 0 V */
+    CHECK_EQ(gauge_convert(GAUGE_WRG200_X, 10000, 0, &p), GAUGE_OK);   CHECK(near(p, 748.0f));
+    CHECK_EQ(gauge_convert(GAUGE_WRG200_X, 1300, 0, &p), GAUGE_FAULT); /* 未點火 1.3 V */
+    CHECK_EQ(gauge_convert(GAUGE_WRG200_G, 8600, 0, &p), GAUGE_OK);    CHECK(near(p, 748.0f));
+    CHECK_EQ(gauge_convert(GAUGE_WRG200_G, 10200, 0, &p), GAUGE_FAULT);/* Pirani 故障 10.2 V */
+    CHECK_EQ(gauge_convert(GAUGE_WRG200_Q, 6000, 0, &p), GAUGE_OK);    CHECK(near(p, 10.0f));
+    CHECK_EQ(gauge_convert(GAUGE_LINEAR, 6000, 10.0f, &p), GAUGE_OK);  CHECK(near(p, 6.0f));    /* 手冊例：6 V × 10 Torr FS */
+    CHECK_EQ(gauge_convert(GAUGE_LINEAR, 9950, 1.0f, &p), GAUGE_OVER_RANGE);
+    CHECK_EQ(gauge_convert(GAUGE_LINEAR, 5000, 0, &p), GAUGE_NOT_CONFIGURED);
+    CHECK_EQ(gauge_convert(GAUGE_NONE, 5000, 0, &p), GAUGE_NOT_CONFIGURED);
+    CHECK_EQ(gauge_convert(99, 5000, 0, &p), GAUGE_NOT_CONFIGURED);
 }
 
 static void test_il_pm_side(void)
@@ -206,6 +272,7 @@ static void pm_ready(il_inputs_t *in)
 {
     in->pm_slots_ok = true; in->pm_pres_mtorr = 10; in->pm_turbo_gv_closed = true;
     in->pm_heater_down = true; in->pm_at_transfer = true;
+    in->sv_mode = MAIN_HR_IL_SV_MODE_BELOW; in->sv_below_mtorr = 1000;
     in->sv_dp_max_mtorr = 50; in->ll_z_enabled = true; in->arm_safe_pos = 5894;
 }
 
@@ -235,7 +302,7 @@ static void test_gateway(void)
     CHECK(strstr(fake_uart_tx, ">SYS:ST\n") != NULL);          /* 有在輪詢 */
     CHECK(strstr(fake_uart_tx, ">VLV:SV:O") == NULL);
 
-    /* SLK 壓力計低於 1 Torr（-1）→ 量不到壓差 → 擋 */
+    /* 開機後第一筆就是「低於 1 Torr」（-1）→ 不知道之前的壓力，疑似斷線 → 擋 */
     fake_uart_rx_push(TLM_OK); fake_uart_rx_push("\n");
     fake_now = 1100;
     ll_gateway_rx(&g, ir, fake_now);
@@ -246,7 +313,7 @@ static void test_gateway(void)
     CHECK(ir[MAIN_IR_IL_DENY] & IL_DENY(PRESSURE_UNKNOWN));
     CHECK(ir[MAIN_IR_LL_FLAGS] & (1u << MAIN_IR_LL_FLAGS_BIT_PRES_UNDER_RANGE));
 
-    /* 壓差 30 mTorr → 送出 → 等完成事件 */
+    /* LL 40 mTorr、PM 10 mTorr（都 < 1 Torr）→ 送出 → 等完成事件 */
     fake_uart_rx_push(TLM_40MT); fake_uart_rx_push("\n");
     fake_now = 1200;
     ll_gateway_rx(&g, ir, fake_now);
@@ -353,6 +420,9 @@ static void test_main_loop_safe_without_ipc(void)
     CHECK(fake_can_sent > 0);                        /* 背板仍持續送 SYNC */
     /* 槽位都沒有回應 → 只有槽 0 在線 */
     CHECK_EQ(ir_slot(0)[MAIN_IR_SLOT_ONLINE], 1);
+    /* 製程板離線 → PM 壓力未知 */
+    CHECK_EQ(ir_slot(0)[MAIN_IR_PM_GAUGE_STATUS], MAIN_IR_PM_GAUGE_STATUS_OFFLINE);
+    CHECK_EQ(reg_get_i32(&ir_slot(0)[MAIN_IR_PM_PRES_MTORR]), INT32_MAX);
 }
 
 int main(void)
@@ -360,6 +430,9 @@ int main(void)
     RUN(test_bp_id);
     RUN(test_bp_regs);
     RUN(test_il_sv_open);
+    RUN(test_il_sv_below);
+    RUN(test_ll_pres_suspect);
+    RUN(test_gauge);
     RUN(test_il_sv_close_and_arm);
     RUN(test_il_pump_vent);
     RUN(test_il_pm_side);

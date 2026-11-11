@@ -6,7 +6,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 
 | 槽 | 板 | 板型 | IR 範圍 | HR 範圍 |
 | --- | --- | --- | --- | --- |
-| 0 | main | MAIN | 0–117 | 0–154 |
+| 0 | main | MAIN | 0–122 | 0–163 |
 | 1 | process | PROCESS | 200–250 | 200–345 |
 | 2 | heater | HEATER | 400–461 | 400–551 |
 | 3 | vacuum | VACUUM | 600–637 | 600–610 |
@@ -48,7 +48,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | IR 104 | 104 | LL_Z | u16 | 1 |  |  |  | Z 軸 0 UNKNOWN,1 DOWN,2 RAISING,3 UP,4 LOWERING |
 | IR 105 | 105 | LL_WAF | u16 | 1 |  |  |  | Wafer 位置 0 UNKNOWN,1 AT_LL,2 ON_ARM,3 AT_PM |
 | IR 106 | 106 | LL_SEQ | u16 | 1 |  |  |  | 序列步 0-22，0 = 沒在跑 |
-| IR 107 | 107 | LL_FLAGS | u16 | 1 |  |  |  | bits: 0=WAFER_PRESENT, 1=ROUGH_OPEN, 2=VENT_OPEN, 3=LID_OPEN, 4=PRES_UNDER_RANGE |
+| IR 107 | 107 | LL_FLAGS | u16 | 1 |  |  |  | PRES_SUSPECT = LL 壓力從 > IL_LL_JUMP_MTORR 直接跳到「低於下限」或開機後還沒看過有效讀值，疑似壓力計斷線 → 不採信 bits: 0=WAFER_PRESENT, 1=ROUGH_OPEN, 2=VENT_OPEN, 3=LID_OPEN, 4=PRES_UNDER_RANGE, 5=PRES_SUSPECT |
 | IR 108–109 | 108–109 | LL_PRES | i32 | 1 |  | mTorr |  | SLK 壓力計（0~1000 Torr）；-1 = 低於量測下限 1 Torr |
 | IR 110 | 110 | LL_ALM | u16 | 1 |  |  |  | SLK 警報碼，0 = 正常 |
 | IR 111–112 | 111–112 | LL_POS | i32 | 1 |  | step |  | 手臂位置（36.84 step/mm） |
@@ -57,6 +57,8 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | IR 115 | 115 | LL_CMD_RESULT | u16 | 1 |  |  |  | 值: 0=NONE, 1=SENT, 2=DENIED, 3=DONE, 4=ERROR, 5=BUSY |
 | IR 116 | 116 | LL_CMD_ACK | u16 | 1 |  |  |  | 主控板處理完的 LL_CMD_SEQ |
 | IR 117 | 117 | LL_LAST_EVT | u16 | 1 |  |  |  | 最後一個 SLK 事件代碼（見 docs/loadlock-integration.md） |
+| IR 120–121 | 120–121 | PM_PRES_MTORR | i32 | 1 |  | mTorr |  | PM 壓力；狀態不是 OK / UNDER_RANGE 時為 2147483647 |
+| IR 122 | 122 | PM_GAUGE_STATUS | u16 | 1 |  |  |  | 值: 0=OK, 1=UNDER_RANGE, 2=OVER_RANGE, 3=FAULT, 4=OFFLINE, 5=NOT_CONFIGURED |
 
 ### Holding Register (FC03/FC06/FC16)
 
@@ -78,6 +80,12 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 151 | 151 | IL_LL_Z_ENABLE | u16 | 1 |  |  |  | SLK Z 軸是否啟用；之後取消 Z 軸（改用 PM Wafer lift）時設 DISABLED，Z 相關互鎖就不檢查 值: 0=DISABLED, 1=ENABLED |
 | HR 152 | 152 | IL_LL_STALE_MS | u16 | 1 |  | ms | 100–5000 | Loadlock TLM 超過此時間沒更新 → 視為狀態不明，預設 500 |
 | HR 153–154 | 153–154 | IL_ARM_SAFE_POS | i32 | 1 |  | step |  | 手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm） |
+| HR 155 | 155 | IL_SV_MODE | u16 | 1 |  |  |  | 開 SV 的壓力條件：BELOW = LL 與 PM 都低於 IL_SV_BELOW_MTORR（預設，SLK 壓力計低於下限算低於 1 Torr）；DIFF = 壓差 ≤ IL_SV_DP_MAX_MTORR（LL 需有 mTorr 級壓力計） 值: 0=BELOW, 1=DIFF |
+| HR 156 | 156 | IL_SV_BELOW_MTORR | u16 | 1 |  | mTorr | 1–10000 | BELOW 模式門檻，預設 1000（1 Torr） |
+| HR 157 | 157 | IL_LL_JUMP_MTORR | u16 | 1 |  | mTorr | 1000–60000 | LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr） |
+| HR 160 | 160 | PM_GAUGE_MODEL | u16 | 1 |  |  |  | 換算公式見 docs/gauges.md 值: 0=NONE, 1=LINEAR, 2=APGX_H, 3=WRG200_X, 4=WRG200_G, 5=WRG200_Q |
+| HR 161 | 161 | PM_GAUGE_AI_ADDR | u16 | 1 |  |  |  | 壓力計電壓（mV）所在的 IR 絕對位址，預設 236 = 槽 1 MANOMETER_RAW |
+| HR 162–163 | 162–163 | PM_GAUGE_FS_MTORR | i32 | 1 |  | mTorr |  | LINEAR（電容式 0~10 V）滿刻度，例 1 Torr = 1000 |
 
 ## 槽 1：process
 

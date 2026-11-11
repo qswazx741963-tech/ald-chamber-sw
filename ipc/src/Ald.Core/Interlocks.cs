@@ -36,12 +36,12 @@ public sealed record InterlockResult(bool Allowed, string Reason)
 /// </summary>
 public static class Interlocks
 {
-    /// <summary>開 SV 的 Loadlock / PM 壓差上限（config interlock.svMaxDiffMtorr，預設 50 mTorr）。</summary>
-    public static double SvMaxDiffTorr { get; set; } = 0.050;
-    /// <summary>SLK Z 軸是否啟用（config interlock.loadlockZEnabled）。之後取消 Z 軸時設 false。</summary>
-    public static bool LoadlockZEnabled { get; set; } = true;
+    /// <summary>目前使用的互鎖參數（啟動時由 config/machine.json interlock 區塊設定，同時寫進主控板 HR IL_*）。</summary>
+    public static InterlockSettings Settings { get; set; } = new();
 
-    public static InterlockResult Check(MachineAction action, MachineSnapshot s)
+    public static InterlockResult Check(MachineAction action, MachineSnapshot s) => Check(action, s, Settings);
+
+    public static InterlockResult Check(MachineAction action, MachineSnapshot s, InterlockSettings cfg)
     {
         if (!s.SlotOnline.All(x => x))
             return InterlockResult.Deny("有控制板離線");
@@ -55,10 +55,8 @@ public static class Interlocks
             return InterlockResult.Deny($"Loadlock 警報中（代碼 {s.LoadlockAlarm}）");
 
         bool pmBusy = s.AldRunning || s.RfOn;
-        bool zDown = !LoadlockZEnabled || s.ArmZ == LoadlockZ.Down;
-        bool pressureUnknown = double.IsNaN(s.LoadlockPressureTorr) || s.LoadlockPressureTorr < 0
-                            || double.IsNaN(s.ChamberPressureTorr);
-        double dp = Math.Abs(s.LoadlockPressureTorr - s.ChamberPressureTorr);
+        bool zDown = !cfg.LoadlockZEnabled || s.ArmZ == LoadlockZ.Down;
+        var svPressure = SvPressureCheck(s, cfg);
 
         return action switch
         {
@@ -99,10 +97,8 @@ public static class Interlocks
                 => InterlockResult.Deny("Loadlock 粗抽閥或洩壓閥開啟中"),
             MachineAction.SlitValveOpen or MachineAction.Transfer when !s.TurboGateClosed
                 => InterlockResult.Deny("Turbo gate valve 未關"),
-            MachineAction.SlitValveOpen or MachineAction.Transfer when pressureUnknown
-                => InterlockResult.Deny("壓力未知（Loadlock 低於量測下限或 PM 壓力計離線），無法確認壓差"),
-            MachineAction.SlitValveOpen or MachineAction.Transfer when dp > SvMaxDiffTorr
-                => InterlockResult.Deny($"Loadlock 與 PM 壓差 {dp * 1000:F0} mTorr，超過 {SvMaxDiffTorr * 1000:F0} mTorr"),
+            MachineAction.SlitValveOpen or MachineAction.Transfer when !svPressure.Allowed
+                => svPressure,
             MachineAction.Transfer when !s.PmAtTransfer
                 => InterlockResult.Deny("PM 不在交接位置（Heater module 下位、Wafer lift 定位）"),
             MachineAction.Transfer when s.LoadlockBusy
@@ -123,7 +119,7 @@ public static class Interlocks
                 => InterlockResult.Deny("PM 製程或 RF 進行中"),
 
             // ---- LL-06 Z 軸：手臂在 PM 裡撿放片時，PM 要在交接位置、不能在跑
-            MachineAction.ZMove when !LoadlockZEnabled
+            MachineAction.ZMove when !cfg.LoadlockZEnabled
                 => InterlockResult.Ok,
             MachineAction.ZMove when !s.ArmClearOfSv && !s.PmAtTransfer
                 => InterlockResult.Deny("手臂在 PM 內，但 PM 不在交接位置"),
@@ -143,4 +139,51 @@ public static class Interlocks
             _ => InterlockResult.Ok,
         };
     }
+
+    /// <summary>
+    /// LL-01 的壓力條件，跟主控板 interlock.c sv_open_conditions 同規則：
+    /// Below（預設）：LL 與 PM 都 &lt; 門檻（SLK 低於下限 1 Torr 只在門檻 ≥ 1 Torr 時算數）；Diff：|LL − PM| ≤ 上限。
+    /// 壓力未知（PM 壓力計離線 / 故障 / 超出上限、LL 壓力計疑似斷線）一律不准。
+    /// </summary>
+    private static InterlockResult SvPressureCheck(MachineSnapshot s, InterlockSettings cfg)
+    {
+        double ll = s.LoadlockPressureTorr, pm = s.ChamberPressureTorr;
+        if (s.LoadlockPressureSuspect)
+            return InterlockResult.Deny("Loadlock 壓力計讀值不可信（疑似斷線，請確認後讓 LL 回到 1 Torr 以上再抽）");
+        if (double.IsNaN(pm))
+            return InterlockResult.Deny("PM 壓力未知（壓力計離線、故障或超出量測範圍）");
+        if (!s.LoadlockPressureUnderRange && !(ll >= 0))
+            return InterlockResult.Deny("Loadlock 壓力未知");
+        if (cfg.SvMode == SvOpenMode.Below)
+        {
+            bool llOk = s.LoadlockPressureUnderRange ? cfg.SvBelowTorr >= SlkGaugeMinTorr : ll < cfg.SvBelowTorr;
+            if (!llOk) return InterlockResult.Deny($"Loadlock 壓力未低於 {cfg.SvBelowTorr * 1000:F0} mTorr");
+            if (!(pm < cfg.SvBelowTorr)) return InterlockResult.Deny($"PM 壓力未低於 {cfg.SvBelowTorr * 1000:F0} mTorr");
+            return InterlockResult.Ok;
+        }
+        if (s.LoadlockPressureUnderRange)
+            return InterlockResult.Deny("Loadlock 低於 SLK 壓力計下限，量不到壓差（壓差模式需 mTorr 級壓力計）");
+        double dp = Math.Abs(ll - pm);
+        return dp > cfg.SvMaxDiffTorr
+            ? InterlockResult.Deny($"Loadlock 與 PM 壓差 {dp * 1000:F0} mTorr，超過 {cfg.SvMaxDiffTorr * 1000:F0} mTorr")
+            : InterlockResult.Ok;
+    }
+
+    /// <summary>SLK 壓力計量測下限。</summary>
+    public const double SlkGaugeMinTorr = 1.0;
+}
+
+/// <summary>開 SV 的壓力條件，對應主控板 HR IL_SV_MODE。</summary>
+public enum SvOpenMode { Below = 0, Diff = 1 }
+
+/// <summary>互鎖參數（config/machine.json interlock 區塊）。</summary>
+public sealed record InterlockSettings
+{
+    /// <summary>Below = LL、PM 都低於 SvBelowTorr（預設，2026-11-11）；Diff = 壓差 ≤ SvMaxDiffTorr。</summary>
+    public SvOpenMode SvMode { get; init; } = SvOpenMode.Below;
+    public double SvBelowTorr { get; init; } = 1.0;
+    public double SvMaxDiffTorr { get; init; } = 0.050;
+    /// <summary>SLK Z 軸是否啟用。之後取消 Z 軸時設 false。</summary>
+    public bool LoadlockZEnabled { get; init; } = true;
+
 }

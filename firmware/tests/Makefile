@@ -4,7 +4,7 @@
 CC      ?= gcc
 CFLAGS  ?= -std=c99 -O1 -g -Wall -Wextra -Werror -Wno-unused-parameter -fsanitize=address,undefined
 INC      = -I../common -I../common/registers -I../main_board/app -I../exec_board/app -I.
-COMMON   = ../common/bp_proto.c fake_hal.c
+COMMON   = ../common/bp_proto.c ../common/gauge.c fake_hal.c
 MAIN_SRC = $(wildcard ../main_board/app/*.c)
 EXEC_SRC = $(wildcard ../exec_board/app/*.c)
 

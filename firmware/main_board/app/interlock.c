@@ -1,5 +1,6 @@
 #include "interlock.h"
 #include "slk_link.h"
+#include "registers_main.h"
 #include <limits.h>
 
 bool il_arm_clear_of_sv(const il_inputs_t *in)
@@ -26,9 +27,18 @@ static uint32_t sv_open_conditions(const il_inputs_t *in)
     if (in->ll_lid_open)                        d |= IL_DENY(LL_LID_OPEN);
     if (in->ll_rough_open || in->ll_vent_open)  d |= IL_DENY(LL_VALVE_CONFLICT);
     if (!in->pm_turbo_gv_closed)                d |= IL_DENY2(TURBO_GV_OPEN);
-    /* 壓差：LL 低於量測下限（-1）或 PM 壓力計離線 / 飽和 = 壓力未知，量不到就不准開 */
-    if (in->ll_pres_mtorr < 0 || in->pm_pres_mtorr == INT32_MAX) d |= IL_DENY(PRESSURE_UNKNOWN);
-    else {
+    /* 壓力條件（HR IL_SV_MODE）。PM 壓力計離線 / 故障 / 超出上限、LL 壓力計疑似斷線 = 壓力未知，一律不准開 */
+    bool ll_under = in->ll_pres_mtorr < 0;              /* SLK 低於量測下限 1 Torr */
+    if (in->ll_pres_suspect || in->pm_pres_mtorr == INT32_MAX) {
+        d |= IL_DENY(PRESSURE_UNKNOWN);
+    } else if (in->sv_mode == MAIN_HR_IL_SV_MODE_BELOW) {
+        /* BELOW（2026-11-11 使用者決定）：LL 與 PM 都 < 門檻。LL「低於下限」只有在門檻 ≥ 1 Torr 時才算數 */
+        bool ll_ok = ll_under ? in->sv_below_mtorr >= LL_GAUGE_MIN_MTORR : in->ll_pres_mtorr < in->sv_below_mtorr;
+        bool pm_ok = in->pm_pres_mtorr < in->sv_below_mtorr;
+        if (!ll_ok || !pm_ok) d |= IL_DENY(DP_HIGH);
+    } else if (ll_under) {
+        d |= IL_DENY(PRESSURE_UNKNOWN);                 /* DIFF：LL 量不到實際值就算不出壓差 */
+    } else {
         int64_t dp = (int64_t)in->ll_pres_mtorr - in->pm_pres_mtorr;
         if (dp < 0) dp = -dp;
         if (dp > in->sv_dp_max_mtorr) d |= IL_DENY(DP_HIGH);

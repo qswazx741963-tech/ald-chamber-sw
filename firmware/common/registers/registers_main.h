@@ -7,7 +7,7 @@
 #define MAIN_BOARD_TYPE   0u
 
 /* ---- Input Register (FC04)（區內位址；共用表頭見 COM_IR_*） */
-#define MAIN_IR_SIZE 118u
+#define MAIN_IR_SIZE 123u
 #define MAIN_IR_DI                                   10u  /* u16 */
 #define MAIN_IR_DI_BIT_SAFE_LINE_OK                  0u
 #define MAIN_IR_DI_BIT_EMO_OK                        1u
@@ -70,6 +70,7 @@
 #define MAIN_IR_LL_FLAGS_BIT_VENT_OPEN               2u
 #define MAIN_IR_LL_FLAGS_BIT_LID_OPEN                3u
 #define MAIN_IR_LL_FLAGS_BIT_PRES_UNDER_RANGE        4u
+#define MAIN_IR_LL_FLAGS_BIT_PRES_SUSPECT            5u
 #define MAIN_IR_LL_PRES                              108u  /* i32 [mTorr] */
 #define MAIN_IR_LL_ALM                               110u  /* u16 */
 #define MAIN_IR_LL_POS                               111u  /* i32 [step] */
@@ -84,9 +85,17 @@
 #define MAIN_IR_LL_CMD_RESULT_BUSY                   5u
 #define MAIN_IR_LL_CMD_ACK                           116u  /* u16 */
 #define MAIN_IR_LL_LAST_EVT                          117u  /* u16 */
+#define MAIN_IR_PM_PRES_MTORR                        120u  /* i32 [mTorr] */
+#define MAIN_IR_PM_GAUGE_STATUS                      122u  /* u16 */
+#define MAIN_IR_PM_GAUGE_STATUS_OK                   0u
+#define MAIN_IR_PM_GAUGE_STATUS_UNDER_RANGE          1u
+#define MAIN_IR_PM_GAUGE_STATUS_OVER_RANGE           2u
+#define MAIN_IR_PM_GAUGE_STATUS_FAULT                3u
+#define MAIN_IR_PM_GAUGE_STATUS_OFFLINE              4u
+#define MAIN_IR_PM_GAUGE_STATUS_NOT_CONFIGURED       5u
 
 /* ---- Holding Register (FC03/FC06/FC16)（區內位址；共用表頭見 COM_HR_*） */
-#define MAIN_HR_SIZE 155u
+#define MAIN_HR_SIZE 164u
 #define MAIN_HR_DO_CMD                               10u  /* u16 */
 #define MAIN_HR_DO_CMD_BIT_BUZZER                    0u
 #define MAIN_HR_DO_CMD_BIT_TOWER_RED                 1u
@@ -147,3 +156,21 @@
 #define MAIN_HR_IL_LL_STALE_MS_MIN_RAW               100
 #define MAIN_HR_IL_LL_STALE_MS_MAX_RAW               5000
 #define MAIN_HR_IL_ARM_SAFE_POS                      153u  /* i32 [step] */
+#define MAIN_HR_IL_SV_MODE                           155u  /* u16 */
+#define MAIN_HR_IL_SV_MODE_BELOW                     0u
+#define MAIN_HR_IL_SV_MODE_DIFF                      1u
+#define MAIN_HR_IL_SV_BELOW_MTORR                    156u  /* u16 [mTorr] */
+#define MAIN_HR_IL_SV_BELOW_MTORR_MIN_RAW            1
+#define MAIN_HR_IL_SV_BELOW_MTORR_MAX_RAW            10000
+#define MAIN_HR_IL_LL_JUMP_MTORR                     157u  /* u16 [mTorr] */
+#define MAIN_HR_IL_LL_JUMP_MTORR_MIN_RAW             1000
+#define MAIN_HR_IL_LL_JUMP_MTORR_MAX_RAW             60000
+#define MAIN_HR_PM_GAUGE_MODEL                       160u  /* u16 */
+#define MAIN_HR_PM_GAUGE_MODEL_NONE                  0u
+#define MAIN_HR_PM_GAUGE_MODEL_LINEAR                1u
+#define MAIN_HR_PM_GAUGE_MODEL_APGX_H                2u
+#define MAIN_HR_PM_GAUGE_MODEL_WRG200_X              3u
+#define MAIN_HR_PM_GAUGE_MODEL_WRG200_G              4u
+#define MAIN_HR_PM_GAUGE_MODEL_WRG200_Q              5u
+#define MAIN_HR_PM_GAUGE_AI_ADDR                     161u  /* u16 */
+#define MAIN_HR_PM_GAUGE_FS_MTORR                    162u  /* i32 [mTorr] */

@@ -11,6 +11,7 @@
  */
 #include "main_app.h"
 #include "bp_proto.h"
+#include "gauge.h"
 #include "hal_port.h"
 #include "interlock.h"
 #include "ll_gateway.h"
@@ -27,10 +28,6 @@
 enum { DO_TRANSFER_PERMIT = 0, DO_BUZZER, DO_TOWER_RED, DO_TOWER_YELLOW, DO_TOWER_GREEN };
 enum { DI_EMO_OK = 0, DI_CDA_OK };
 
-/* PM 腔體壓力計（Process 板 MANOMETER_RAW）換算，TODO 依型號：目前假設 0–10 V = 0–1 Torr */
-#define PM_MANO_FS_MTORR 1000
-#define PM_MANO_FS_MV    10000
-#define PM_MANO_SAT_MV   9900   /* 接近滿刻度 = 壓力計飽和，實際壓力可能是大氣 → 一律視為「很高」 */
 
 static const fieldbus_ops_t *s_bus;
 static const ald_slot_def_t s_slots[] = ALD_SLOT_TABLE;
@@ -81,12 +78,28 @@ static void bp_receive(uint32_t now)
 }
 
 /* ---------------------------------------------------------------- 互鎖輸入 */
+/* PM 壓力：依 HR PM_GAUGE_*（config 型號選單）換算，結果也放進 IR PM_PRES_MTORR / PM_GAUGE_STATUS。
+ * 回傳 INT32_MAX = 壓力未知（離線 / 故障 / 未設定 / 超出上限），互鎖一律當成「不准」 */
 static int32_t pm_pressure_mtorr(uint32_t now)
 {
-    if (!slot_online(PROC_DEFAULT_SLOT, now)) return INT32_MAX;
-    uint16_t mv = ir_slot(PROC_DEFAULT_SLOT)[PROC_IR_MANOMETER_RAW];
-    if (mv >= PM_MANO_SAT_MV) return INT32_MAX;
-    return (int32_t)((int64_t)mv * PM_MANO_FS_MTORR / PM_MANO_FS_MV);
+    const uint16_t *hr0 = hr_slot(0);
+    uint16_t *ir0 = ir_slot(0);
+    uint16_t addr = hr0[MAIN_HR_PM_GAUGE_AI_ADDR];
+    uint8_t slot = (uint8_t)(addr / ALD_SLOT_STRIDE);
+    gauge_status_t st;
+    float torr = 0.0f;
+    if (addr >= REG_IMAGE_SIZE || slot == 0) st = GAUGE_NOT_CONFIGURED;
+    else if (!slot_online(slot, now)) st = GAUGE_OFFLINE;
+    else st = gauge_convert(hr0[MAIN_HR_PM_GAUGE_MODEL], g_ir[addr],
+                            (float)reg_get_i32(&hr0[MAIN_HR_PM_GAUGE_FS_MTORR]) / 1000.0f, &torr);
+    int32_t mtorr = INT32_MAX;
+    if (st == GAUGE_OK || st == GAUGE_UNDER_RANGE) {
+        float m = torr * 1000.0f + 0.5f;
+        mtorr = m >= 2.0e9f ? INT32_MAX : (int32_t)m;
+    }
+    reg_put_i32(&ir0[MAIN_IR_PM_PRES_MTORR], mtorr);
+    ir0[MAIN_IR_PM_GAUGE_STATUS] = (uint16_t)st;
+    return mtorr;
 }
 
 static void build_inputs(il_inputs_t *in, uint32_t now)
@@ -121,6 +134,10 @@ static void build_inputs(il_inputs_t *in, uint32_t now)
     in->pm_heater_moving = hstate == 1u || hstate == 2u;            /* 1 moving, 2 homing */
     in->pm_at_transfer = in->pm_heater_down && !in->pm_heater_moving && (lift_dn != lift_up);
 
+    in->sv_mode = hr0[MAIN_HR_IL_SV_MODE] == MAIN_HR_IL_SV_MODE_DIFF ? MAIN_HR_IL_SV_MODE_DIFF : MAIN_HR_IL_SV_MODE_BELOW;
+    uint16_t below = hr0[MAIN_HR_IL_SV_BELOW_MTORR];
+    if (below < MAIN_HR_IL_SV_BELOW_MTORR_MIN_RAW || below > MAIN_HR_IL_SV_BELOW_MTORR_MAX_RAW) below = 1000;
+    in->sv_below_mtorr = below;
     uint16_t dp = hr0[MAIN_HR_IL_SV_DP_MAX_MTORR];
     if (dp < MAIN_HR_IL_SV_DP_MAX_MTORR_MIN_RAW || dp > MAIN_HR_IL_SV_DP_MAX_MTORR_MAX_RAW) dp = 50;
     in->sv_dp_max_mtorr = dp;

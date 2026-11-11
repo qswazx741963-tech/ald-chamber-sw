@@ -27,7 +27,7 @@ public static class MainBoard
     /// <summary>Input Register (FC04)，以下皆為絕對位址</summary>
     public static class Input
     {
-        public const ushort Size = 118;
+        public const ushort Size = 123;
         /// <summary>板型（見 board_types），與槽位設定不符時主控板拒用該槽</summary>
         public const ushort BoardType = 0;
         /// <summary>例如 0x0102 = v1.2</summary>
@@ -141,6 +141,7 @@ public static class MainBoard
         public const ushort LlWaf = 105;
         /// <summary>序列步 0-22，0 = 沒在跑</summary>
         public const ushort LlSeq = 106;
+        /// <summary>PRES_SUSPECT = LL 壓力從 > IL_LL_JUMP_MTORR 直接跳到「低於下限」或開機後還沒看過有效讀值，疑似壓力計斷線 → 不採信</summary>
         public const ushort LlFlags = 107;
         [System.Flags] public enum LlFlagsBits : ushort
         {
@@ -149,6 +150,7 @@ public static class MainBoard
             VentOpen = 1 << 2,
             LidOpen = 1 << 3,
             PresUnderRange = 1 << 4,
+            PresSuspect = 1 << 5,
         }
         /// <summary>SLK 壓力計（0~1000 Torr）；-1 = 低於量測下限 1 Torr [mTorr]</summary>
         public const ushort LlPres = 108;
@@ -174,12 +176,24 @@ public static class MainBoard
         public const ushort LlCmdAck = 116;
         /// <summary>最後一個 SLK 事件代碼（見 docs/loadlock-integration.md）</summary>
         public const ushort LlLastEvt = 117;
+        /// <summary>PM 壓力；狀態不是 OK / UNDER_RANGE 時為 2147483647 [mTorr]</summary>
+        public const ushort PmPresMtorr = 120;
+        public const ushort PmGaugeStatus = 122;
+        public enum PmGaugeStatusValues : ushort
+        {
+            Ok = 0,
+            UnderRange = 1,
+            OverRange = 2,
+            Fault = 3,
+            Offline = 4,
+            NotConfigured = 5,
+        }
     }
 
     /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
     public static class Holding
     {
-        public const ushort Size = 155;
+        public const ushort Size = 164;
         /// <summary>上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）</summary>
         public const ushort Heartbeat = 0;
         public const ushort Command = 1;
@@ -281,6 +295,36 @@ public static class MainBoard
         public const double IlLlStaleMsMax = 5000;
         /// <summary>手臂 ≤ 此位置才算退出 SV 路徑，預設 5894（160 mm） [step]</summary>
         public const ushort IlArmSafePos = 153;
+        /// <summary>開 SV 的壓力條件：BELOW = LL 與 PM 都低於 IL_SV_BELOW_MTORR（預設，SLK 壓力計低於下限算低於 1 Torr）；DIFF = 壓差 ≤ IL_SV_DP_MAX_MTORR（LL 需有 mTorr 級壓力計）</summary>
+        public const ushort IlSvMode = 155;
+        public enum IlSvModeValues : ushort
+        {
+            Below = 0,
+            Diff = 1,
+        }
+        /// <summary>BELOW 模式門檻，預設 1000（1 Torr） [mTorr]</summary>
+        public const ushort IlSvBelowMtorr = 156;
+        public const double IlSvBelowMtorrMin = 1;
+        public const double IlSvBelowMtorrMax = 10000;
+        /// <summary>LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr） [mTorr]</summary>
+        public const ushort IlLlJumpMtorr = 157;
+        public const double IlLlJumpMtorrMin = 1000;
+        public const double IlLlJumpMtorrMax = 60000;
+        /// <summary>換算公式見 docs/gauges.md</summary>
+        public const ushort PmGaugeModel = 160;
+        public enum PmGaugeModelValues : ushort
+        {
+            None = 0,
+            Linear = 1,
+            ApgxH = 2,
+            Wrg200X = 3,
+            Wrg200G = 4,
+            Wrg200Q = 5,
+        }
+        /// <summary>壓力計電壓（mV）所在的 IR 絕對位址，預設 236 = 槽 1 MANOMETER_RAW</summary>
+        public const ushort PmGaugeAiAddr = 161;
+        /// <summary>LINEAR（電容式 0~10 V）滿刻度，例 1 Torr = 1000 [mTorr]</summary>
+        public const ushort PmGaugeFsMtorr = 162;
     }
 
 }

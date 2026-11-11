@@ -70,7 +70,7 @@
    手臂橫移的防撞（LL-04 / LL-05）靠這個訊號，**請確認 Z DOWN 是否有實體感測器**。
 3. **SLK 看門狗 60 s**（MANUAL_MODE 為了手動調機拉長）：主控板當機時 SLK 60 s 內不會自己停，正在跑的序列會跑完。
    靠 EMO 迴路補足。
-4. **開 SV 的壓力門檻**：已改為 LL 與 PM 壓差 ≤ 50 mTorr（HR `IL_SV_DP_MAX_MTORR`，`machine.json` 可調）。SLK 壓力計下限 1 Torr 量不到，需加 mTorr 級壓力計，未加之前 SV 開不了（安全方向）。
+4. **開 SV 的壓力門檻**：2026-11-11 定為 LL 與 PM 都 < 1 Torr（HR `IL_SV_MODE = BELOW`、`IL_SV_BELOW_MTORR`），Turbo GV 必須已關。SLK 4–20 mA 斷線可能讀成「低於下限」，由主控板跳變檢查補強（見 `gauges.md` 第三節）。
 5. **重複的 I/O 定義**：舊版 ALD 定義表裡真空板有 Loadlock vent / rough、Slit valve，馬達板有 Loadlock 軸、Indexer。
    已從 ALD 執行板移除，以 SLK 為準。**若實際配線不是這樣請告訴我。**
 6. **SLK 只看得到 LL 壓力**：PM 壓力、PM 是否在製程，SLK 都不知道，所以 LL-01 / LL-03 的 PM 條件由主控板判斷。

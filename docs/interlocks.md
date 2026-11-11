@@ -16,7 +16,7 @@
 
 | 編號 | 動作 | 允許條件（全部成立） | 被擋原因位元 |
 | --- | --- | --- | --- |
-| LL-01 | 開 Slit valve | LL 資料新鮮、LL 無警報、非安全狀態、PM 各板在線、PM 沒在跑製程 / RF、PM 沒在 vent、LL 艙蓋關、LL 粗抽 / 洩壓閥都關、**Turbo GV 已關**、**LL 與 PM 壓差 ≤ 50 mTorr**（config 可改；任一邊壓力未知 = 不准，含 LL 低於 SLK 壓力計下限、PM 壓力計飽和 / 離線） | LL_UNKNOWN、LL_ALARM、SAFE_ACTIVE、SLOT_OFFLINE、PM_BUSY、PM_VENTING、LL_LID_OPEN、LL_VALVE_CONFLICT、DP_HIGH、PRESSURE_UNKNOWN、TURBO_GV_OPEN |
+| LL-01 | 開 Slit valve | LL 資料新鮮、LL 無警報、非安全狀態、PM 各板在線、PM 沒在跑製程 / RF、PM 沒在 vent、LL 艙蓋關、LL 粗抽 / 洩壓閥都關、**Turbo GV 已關**、**壓力條件**（預設 LL 與 PM 都 < 1 Torr，SLK 讀「低於 1 Torr」算數；可切換為壓差 ≤ 50 mTorr；任一邊壓力未知 = 不准，含 LL 壓力計疑似斷線、PM 壓力計故障 / 飽和 / 離線，見 `gauges.md`） | LL_UNKNOWN、LL_ALARM、SAFE_ACTIVE、SLOT_OFFLINE、PM_BUSY、PM_VENTING、LL_LID_OPEN、LL_VALVE_CONFLICT、DP_HIGH、PRESSURE_UNKNOWN、TURBO_GV_OPEN |
 | LL-02 | 關 Slit valve（含 SEQ:XFER） | LL 資料新鮮、手臂位置 ≤ 安全位置（160 mm）且沒在移動 | ARM_IN_SV_PATH |
 | LL-03 | SEQ:LOAD / UNLOAD | LL-01 全部 + PM 在交接位置 + LL 沒有其他序列在跑 | 同 LL-01 + PM_NOT_AT_TRANSFER、LL_BUSY |
 | LL-04 | 手臂伸進 PM（ARM:PM、GOTO > 安全位置） | SV 全開、Z 下降到位、PM 在交接位置、PM 沒在跑製程 / RF | SV_NOT_OPEN、Z_NOT_DOWN、PM_NOT_AT_TRANSFER、PM_BUSY |
@@ -56,5 +56,5 @@
 
 ## 五、待確認
 
-- **Loadlock 需加 mTorr 級壓力計**：SLK 壓力計下限 1 Torr（低於讀 -1），量不到 50 mTorr 壓差；未加之前 SV 永遠開不了（安全方向）。型號與接在哪一塊板待定。
-- PM 壓力計型號與換算（目前假設 0–10 V = 0–1 Torr），config 將提供型號選單。
+- 開 SV 壓力條件 2026-11-11 改為「LL、PM 都 < 1 Torr」（使用者決定，`IL_SV_MODE = BELOW`）。若之後 LL 加 mTorr 級壓力計，可切回壓差模式（`DIFF`）。
+- PM 互鎖壓力計：預設 Barocel 線性、滿刻度 1 Torr（TODO 確認實際訂購滿刻度），型號選單見 `gauges.md`。

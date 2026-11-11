@@ -8,11 +8,26 @@
     "pollMs": 50
   },
   "slots": [
-    { "slot": 0, "type": "Main" },
-    { "slot": 1, "type": "Process" },
-    { "slot": 2, "type": "Heater" },
-    { "slot": 3, "type": "Vacuum" },
-    { "slot": 4, "type": "Motion" }
+    {
+      "slot": 0,
+      "type": "Main"
+    },
+    {
+      "slot": 1,
+      "type": "Process"
+    },
+    {
+      "slot": 2,
+      "type": "Heater"
+    },
+    {
+      "slot": 3,
+      "type": "Vacuum"
+    },
+    {
+      "slot": 4,
+      "type": "Motion"
+    }
   ],
   "loadlock": {
     "_comment": "SLK 模組接在主控板 UART（RS-485，SLK 端 RS-232 經自動收發轉換器）。IPC 透過主控板 HR LL_CMD 下命令，鮑率 / 輪詢週期寫在主控板韌體（slk_link.h）。SLK 韌體不改",
@@ -21,19 +36,48 @@
   "watchdogMs": 1000,
   "interlock": {
     "_comment": "互鎖由主控板執行（Loadlock LL-01~08 + PM 側）；這些值寫進主控板 HR IL_*，IPC 只做預檢顯示",
+    "svOpenMode": "Below",
+    "_svOpenMode": "開 SV 壓力條件：Below = LL 與 PM 都低於 svBelowTorr（預設，SLK 讀「低於 1 Torr」算數）；Diff = 壓差 ≤ svMaxDiffMtorr（LL 需加 mTorr 級壓力計）。兩種都要求 Turbo GV 已關",
+    "svBelowTorr": 1.0,
     "svMaxDiffMtorr": 50,
-    "_svMaxDiffMtorr": "開 SV 條件：Loadlock 與 PM 壓差 ≤ 此值（mTorr）。SLK 壓力計下限 1 Torr，需加 mTorr 級壓力計才量得到",
+    "loadlockJumpTorr": 10,
+    "_loadlockJumpTorr": "LL 壓力從高於此值直接變成「低於 1 Torr」= 疑似壓力計斷線，不採信（主控板 HR IL_LL_JUMP_MTORR）",
     "loadlockZEnabled": true,
     "_loadlockZEnabled": "SLK Z 軸啟用；之後取消 Z 軸（改用 PM Wafer lift）時設 false",
     "loadlockStaleMs": 500,
     "armSafePosSteps": 5894
   },
   "gauges": {
-    "chamberConvectron": { "slot": 3, "aiIndex": 3, "formula": "TODO 依型號手冊", "unit": "Torr" },
-    "chamberIonGauge":   { "slot": 3, "aiIndex": 2, "formula": "log", "a": 1.0, "b": -10.0, "unit": "Torr",
-                           "_note": "範例：P = 10^((V - b)/a)，TODO 依型號手冊" },
-    "chamberManometer":  { "slot": 1, "formula": "linear", "fullScaleTorr": 1.0, "fullScaleMv": 10000,
-                           "_note": "主控板互鎖也用同一組換算（firmware/main_board/app/main_app.c PM_MANO_*），改這裡要一起改" }
+    "_models": "型號選單（Ald.Core.GaugeModel，公式見 docs/gauges.md）：None、Linear（電容式 0–10 V，需 fullScaleTorr）、ApgxH、Wrg200X（標準 2–10 V）、Wrg200G、Wrg200Q",
+    "pmInterlockGauge": "chamberManometer",
+    "_pmInterlockGauge": "主控板互鎖（開 SV、PM 壓力）用哪一顆；啟動時寫進主控板 HR PM_GAUGE_MODEL / PM_GAUGE_AI_ADDR / PM_GAUGE_FS_MTORR",
+    "chamberManometer": {
+      "model": "Linear",
+      "fullScaleTorr": 1.0,
+      "slot": 1,
+      "register": "MANOMETER_RAW",
+      "_note": "Edwards Barocel 7000 系列；滿刻度 TODO 依實際訂購型號（1000/100/10/1/0.1 Torr）"
+    },
+    "chamberConvectron": {
+      "model": "ApgxH",
+      "slot": 3,
+      "aiIndex": 3
+    },
+    "chamberIonGauge": {
+      "model": "Wrg200X",
+      "slot": 3,
+      "aiIndex": 2,
+      "_note": "WRG200 依料號最後的 Output 碼選：0 = Wrg200X（標準 2–10 V）、2 = Wrg200G、4 = Wrg200Q。例 D3G0021100（NW25、RJ45）= Wrg200X"
+    },
+    "forelineConvectron": {
+      "model": "ApgxH",
+      "slot": 3,
+      "aiIndex": 4
+    }
   },
-  "dataLog": { "path": "data/ald.db", "intervalMs": 1000, "keepDays": 90 }
+  "dataLog": {
+    "path": "data/ald.db",
+    "intervalMs": 1000,
+    "keepDays": 90
+  }
 }

@@ -15,7 +15,7 @@ public sealed record MachineSnapshot
     public bool TurboAtSpeed { get; init; }
     public bool TurboGateClosed { get; init; }
     public bool ChamberVenting { get; init; }
-    public double ChamberPressureTorr { get; init; } = double.NaN;   // 由 config 公式換算
+    public double ChamberPressureTorr { get; init; } = double.NaN;   // 主控板 IR PM_PRES_MTORR（依壓力計型號換算），NaN = 未知
 
     // 槽 1 製程板
     public bool Rf1PowerCableOk { get; init; }
@@ -43,7 +43,9 @@ public sealed record MachineSnapshot
     public bool ArmMoving { get; init; }
     public int ArmPosSteps { get; init; }
     public int ArmSafePosSteps { get; init; } = 5894; // 160 mm × 36.84 step/mm
-    public double LoadlockPressureTorr { get; init; } = double.NaN;   // 負值 = 低於量測下限（SLK 1 Torr）= 未知
+    public double LoadlockPressureTorr { get; init; } = double.NaN;   // NaN = 未知（低於下限時也是 NaN，看 UnderRange）
+    public bool LoadlockPressureUnderRange { get; init; }   // SLK 讀「低於量測下限 1 Torr」
+    public bool LoadlockPressureSuspect { get; init; }      // 主控板判斷疑似壓力計斷線（LL_FLAGS.PRES_SUSPECT）
     public bool LoadlockLidOpen { get; init; }
     public bool LoadlockRoughOpen { get; init; }
     public bool LoadlockVentOpen { get; init; }

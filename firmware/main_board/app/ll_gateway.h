@@ -26,6 +26,10 @@ typedef struct {
     uint16_t    pending_cmd;     /* 已送出、等待完成事件的命令 */
     uint32_t    pending_ms;
     uint32_t    last_poll_ms;
+    /* LL 壓力計防呆：SLK 4~20 mA 斷線也可能讀成「低於下限」，看不出差別，所以用前後讀值判斷 */
+    bool        pres_seen_valid;  /* 開機後看過有效讀值（≥ 1 Torr） */
+    int32_t     pres_last_valid;
+    bool        pres_suspect;
 } ll_gateway_t;
 
 void        ll_gateway_init(ll_gateway_t *g);
