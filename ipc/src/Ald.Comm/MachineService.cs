@@ -34,6 +34,7 @@ public sealed class MachineService : IMachine, IDisposable
     public MachineService(MachineConfig cfg)
     {
         _cfg = cfg;
+        AlarmManager.ExpectedMapVersion = RegisterMap.MapVersion;
         Interlocks.Settings = cfg.ToInterlockSettings();
         var slots = cfg.Slots.Select(s => new SlotImage
         {
@@ -120,6 +121,9 @@ public sealed class MachineService : IMachine, IDisposable
         ushort[]? Ir(int slot) => imgs.TryGetValue(slot, out var s) && s.Online ? s.Input : null;
         bool pending = Loadlock.LastResult == MainBoard.Input.LlCmdResultValues.Sent;
         var snap = SnapshotBuilder.Build(link.Connected, Ir, _cfg, pending);
+        // 主控板回應了但不算在線：多半是暫存器表版本不同（例如舊版 ald-ecat 還開著）→ 告訴人員實際看到的版本
+        if (link.Connected && !snap.SlotOnline[0] && imgs.TryGetValue(0, out var m0) && m0.Input.Length > 2)
+            snap = snap with { MapVersionSeen = m0.Input[2] };
         _snap = snap;
         foreach (var c in Alarms.Update(snap)) AlarmChanged?.Invoke(c);
         Updated?.Invoke(snap);
@@ -233,6 +237,22 @@ public sealed class MachineService : IMachine, IDisposable
         _link.Write(ProcessBoard.Holding.AldCycles, (ushort)r.Cycles, (ushort)r.Steps.Count);
         _link.Write(ProcessBoard.Holding.AldStepValves, r.Steps.Select(s => s.ValveMask).ToArray());
         _link.Write(ProcessBoard.Holding.AldStepMs, r.Steps.Select(s => (ushort)s.DurationMs).ToArray());
+
+        // 每步切換 MFC：每步 4 bit 組號（0 = 不變），4 組 × 8 通道 %FS（65535 = 該通道不變）
+        var idx = r.MfcPresetIndex();
+        var set = new ushort[ProcessBoard.Holding.AldStepMfcSetCount];
+        for (int i = 0; i < idx.Length; i++) set[i / 4] |= (ushort)(idx[i] << (i % 4 * 4));
+        var presets = r.MfcPresets();
+        var raw = Enumerable.Repeat((ushort)0xFFFF, ProcessBoard.Holding.AldMfcPresetCount).ToArray();
+        for (int p = 0; p < presets.Count; p++)
+            for (int c = 0; c < 8; c++)
+                if (presets[p][c] is { } v)
+                {
+                    double fs = _cfg.Mfc.Channels[c].FullScale;
+                    raw[p * 8 + c] = Scaling.ToRaw(fs > 0 ? v / fs * 100.0 : 0, ProcessBoard.Holding.AldMfcPresetScale, 0, 100);
+                }
+        _link.Write(ProcessBoard.Holding.AldStepMfcSet, set);
+        _link.Write(ProcessBoard.Holding.AldMfcPreset, raw);
     }
 
     public void StartAld()

@@ -1,0 +1,42 @@
+{
+  "_comment": "模擬器用：兩段疊層（A ×10 → B ×5），第 2 段 Purge 時 MFC2 切到 100 sccm、脈衝前切回 20。正式機請勿直接使用。",
+  "name": "模擬疊層測試",
+  "description": "兩段 ALD + 每步切換 MFC 的示範",
+  "pumpDown": true,
+  "crossoverTorr": 0.5,
+  "baseTorr": 0.005,
+  "pumpTimeoutS": 120,
+  "turboSpinUpTimeoutS": 60,
+  "heaterSpDegC": [ 0, 0, 0, 0, 0, 0, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0 ],
+  "heatToleranceC": 5,
+  "heatSettleS": 2,
+  "heatTimeoutS": 120,
+  "mfc": [ 0, 20, 0, 0, 0, 0, 0, 0 ],
+  "gasStabilizeS": 1,
+  "segments": [
+    {
+      "name": "膜 A",
+      "cycles": 10,
+      "steps": [
+        { "label": "A pulse", "valveMask": 1, "durationMs": 20 },
+        { "label": "Purge",   "valveMask": 2, "durationMs": 100 },
+        { "label": "B pulse", "valveMask": 4, "durationMs": 20 },
+        { "label": "Purge",   "valveMask": 2, "durationMs": 100 }
+      ]
+    },
+    {
+      "name": "膜 B",
+      "cycles": 5,
+      "steps": [
+        { "label": "C pulse", "valveMask": 8, "durationMs": 20 },
+        { "label": "Purge",   "valveMask": 2, "durationMs": 1000, "mfc": [ null, 100, null, null, null, null, null, null ] },
+        { "label": "B pulse", "valveMask": 4, "durationMs": 20,   "mfc": [ null, 20, null, null, null, null, null, null ] },
+        { "label": "Purge",   "valveMask": 2, "durationMs": 300 }
+      ]
+    }
+  ],
+  "ventAfter": true,
+  "ventTargetTorr": 740,
+  "ventTimeoutS": 120,
+  "turboSpinDownTimeoutS": 120
+}

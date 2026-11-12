@@ -1,4 +1,4 @@
-# 暫存器表（map_version 2）
+# 暫存器表（map_version 3）
 
 > 自動產生，請勿手改。來源：shared/modbus/registers.yaml
 
@@ -7,7 +7,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | 槽 | 板 | 板型 | IR 範圍 | HR 範圍 |
 | --- | --- | --- | --- | --- |
 | 0 | main | MAIN | 0–126 | 0–168 |
-| 1 | process | PROCESS | 200–250 | 200–345 |
+| 1 | process | PROCESS | 200–250 | 200–391 |
 | 2 | heater | HEATER | 400–465 | 400–555 |
 | 3 | vacuum | VACUUM | 600–637 | 600–610 |
 | 4 | motion | MOTION | 800–841 | 800–841 |
@@ -132,6 +132,8 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 302 | 102 | PURGE_VALVES | u16 | 1 |  |  |  | 安全狀態下保持開啟的 ALD 閥（bit0 = ALD_V1 … bit6 = ALD_V7），例如 N2 purge。TODO 依管路 |
 | HR 310–325 | 110–125 | ALD_STEP_VALVES | u16 | 16 |  |  |  | 每步要開的 ALD 閥位元（bit0 = ALD_V1 … bit6 = ALD_V7） |
 | HR 330–345 | 130–145 | ALD_STEP_MS | u16 | 16 |  | ms | 1–60000 |  |
+| HR 350–353 | 150–153 | ALD_STEP_MFC_SET | u16 | 4 |  |  |  | 每步開始時切換 MFC（2026-11-12）：每步 4 bit，第 i 步在 150 + i/4 的 bit (i%4)×4 起；0 = 不變，1–4 = 套用 ALD_MFC_PRESET 第 n 組。切換後一直維持到 STOP / 下次 START / 安全狀態。用 4 bit 打包是因為 EtherCAT RxPDO 單一 PDO 最多 254 個 entry |
+| HR 360–391 | 160–191 | ALD_MFC_PRESET | u16 | 32 | 0.01 | %FS |  | MFC 切換組：4 組 × 8 通道（槽位只到 199），第 n 組通道 c 在 160 + (n-1)×8 + c；65535 = 該通道不變 |
 
 ## 槽 2：heater
 

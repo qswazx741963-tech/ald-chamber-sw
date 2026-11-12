@@ -19,10 +19,20 @@ public static class RecipeFile
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,   // 中文直接存，不轉 \uXXXX
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>讀配方；舊格式（單一 "ald"）自動轉成一段 "segments"。</summary>
     public static ProcessRecipe Parse(string json)
-        => JsonSerializer.Deserialize<ProcessRecipe>(json, Opt) ?? throw new FormatException("配方檔是空的");
+    {
+        var r = JsonSerializer.Deserialize<ProcessRecipe>(json, Opt) ?? throw new FormatException("配方檔是空的");
+        if (r.Segments.Count == 0 && r.Ald is { } a)
+        {
+            if (string.IsNullOrWhiteSpace(a.Name)) a.Name = r.Name;
+            r = r with { Segments = [a], Ald = null };
+        }
+        return r;
+    }
 
     public static string ToJson(ProcessRecipe r) => JsonSerializer.Serialize(r, Opt);
 
@@ -98,4 +108,43 @@ public static class AldStepText
         }
         return mask;
     }
+}
+
+/// <summary>配方的文字摘要（履歷頁、確認視窗用）。</summary>
+public static class RecipeText
+{
+    public static string Describe(ProcessRecipe r, IReadOnlyList<string>? valveNames = null)
+    {
+        var sb = new System.Text.StringBuilder();
+        var heat = r.HeaterSpDegC.Select((t, ch) => (t, ch)).Where(v => v.t > 0).Select(v => $"#{v.ch + 1} {v.t:0} °C");
+        var gas = r.Mfc.Select((v, ch) => (v, ch)).Where(v => v.v > 0).Select(v => $"MFC{v.ch + 1} {v.v:0.#}");
+        sb.AppendLine($"配方 {r.Name}{(r.Revision > 0 ? $"（版次 {r.Revision}）" : "")}");
+        sb.AppendLine($"抽真空 {(r.PumpDown ? "是" : "否")}  結束回填 {(r.VentAfter ? "是" : "否")}");
+        sb.AppendLine($"溫度 {(heat.Any() ? string.Join("、", heat) : "不檢查")}");
+        sb.AppendLine($"起始氣體 {(gas.Any() ? string.Join("、", gas) : "無")}");
+        var segs = r.AldSegments;
+        if (segs.Count == 0) sb.AppendLine("無 ALD");
+        for (int i = 0; i < segs.Count; i++)
+        {
+            var g = segs[i];
+            sb.AppendLine($"ALD 第 {i + 1} 段 {g.Name}：{g.Cycles} cycles{(g.O3SetPct > 0 ? $"，O3 {g.O3SetPct:0.#} %" : "")}");
+            foreach (var s in g.Steps) sb.AppendLine("  " + Step(s, valveNames));
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    public static string Step(AldStep s, IReadOnlyList<string>? valveNames = null)
+    {
+        string v = s.ValveMask == 0 ? "閥全關"
+            : string.Join("+", Enumerable.Range(0, 7).Where(b => (s.ValveMask >> b & 1) != 0).Select(b => valveNames is null ? $"V{b + 1}" : ValveNames.Label(valveNames, b)));
+        var extra = new List<string>();
+        if (s.HasMfcChange) extra.Add("MFC " + Mfc(s.Mfc!));
+        if (s.Rf1W > 0) extra.Add($"RF1 {s.Rf1W:0} W");
+        if (s.Rf2W > 0) extra.Add($"RF2 {s.Rf2W:0} W");
+        return $"{s.Label}, {v}, {s.DurationMs} ms" + (extra.Count > 0 ? "（" + string.Join("，", extra) + "）" : "");
+    }
+
+    /// <summary>MFC 切換摘要，例如 "2→150、5→0"。</summary>
+    public static string Mfc(double?[] m)
+        => string.Join("、", m.Select((v, c) => (v, c)).Where(x => x.v is not null).Select(x => $"MFC{x.c + 1}→{x.v:0.#}"));
 }

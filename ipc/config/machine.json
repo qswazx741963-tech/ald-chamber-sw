@@ -240,6 +240,14 @@
     "limitMtorrPerMin": 1.0,
     "abortAboveTorr": 1e-2
   },
+  "process": {
+    "_comment": "製程硬體（2026-11-12）。aldValveNames = V1~V7 接的管路名稱（配方頁顯示用，待管路確認後填）。RF / O3 硬體確認前 rfReady / o3Ready 維持 false：含 RF / O3 的配方可以編輯，但不能執行",
+    "aldValveNames": [ "", "", "", "", "", "", "" ],
+    "rf1MaxW": 600,
+    "rf2MaxW": 300,
+    "rfReady": false,
+    "o3Ready": false
+  },
   "hmi": {
     "_defaultAdminPasswordHash": "帳號資料庫是空的（第一次開機）時建立 admin 帳號用的出廠密碼，只存雜湊不存明碼。換密碼：AldChamber --hash-password 新密碼，把輸出貼到這裡。已建立的帳號請在「使用者」頁改。",
     "defaultAdminPasswordHash": "pbkdf2-sha256$100000$vRbIMHBnZj5hC9f3I7CnTQ==$ot7KNS5i82EhHIJwoGVaGuefWUEcvxGMlOJgoAtJ5do=",

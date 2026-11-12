@@ -184,7 +184,7 @@ public sealed class DataTests : IDisposable
         Assert.Equal(RunLog.Interrupted, all[0].Result);
         Assert.Equal("W01", all[2].WaferId);
         Assert.Equal(TimeSpan.FromMinutes(12), all[2].Duration);
-        Assert.Equal(100, RecipeFile.Parse(all[2].RecipeJson).Ald!.Cycles);              // 配方整份留存
+        Assert.Equal(100, RecipeFile.Parse(all[2].RecipeJson).Segments[0].Cycles);              // 配方整份留存
 
         Assert.Equal(2, log2.Query(t0, t0.AddHours(2), keyword: "b20261111").Count);
         Assert.Single(log2.Query(t0, t0.AddHours(2), keyword: "cycle 40"));

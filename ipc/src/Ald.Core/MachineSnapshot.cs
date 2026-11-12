@@ -8,6 +8,8 @@ public sealed record MachineSnapshot
     // 連線：index = 槽號（0 主控板、1 製程、2 加熱、3 真空、4 馬達）
     public bool Connected { get; init; }              // IPC ↔ ald-ecat ↔ 主控板（EtherCAT OP）
     public bool[] SlotOnline { get; init; } = new bool[5];
+    /// <summary>主控板不在線時，從它讀到的 MAP_VERSION（0 = 沒讀到）。跟 IPC 的不同 = 兩邊程式版本不一致。</summary>
+    public int MapVersionSeen { get; init; }
     /// <summary>各槽 IR STATUS 位元（READY、RUNNING、SAFE_STATE、WATCHDOG_TRIPPED、PARAM_REJECTED、LOCAL_INTERLOCK、ONLINE）。</summary>
     public ushort[] SlotStatus { get; init; } = new ushort[5];
     public bool SafeState { get; init; }
