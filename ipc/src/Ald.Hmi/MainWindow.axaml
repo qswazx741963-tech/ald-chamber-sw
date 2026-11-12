@@ -178,19 +178,7 @@
                         <!-- 加熱 / MFC -->
                         <StackPanel Grid.Column="1" Spacing="4" Margin="4">
                             <TextBlock Text="加熱" FontSize="18" FontWeight="Bold" />
-                            <ComboBox x:Name="CmbHeater" HorizontalAlignment="Stretch" />
-                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" >
-                                <TextBlock Grid.Row="0" Text="設定 °C" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="NumHeatSp" Minimum="0" Maximum="650" Increment="5" FormatString="0.0" />
-                                <TextBlock Grid.Row="1" Text="升溫 °C/min" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="NumHeatRamp" Value="0" Minimum="0" Maximum="100" Increment="1" FormatString="0.0" ToolTip.Tip="0 = 不限速" />
-                            </Grid>
-                            <WrapPanel>
-                                <Button x:Name="BtnHeatOn" Content="開啟 / 套用" Margin="0,0,6,6" />
-                                <Button x:Name="BtnHeatOff" Content="關閉此組" Margin="0,0,6,6" />
-                                <Button x:Name="BtnHeatAllOff" Content="全部關閉" Margin="0,0,6,6" />
-                            </WrapPanel>
-                            <TextBlock x:Name="TxtHeatInfo" FontFamily="monospace" />
+                            <Button x:Name="BtnGoHeat" Content="加熱設定已移到「加熱」頁 →" />
                             <TextBlock Text="MFC" FontSize="18" FontWeight="Bold" Margin="0,12,0,0" />
                             <ComboBox x:Name="CmbMfc" HorizontalAlignment="Stretch" />
                             <Grid ColumnDefinitions="Auto,*">
@@ -234,6 +222,19 @@
                             </WrapPanel>
                         </StackPanel>
                     </Grid>
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="加熱">
+                <!-- 2026-11-12：16 組加熱各一個小框，直接設定（不用下拉選單）。常駐設定：設好就不動，配方只檢查溫度 -->
+                <DockPanel Margin="8">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="0,0,0,6">
+                        <TextBlock Text="升溫速率 °C/min" VerticalAlignment="Center" />
+                        <NumericUpDown x:Name="NumHeatRampAll" Value="0" Minimum="0" Maximum="50" Increment="1" FormatString="0.0" Width="120" ToolTip.Tip="按「套用」時一起送出；0 = 不限速" />
+                        <Button x:Name="BtnHeatAllOff2" Content="全部關閉" Background="#B03030" Foreground="White" />
+                        <TextBlock Text="常駐設定：設好就一直維持，配方只檢查溫度、不會改。斷電重開後要人員按「恢復」才會再加熱。" VerticalAlignment="Center" Foreground="#5A6B7D" FontSize="12" />
+                    </StackPanel>
+                    <TextBlock DockPanel.Dock="Top" x:Name="TxtHeatLock" Foreground="#B03030" FontWeight="Bold" Margin="4,0,0,6" />
+                    <UniformGrid x:Name="GrdHeaters" Columns="4" />
                 </DockPanel>
             </TabItem>
             <TabItem Header="傳片">

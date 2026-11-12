@@ -2,6 +2,7 @@ using System.Globalization;
 using Ald.Core;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
 
 namespace Ald.Hmi;
@@ -20,6 +21,8 @@ public sealed record OverviewModel(
 /// 自己畫（DrawingContext），依設計座標 760×600 等比縮放置中，視窗變大跟著放大。
 /// 顏色：閥開 綠 / 關 灰 / 動作中 橘 / 互鎖擋下 紅框；泵 運轉 綠 / 停 灰 / 警報 紅；
 /// 晶圓 無片 白 / 有片 藍 / 製程中 綠 / 不明 橘。
+/// 圖示可以點（2026-11-12 使用者要求）：滑鼠移上去出現藍框、游標變手指，點下去發 ItemClicked(代號)，
+/// 由 MainWindow 跳出小視窗直接操作（不用切到手動頁）。代號見 <see cref="Hits"/>。
 /// </summary>
 public sealed class OverviewView : Control
 {
@@ -27,6 +30,78 @@ public sealed class OverviewView : Control
     private OverviewModel? _m;
 
     public void Update(OverviewModel m) { _m = m; InvalidateVisual(); }
+
+    /// <summary>點到圖示：代號（V0~V6、M0~M7、Vac:{VacuumOutputs}、SV、LlRough、LlVent、LL、PM）。</summary>
+    public event Action<string>? ItemClicked;
+
+    /// <summary>可點的區域（設計座標）。小的放前面，先比對到小的。</summary>
+    public static readonly (string Id, Rect R)[] Hits = BuildHits();
+    private static (string, Rect)[] BuildHits()
+    {
+        var l = new List<(string, Rect)>();
+        static Rect Sq(double x, double y, double r) => new(x - r, y - r, 2 * r, 2 * r);
+        for (int i = 0; i < 7; i++) l.Add(($"V{i}", new Rect(530 - 120 + i * 40 - 16, 64, 32, 32)));
+        for (int i = 0; i < 8; i++) l.Add(($"M{i}", new Rect(530 - 135 + i * 38 - 18, 6, 36, 42)));
+        l.Add(($"Vac:{VacuumOutputs.ChamberVent}", Sq(670, 130, 16)));
+        l.Add(($"Vac:{VacuumOutputs.TurboGv}", Sq(530, 410, 22)));
+        l.Add(($"Vac:{VacuumOutputs.TurboOn}", Sq(530, 465, 26)));
+        l.Add(($"Vac:{VacuumOutputs.TurboRough}", Sq(530, 520, 16)));
+        l.Add(($"Vac:{VacuumOutputs.ChamberRough}", Sq(410, 505, 16)));
+        l.Add(($"Vac:{VacuumOutputs.DryPumpOn}", Sq(220, 555, 26)));
+        l.Add(("SV", new Rect(356, 214, 34, 112)));
+        l.Add(("LlRough", Sq(120, 370, 16)));
+        l.Add(("LlVent", Sq(190, 370, 16)));
+        l.Add(("PM", Sq(530, 270, 84)));
+        l.Add(("LL", new Rect(60, 190, 290, 160)));
+        return l.ToArray();
+    }
+
+    private string? _hover;
+
+    public OverviewView() { ClipToBounds = true; }
+
+    /// <summary>畫面座標 → 設計座標（跟 Render 用同一個縮放）。</summary>
+    private Point ToDesign(Point p)
+    {
+        var b = Bounds;
+        double k = Math.Min(b.Width / W, b.Height / H);
+        if (k <= 0) return new Point(-1, -1);
+        return new Point((p.X - (b.Width - W * k) / 2) / k, (p.Y - (b.Height - H * k) / 2) / k);
+    }
+
+    private string? HitAt(Point screen)
+    {
+        if (_m is null) return null;
+        var d = ToDesign(screen);
+        foreach (var (id, r) in Hits) if (r.Contains(d)) return id;
+        return null;
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        var h = HitAt(e.GetPosition(this));
+        if (h == _hover) return;
+        _hover = h;
+        Cursor = h is null ? Cursor.Default : new Cursor(StandardCursorType.Hand);
+        InvalidateVisual();
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        if (_hover is null) return;
+        _hover = null; Cursor = Cursor.Default; InvalidateVisual();
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        if (HitAt(e.GetPosition(this)) is { } id) { e.Handled = true; ItemClicked?.Invoke(id); }
+    }
+
+    private static readonly Pen HoverPen = new(new SolidColorBrush(Color.Parse("#2F8FE8")), 2.5, dashStyle: new DashStyle(new double[] { 3, 2 }, 0));
 
     private static readonly IBrush Bg = new SolidColorBrush(Color.Parse("#E4EAF1"));
     private static readonly IBrush Body = new SolidColorBrush(Color.Parse("#F7F9FB"));
@@ -54,7 +129,11 @@ public sealed class OverviewView : Control
         double k = Math.Min(b.Width / W, b.Height / H);
         var origin = new Point((b.Width - W * k) / 2, (b.Height - H * k) / 2);
         using (ctx.PushTransform(Matrix.CreateScale(k, k) * Matrix.CreateTranslation(origin.X, origin.Y)))
+        {
             Draw(ctx, _m);
+            if (_hover is not null && Hits.FirstOrDefault(h => h.Id == _hover) is { Id: not null } hit)
+                ctx.DrawRectangle(null, HoverPen, hit.R.Inflate(2), 5, 5);
+        }
     }
 
     private static void Draw(DrawingContext g, OverviewModel m)

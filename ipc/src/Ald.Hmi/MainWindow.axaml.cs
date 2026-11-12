@@ -40,6 +40,8 @@ public partial class MainWindow : Window
         WireTrend();
         WireTransfer();
         WireManual();
+        WireOverviewClick();
+        WireHeaterPage();
         WireRecipe();
         WireMaint();
         WireTower();
@@ -149,6 +151,7 @@ public partial class MainWindow : Window
         if (_m is null) { C<TextBlock>("TxtState").Text = "未設定主控板"; return; }
         var s = _m.Snapshot;
         RenderOverview(s);
+        _ovRefresh?.Invoke(s);
 
         C<ListBox>("LstActive").ItemsSource = _m.Alarms.Active.OrderByDescending(a => a.Info.Level)
             .Select(a => $"{(a.Acked ? "  " : "● ")}[{a.Info.Level}] {a.Since:HH:mm:ss} {a.Info.Source}：{a.Info.Message}{(a.Acked ? "" : "（未確認）")}")
@@ -165,6 +168,7 @@ public partial class MainWindow : Window
         RenderMaint(s);
         RenderBatch();
         RenderHeater(s);
+        RenderHeaterPage(s);
         RenderMode();
         RenderHistory();
         RenderTower(s);
