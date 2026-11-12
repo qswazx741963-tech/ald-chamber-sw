@@ -54,6 +54,12 @@ public static class RecipeHistory
         {
             if (k is "revision" or "modifiedBy" or "modifiedAt") continue;
             fa.TryGetValue(k, out var va); fb.TryGetValue(k, out var vb);
+            if (k.Contains("].mfc[") ) { va ??= "沿用"; vb ??= "沿用"; }
+            if (k.EndsWith("valveMask"))
+            {
+                static string V(string? x) => x is null ? "（無）" : int.TryParse(x, out var m) ? (m == 0 ? "全關" : string.Join("+", Enumerable.Range(0, 7).Where(b => (m >> b & 1) != 0).Select(b => $"V{b + 1}"))) : x;
+                va = va is null ? null : V(va); vb = vb is null ? null : V(vb);
+            }
             if (va != vb) list.Add($"{Label(k)}：{va ?? "（無）"} → {vb ?? "（無）"}");
         }
         return list;
@@ -68,7 +74,7 @@ public static class RecipeHistory
             {
                 case JsonObject o: foreach (var (k, v) in o) Walk(v, path.Length == 0 ? k : $"{path}.{k}"); break;
                 case JsonArray a: for (int i = 0; i < a.Count; i++) Walk(a[i], $"{path}[{i}]"); break;
-                case null: d[path] = "空白"; break;
+                case null: d[path] = path.Contains("mfc[", StringComparison.OrdinalIgnoreCase) ? "沿用" : "空白"; break;
                 default: d[path] = n.ToJsonString(); break;
             }
         }

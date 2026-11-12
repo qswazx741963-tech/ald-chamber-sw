@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Ald.Core;
 
 /// <summary>
@@ -37,9 +39,13 @@ public sealed class AldRecipe
         if (O3SetPct is < 0 or > 100) yield return "O3 設定需在 0–100 %";
     }
 
+    [JsonIgnore]
     public double CycleSeconds => Steps.Sum(s => s.DurationMs) / 1000.0;
+    [JsonIgnore]
     public double TotalSeconds => CycleSeconds * Cycles;
+    [JsonIgnore]
     public bool UsesRf => Steps.Any(s => s.Rf1W > 0 || s.Rf2W > 0);
+    [JsonIgnore]
     public bool UsesMfcSwitch => Steps.Any(s => s.HasMfcChange);
 
     /// <summary>不重複的 MFC 切換設定（依出現順序）。製程板第 n 組 = 這個清單第 n 個。</summary>
@@ -78,6 +84,7 @@ public sealed record AldStep(string Label, ushort ValveMask, int DurationMs)
     public double Rf1W { get; init; }
     public double Rf2W { get; init; }
 
+    [JsonIgnore]
     public bool HasMfcChange => Mfc is { } m && m.Any(v => v is not null);
 
     public bool Equals(AldStep? o) => o is not null && Label == o.Label && ValveMask == o.ValveMask && DurationMs == o.DurationMs

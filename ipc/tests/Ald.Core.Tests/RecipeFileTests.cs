@@ -63,6 +63,8 @@ public class RecipeFileTests
             Assert.Equal(50, b.Segments[1].Steps[0].Mfc![1]);
             Assert.Null(b.Segments[1].Steps[0].Mfc![0]);
             Assert.DoesNotContain("\"ald\"", File.ReadAllText(path));   // 不再寫舊欄位
+            Assert.DoesNotContain("totalSeconds", File.ReadAllText(path)); // 計算值不存檔
+            Assert.DoesNotContain("hasMfcChange", File.ReadAllText(path));
             Assert.False(File.Exists(path + ".tmp"));
         }
         finally { File.Delete(path); }
@@ -165,6 +167,14 @@ public class RecipeFileTests
             Assert.Contains("第 1 段 Cycles：5 → 8", log);
             Assert.Contains("第 1 段 第 1 步 時間 ms：20 → 25", log);
             Assert.Contains("新建", log);
+            Assert.DoesNotContain("Seconds", log);
+
+            var r3 = s2 with { Segments = [new AldRecipe { Name = "A", Cycles = 8, Steps = { new("A", 5, 25) { Mfc = [null, 30, null, null, null, null, null, null] } } }] };
+            RecipeHistory.Save(path, r3, "eng2");
+            log = RecipeHistory.ReadLog(path);
+            Assert.Contains("第 1 段 第 1 步 閥：V1 → V1+V3", log);
+            Assert.Contains("第 1 段 第 1 步 MFC2：沿用 → 30", log);
+            Assert.DoesNotContain("MFC1：", log);                                     // 沿用 → 沿用 不列
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }

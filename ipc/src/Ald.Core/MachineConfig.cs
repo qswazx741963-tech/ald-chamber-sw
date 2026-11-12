@@ -208,8 +208,10 @@ public sealed record LeakTestConfig
 /// <summary>製程硬體：ALD 閥管路名稱、RF、O3（2026-11-12）。</summary>
 public sealed record ProcessHwConfig
 {
-    /// <summary>V1~V7 接的管路（配方編輯頁顯示用，例如 "TMA"、"N2 Purge"、"O3"）。</summary>
+    /// <summary>V1~V7 接的管路預設名稱（配方編輯頁顯示用，例如 "TMA"、"N2 Purge"、"O3"）。人機改過就以 ValveNamesPath 的檔案為準。</summary>
     public List<string> AldValveNames { get; init; } = ["", "", "", "", "", "", ""];
+    /// <summary>人機「閥管路名稱」存檔位置。</summary>
+    public string ValveNamesPath { get; init; } = "data/ald-valves.json";
     /// <summary>RF 功率上限（W），0 = 沒有這台。預計鎧泰 600 W / 300 W。</summary>
     public double Rf1MaxW { get; init; } = 600;
     public double Rf2MaxW { get; init; } = 300;
@@ -218,7 +220,35 @@ public sealed record ProcessHwConfig
     /// <summary>O3 產生器控制已接上。硬體確認前為 false。</summary>
     public bool O3Ready { get; init; }
 
-    public string ValveLabel(int v) => v < AldValveNames.Count && AldValveNames[v].Trim().Length > 0 ? $"V{v + 1} {AldValveNames[v].Trim()}" : $"V{v + 1}";
+    public string ValveLabel(int v) => ValveNames.Label(AldValveNames, v);
+}
+
+/// <summary>ALD 閥 V1~V7 的管路名稱（人機可改，存成 JSON 字串陣列）。</summary>
+public static class ValveNames
+{
+    public static string Label(IReadOnlyList<string> names, int v)
+        => v < names.Count && names[v].Trim().Length > 0 ? $"V{v + 1} {names[v].Trim()}" : $"V{v + 1}";
+
+    /// <summary>讀檔；沒有檔案或格式錯誤就用 config 的預設。</summary>
+    public static string[] Load(string path, IReadOnlyList<string> fallback)
+    {
+        try
+        {
+            if (File.Exists(path) && JsonSerializer.Deserialize<string[]>(File.ReadAllText(path)) is { Length: 7 } a)
+                return a.Select(x => x ?? "").ToArray();
+        }
+        catch (Exception) { /* 用預設 */ }
+        return Enumerable.Range(0, 7).Select(i => i < fallback.Count ? fallback[i] : "").ToArray();
+    }
+
+    public static void Save(string path, IReadOnlyList<string> names)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(names.Select(x => x.Trim()).ToArray(),
+            new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+        File.Move(path + ".tmp", path, overwrite: true);
+    }
 }
 
 /// <summary>人機設定。</summary>
