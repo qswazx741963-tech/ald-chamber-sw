@@ -196,7 +196,7 @@ public partial class MainWindow
     // ------------------------------------------------------------ 檔案
     private void OpenRecipe(string path)
     {
-        try { _recipe = RecipeFile.Load(path); _recipePath = path; FillForm(_recipe); Msg(""); }
+        try { _recipe = RecipeFile.Load(path); _recipePath = path; FillForm(_recipe); SelectFileQuiet(path); Msg(""); }
         catch (Exception e) { Msg(e.Message); SelectFileQuiet(_recipePath); }
     }
 
