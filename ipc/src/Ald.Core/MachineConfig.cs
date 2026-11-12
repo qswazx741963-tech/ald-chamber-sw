@@ -22,6 +22,7 @@ public sealed record MachineConfig
     public TransferConfig Transfer { get; init; } = new();
     public LeakTestConfig LeakTest { get; init; } = new();
     public TowerConfig Tower { get; init; } = new();
+    public ProcessHwConfig Process { get; init; } = new();
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -63,6 +64,8 @@ public sealed record MachineConfig
         if (!(LeakTest.StartBelowTorr > 0) || !(LeakTest.AbortAboveTorr > LeakTest.StartBelowTorr))
             yield return "leakTest 壓力設定錯誤（需 abortAboveTorr > startBelowTorr > 0）";
         if (LeakTest.MeasureS is < 10 or > 7200) yield return "leakTest.measureS 需在 10–7200";
+        if (Process.AldValveNames.Count != 7) yield return "process.aldValveNames 需 7 個（V1~V7）";
+        if (Process.Rf1MaxW < 0 || Process.Rf2MaxW < 0) yield return "process.rf1MaxW / rf2MaxW 不能是負數";
         if (Gauges.Find(Gauges.PmInterlockGauge) is null) yield return $"gauges.pmInterlockGauge 指到不存在的壓力計 {Gauges.PmInterlockGauge}";
     }
 
@@ -200,6 +203,22 @@ public sealed record LeakTestConfig
     public double LimitMtorrPerMin { get; init; } = 1.0;
     /// <summary>量測中壓力超過這個值就提前結束、判定大漏。</summary>
     public double AbortAboveTorr { get; init; } = 1e-2;
+}
+
+/// <summary>製程硬體：ALD 閥管路名稱、RF、O3（2026-11-12）。</summary>
+public sealed record ProcessHwConfig
+{
+    /// <summary>V1~V7 接的管路（配方編輯頁顯示用，例如 "TMA"、"N2 Purge"、"O3"）。</summary>
+    public List<string> AldValveNames { get; init; } = ["", "", "", "", "", "", ""];
+    /// <summary>RF 功率上限（W），0 = 沒有這台。預計鎧泰 600 W / 300 W。</summary>
+    public double Rf1MaxW { get; init; } = 600;
+    public double Rf2MaxW { get; init; } = 300;
+    /// <summary>RF 逐步開關已接上（製程板 RF_ON 輸出 + 主控板 UART 設功率）。硬體確認前為 false：含 RF 的配方可以編輯，但不能執行。</summary>
+    public bool RfReady { get; init; }
+    /// <summary>O3 產生器控制已接上。硬體確認前為 false。</summary>
+    public bool O3Ready { get; init; }
+
+    public string ValveLabel(int v) => v < AldValveNames.Count && AldValveNames[v].Trim().Length > 0 ? $"V{v + 1} {AldValveNames[v].Trim()}" : $"V{v + 1}";
 }
 
 /// <summary>人機設定。</summary>

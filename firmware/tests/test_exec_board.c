@@ -92,6 +92,41 @@ static void test_exec_watchdog(void)
     CHECK(g_ir[COM_IR_STATUS] & (1u << COM_IR_STATUS_BIT_WATCHDOG_TRIPPED));
 }
 
+/* 每步切換 MFC：第 2 步套第 1 組（MFC1 → 30 %），第 4 步套第 2 組（MFC1 → 10 %、MFC2 不變）；
+ * 正常結束後覆寫保留，STOP 才回到 MFC_SP；預設組超過 100 % 或組號 > 4 拒絕 */
+static void test_ald_mfc_switch(void)
+{
+    uint16_t hr[200]; fill(hr, 2);
+    for (int i = 0; i < 32; i++) hr[PROC_HR_ALD_MFC_PRESET + i] = ALD_MFC_KEEP;
+    hr[PROC_HR_ALD_MFC_PRESET + 0] = 3000;                /* 組 1 通道 0 */
+    hr[PROC_HR_ALD_MFC_PRESET + 8] = 1000;                /* 組 2 通道 0 */
+    hr[PROC_HR_ALD_STEP_MFC_SET] = (1u << 4) | (2u << 12); /* 第 2 步 = 組 1、第 4 步 = 組 2 */
+    ald_seq_t s;
+    CHECK(ald_seq_start(&s, hr, 0));
+    CHECK_EQ(ald_seq_mfc_sp(&s, 0, 2000), 2000);          /* 第 1 步：沿用 MFC_SP */
+    ald_seq_tick(&s, 20);
+    CHECK_EQ(ald_seq_mfc_sp(&s, 0, 2000), 3000);          /* 第 2 步 */
+    CHECK_EQ(ald_seq_mfc_sp(&s, 1, 777), 777);            /* 沒設定的通道不變 */
+    CHECK(s.mfc_dirty);
+    ald_seq_tick(&s, 70);
+    CHECK_EQ(ald_seq_mfc_sp(&s, 0, 2000), 3000);          /* 第 3 步：維持 */
+    ald_seq_tick(&s, 90);
+    CHECK_EQ(ald_seq_mfc_sp(&s, 0, 2000), 1000);          /* 第 4 步 */
+    ald_seq_tick(&s, 140);
+    CHECK_EQ(ald_seq_mfc_sp(&s, 0, 2000), 1000);          /* 第 2 cycle 第 1 步：維持上一步 */
+    CHECK_EQ(ald_seq_tick(&s, 280), 0);                   /* 跑完 */
+    CHECK(!s.running);
+    CHECK_EQ(ald_seq_mfc_sp(&s, 0, 2000), 1000);          /* 正常結束：保留 */
+    ald_seq_stop(&s);
+    CHECK_EQ(ald_seq_mfc_sp(&s, 0, 2000), 2000);          /* STOP：回到 MFC_SP */
+
+    hr[PROC_HR_ALD_MFC_PRESET + 3] = 10001;               CHECK(!ald_seq_start(&s, hr, 0));
+    hr[PROC_HR_ALD_MFC_PRESET + 3] = ALD_MFC_KEEP;
+    hr[PROC_HR_ALD_STEP_MFC_SET] = 5u;                    CHECK(!ald_seq_start(&s, hr, 0));
+    hr[PROC_HR_ALD_STEP_MFC_SET + 3] = 0xF000u;           /* 第 16 步（沒用到）不檢查 */
+    hr[PROC_HR_ALD_STEP_MFC_SET] = 0;                     CHECK(ald_seq_start(&s, hr, 0));
+}
+
 /* 製程板：MFC ×8 用 % 滿刻度、ALD_V7、MFC_UP_V8、壓力計在 AI 8 */
 static void test_process_io(void)
 {
@@ -170,6 +205,7 @@ int main(void)
     RUN(test_ald_timing);
     RUN(test_ald_no_drift);
     RUN(test_ald_reject);
+    RUN(test_ald_mfc_switch);
     RUN(test_pid);
     RUN(test_exec_watchdog);
     RUN(test_exec_bad_slot);

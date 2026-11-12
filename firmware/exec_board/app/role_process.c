@@ -55,10 +55,21 @@ static void command(uint16_t cmd)
     }
 }
 
-/* 1 kHz 中斷：ALD 時序在這裡，不受主迴圈 / 背板延遲影響 */
+static void write_mfc_ao(uint16_t ch)
+{
+    uint32_t sp = ald_seq_mfc_sp(&s_seq, ch, g_hr[PROC_HR_MFC_SP + ch]);
+    if (sp > PROC_HR_MFC_SP_MAX_RAW) sp = 0;
+    hal_ao_write_mv(ch, (uint16_t)(sp * MFC_FS_MV / MFC_PCT_X100));
+}
+
+/* 1 kHz 中斷：ALD 時序在這裡，不受主迴圈 / 背板延遲影響；步驟表切換 MFC 也在這裡馬上寫 AO */
 static void tick_1ms(void)
 {
     if (s_seq.running) write_ald(ald_seq_tick(&s_seq, hal_millis()));
+    if (s_seq.mfc_dirty && !exec_in_safe()) {
+        s_seq.mfc_dirty = false;
+        for (uint16_t i = 0; i < N_MFC; i++) write_mfc_ao(i);
+    }
 }
 
 static void loop(uint32_t now)
@@ -75,9 +86,7 @@ static void loop(uint32_t now)
             bool up = (g_hr[PROC_HR_DO_CMD] >> (PROC_HR_DO_CMD_BIT_MFC_UP_V1 + i)) & 1u;
             hal_do_write(N_ALD + i, up);
             if (up) s_mfc_up_out |= (uint16_t)(1u << i); else s_mfc_up_out &= (uint16_t)~(1u << i);
-            uint32_t sp = g_hr[PROC_HR_MFC_SP + i];
-            if (sp > PROC_HR_MFC_SP_MAX_RAW) sp = 0;
-            hal_ao_write_mv(i, (uint16_t)(sp * MFC_FS_MV / MFC_PCT_X100));
+            write_mfc_ao(i);   /* 步驟表覆寫中就用覆寫值 */
         }
     }
     for (uint16_t i = 0; i < N_MFC; i++)

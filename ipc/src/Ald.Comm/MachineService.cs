@@ -233,6 +233,22 @@ public sealed class MachineService : IMachine, IDisposable
         _link.Write(ProcessBoard.Holding.AldCycles, (ushort)r.Cycles, (ushort)r.Steps.Count);
         _link.Write(ProcessBoard.Holding.AldStepValves, r.Steps.Select(s => s.ValveMask).ToArray());
         _link.Write(ProcessBoard.Holding.AldStepMs, r.Steps.Select(s => (ushort)s.DurationMs).ToArray());
+
+        // 每步切換 MFC：每步 4 bit 組號（0 = 不變），4 組 × 8 通道 %FS（65535 = 該通道不變）
+        var idx = r.MfcPresetIndex();
+        var set = new ushort[ProcessBoard.Holding.AldStepMfcSetCount];
+        for (int i = 0; i < idx.Length; i++) set[i / 4] |= (ushort)(idx[i] << (i % 4 * 4));
+        var presets = r.MfcPresets();
+        var raw = Enumerable.Repeat((ushort)0xFFFF, ProcessBoard.Holding.AldMfcPresetCount).ToArray();
+        for (int p = 0; p < presets.Count; p++)
+            for (int c = 0; c < 8; c++)
+                if (presets[p][c] is { } v)
+                {
+                    double fs = _cfg.Mfc.Channels[c].FullScale;
+                    raw[p * 8 + c] = Scaling.ToRaw(fs > 0 ? v / fs * 100.0 : 0, ProcessBoard.Holding.AldMfcPresetScale, 0, 100);
+                }
+        _link.Write(ProcessBoard.Holding.AldStepMfcSet, set);
+        _link.Write(ProcessBoard.Holding.AldMfcPreset, raw);
     }
 
     public void StartAld()

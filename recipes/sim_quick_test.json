@@ -12,16 +12,18 @@
   "heatTimeoutS": 120,
   "mfc": [ 0, 20, 0, 0, 0, 0, 0, 0 ],
   "gasStabilizeS": 1,
-  "ald": {
-    "name": "模擬快速測試",
-    "cycles": 20,
-    "steps": [
-      { "label": "A pulse", "valveMask": 1, "durationMs": 20 },
-      { "label": "Purge",   "valveMask": 2, "durationMs": 100 },
-      { "label": "B pulse", "valveMask": 4, "durationMs": 20 },
-      { "label": "Purge",   "valveMask": 2, "durationMs": 100 }
-    ]
-  },
+  "segments": [
+    {
+      "name": "模擬快速測試",
+      "cycles": 20,
+      "steps": [
+        { "label": "A pulse", "valveMask": 1, "durationMs": 20 },
+        { "label": "Purge",   "valveMask": 2, "durationMs": 100 },
+        { "label": "B pulse", "valveMask": 4, "durationMs": 20 },
+        { "label": "Purge",   "valveMask": 2, "durationMs": 100 }
+      ]
+    }
+  ],
   "ventAfter": true,
   "ventTargetTorr": 740,
   "ventTimeoutS": 120,

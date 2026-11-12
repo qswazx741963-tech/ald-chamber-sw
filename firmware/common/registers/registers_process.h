@@ -35,7 +35,7 @@
 #define PROC_IR_WAVE_SEQ                             50u  /* u16 */
 
 /* ---- Holding Register (FC03/FC06/FC16)（區內位址；共用表頭見 COM_HR_*） */
-#define PROC_HR_SIZE 146u
+#define PROC_HR_SIZE 192u
 #define PROC_HR_DO_CMD                               10u  /* u16 */
 #define PROC_HR_DO_CMD_BIT_ALD_V1                    0u
 #define PROC_HR_DO_CMD_BIT_ALD_V2                    1u
@@ -69,3 +69,7 @@
 #define PROC_HR_ALD_STEP_MS_COUNT                    16u
 #define PROC_HR_ALD_STEP_MS_MIN_RAW                  1
 #define PROC_HR_ALD_STEP_MS_MAX_RAW                  60000
+#define PROC_HR_ALD_STEP_MFC_SET                     150u  /* u16 x4 */
+#define PROC_HR_ALD_STEP_MFC_SET_COUNT               4u
+#define PROC_HR_ALD_MFC_PRESET                       160u  /* u16 x32 [%FS] scale 0.01 */
+#define PROC_HR_ALD_MFC_PRESET_COUNT                 32u

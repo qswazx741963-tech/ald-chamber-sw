@@ -3,7 +3,7 @@ namespace Ald.Comm.Generated;
 
 public static class RegisterMap
 {
-    public const ushort MapVersion = 2;
+    public const ushort MapVersion = 3;
     public const ushort SlotStride = 200;
     public const int MaxSlots = 9;
     /// <summary>HR 開機預設值（絕對位址, 原始值），與主控板 / 主站程式同一份</summary>
@@ -498,7 +498,7 @@ public static class ProcessBoard
     /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
     public static class Holding
     {
-        public const ushort Size = 146;
+        public const ushort Size = 192;
         /// <summary>上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）</summary>
         public const ushort Heartbeat = 200;
         public const ushort Command = 201;
@@ -555,6 +555,13 @@ public static class ProcessBoard
         public const ushort AldStepMsCount = 16;
         public const double AldStepMsMin = 1;
         public const double AldStepMsMax = 60000;
+        /// <summary>每步開始時切換 MFC（2026-11-12）：每步 4 bit，第 i 步在 150 + i/4 的 bit (i%4)×4 起；0 = 不變，1–4 = 套用 ALD_MFC_PRESET 第 n 組。切換後一直維持到 STOP / 下次 START / 安全狀態。用 4 bit 打包是因為 EtherCAT RxPDO 單一 PDO 最多 254 個 entry</summary>
+        public const ushort AldStepMfcSet = 350;
+        public const ushort AldStepMfcSetCount = 4;
+        /// <summary>MFC 切換組：4 組 × 8 通道（槽位只到 199），第 n 組通道 c 在 160 + (n-1)×8 + c；65535 = 該通道不變 [%FS]</summary>
+        public const ushort AldMfcPreset = 360;
+        public const ushort AldMfcPresetCount = 32;
+        public const double AldMfcPresetScale = 0.01;
     }
 
 }

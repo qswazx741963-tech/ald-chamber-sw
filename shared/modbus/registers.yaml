@@ -1,5 +1,5 @@
 # =====================================================================
-#  ALD Chamber 暫存器定義（唯一來源 / Single source of truth）— map_version 2
+#  ALD Chamber 暫存器定義（唯一來源 / Single source of truth）— map_version 3
 #  改完執行：python tools/codegen/gen_registers.py
 #
 #  ■ 架構（方案 A，2026-11-10）
@@ -32,7 +32,7 @@
 #                              HR 100-199 參數區
 #  ※ 待確認項目標 TODO
 # =====================================================================
-map_version: 2
+map_version: 3
 slot_stride: 200          # 每槽在 IR、HR 各占 200 個位址
 max_slots: 9              # 槽 0 = 主控板 + 槽 1~8 執行板（最多 8 塊）；CAN ID / SLOT_ID 仍保留 4 bit，日後要加槽只改這裡
 
@@ -221,6 +221,10 @@ boards:
       - { name: PURGE_VALVES,    addr: 102, desc: "安全狀態下保持開啟的 ALD 閥（bit0 = ALD_V1 … bit6 = ALD_V7），例如 N2 purge。TODO 依管路" }
       - { name: ALD_STEP_VALVES, addr: 110, count: 16, desc: "每步要開的 ALD 閥位元（bit0 = ALD_V1 … bit6 = ALD_V7）" }
       - { name: ALD_STEP_MS,     addr: 130, count: 16, unit: ms, min: 1, max: 60000 }
+      - { name: ALD_STEP_MFC_SET, addr: 150, count: 4,
+          desc: "每步開始時切換 MFC（2026-11-12）：每步 4 bit，第 i 步在 150 + i/4 的 bit (i%4)×4 起；0 = 不變，1–4 = 套用 ALD_MFC_PRESET 第 n 組。切換後一直維持到 STOP / 下次 START / 安全狀態。用 4 bit 打包是因為 EtherCAT RxPDO 單一 PDO 最多 254 個 entry" }
+      - { name: ALD_MFC_PRESET,  addr: 160, count: 32, scale: 0.01, unit: "%FS",
+          desc: "MFC 切換組：4 組 × 8 通道（槽位只到 199），第 n 組通道 c 在 160 + (n-1)×8 + c；65535 = 該通道不變" }
 
   # ------------------------------------------------------------------
   heater:

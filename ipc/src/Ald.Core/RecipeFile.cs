@@ -19,10 +19,20 @@ public static class RecipeFile
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,   // 中文直接存，不轉 \uXXXX
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>讀配方；舊格式（單一 "ald"）自動轉成一段 "segments"。</summary>
     public static ProcessRecipe Parse(string json)
-        => JsonSerializer.Deserialize<ProcessRecipe>(json, Opt) ?? throw new FormatException("配方檔是空的");
+    {
+        var r = JsonSerializer.Deserialize<ProcessRecipe>(json, Opt) ?? throw new FormatException("配方檔是空的");
+        if (r.Segments.Count == 0 && r.Ald is { } a)
+        {
+            if (string.IsNullOrWhiteSpace(a.Name)) a.Name = r.Name;
+            r = r with { Segments = [a], Ald = null };
+        }
+        return r;
+    }
 
     public static string ToJson(ProcessRecipe r) => JsonSerializer.Serialize(r, Opt);
 

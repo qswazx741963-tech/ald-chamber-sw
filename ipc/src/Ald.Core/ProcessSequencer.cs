@@ -1,13 +1,22 @@
+using System.Text.Json.Serialization;
+
 namespace Ald.Core;
 
 /// <summary>
-/// 整段製程配方：抽真空 → 確認溫度 → 通氣 → ALD 循環 →（可選）回填大氣。
+/// 整段製程配方：抽真空 → 確認溫度 → 通氣 → ALD 第 1 段 → 第 2 段 … →（可選）回填大氣。
 /// 加熱是常駐設定（手動操作頁設好就不動），配方只檢查溫度到位，不會改加熱設定、製程中也不升降溫。
 /// 時間單位都是秒，壓力 Torr，溫度 °C。數值待依實機調整。
 /// </summary>
 public sealed record ProcessRecipe
 {
     public string Name { get; init; } = "";
+    /// <summary>說明（膜種、用途等），選填。</summary>
+    public string Description { get; init; } = "";
+    /// <summary>版次：每次在人機存檔 +1；ModifiedBy / ModifiedAt 記最後修改人與時間（修改內容另記在配方資料夾 .history/）。</summary>
+    public int Revision { get; init; }
+    public string ModifiedBy { get; init; } = "";
+    public DateTime? ModifiedAt { get; init; }
+
     public bool PumpDown { get; init; } = true;
     /// <summary>粗抽到這個壓力後切 Turbo。</summary>
     public double CrossoverTorr { get; init; } = 0.5;
@@ -25,11 +34,25 @@ public sealed record ProcessRecipe
     public double HeatSettleS { get; init; } = 60;
     public double HeatTimeoutS { get; init; } = 3600;
 
-    /// <summary>製程中 MFC（config 單位），0 = 關。</summary>
+    /// <summary>起始 MFC（config 單位），0 = 關。ALD 步驟表可以在某一步切換，切換後一直維持（跨段也維持）。</summary>
     public double[] Mfc { get; init; } = new double[8];
     public double GasStabilizeS { get; init; } = 10;
 
+    /// <summary>ALD 各段，依序執行。</summary>
+    public List<AldRecipe> Segments { get; init; } = new();
+    /// <summary>舊格式（2026-11-12 以前只有一段）：讀檔時自動搬到 Segments，存檔不再寫出。</summary>
     public AldRecipe? Ald { get; init; }
+
+    /// <summary>實際要跑的各段（相容舊格式）。</summary>
+    [JsonIgnore]
+    public IReadOnlyList<AldRecipe> AldSegments => Segments.Count > 0 ? Segments : Ald is null ? [] : [Ald];
+
+    /// <summary>MFC 通道 c 在整個製程中有沒有用到（起始值或任何一步 &gt; 0）：用到的通道開上游閥。</summary>
+    public bool MfcUsed(int c) => Mfc[c] > 0 || AldSegments.Any(g => g.Steps.Any(s => s.Mfc is { } m && c < m.Length && m[c] > 0));
+
+    /// <summary>ALD 總時間（秒，不含抽真空 / 等溫度 / 回填）。</summary>
+    [JsonIgnore]
+    public double AldSeconds => AldSegments.Sum(g => g.TotalSeconds);
 
     public bool VentAfter { get; init; }
     public double VentTargetTorr { get; init; } = 740;
@@ -41,7 +64,9 @@ public sealed record ProcessRecipe
         if (HeaterSpDegC.Length != 16) yield return "HeaterSpDegC 需 16 組";
         if (Mfc.Length != 8) yield return "Mfc 需 8 組";
         if (!(BaseTorr > 0) || !(CrossoverTorr > BaseTorr)) yield return "壓力設定錯誤（需 CrossoverTorr > BaseTorr > 0）";
-        if (Ald is not null) foreach (var e in Ald.Validate()) yield return "ALD：" + e;
+        var segs = AldSegments;
+        for (int i = 0; i < segs.Count; i++)
+            foreach (var e in segs[i].Validate()) yield return (segs.Count > 1 ? $"第 {i + 1} 段 {segs[i].Name}：" : "ALD：") + e;
     }
 }
 
@@ -89,7 +114,10 @@ public sealed class ProcessSequencer
             if (r.PumpDown) await PumpDownAsync(r, token);
             await HeatAsync(r, token);
             await GasAsync(r, token);
-            if (r.Ald is { } ald) await AldAsync(ald, token);
+            var mfc = (double[])r.Mfc.Clone();
+            var segs = r.AldSegments;
+            for (int i = 0; i < segs.Count; i++)
+                mfc = await AldAsync(segs[i], i, segs.Count, mfc, token);
             await EndProcessAsync(r, token);
             if (r.VentAfter) await VentAsync(r, token);
             Report(SequencerState.Done, "完成", r.Name);
@@ -171,16 +199,21 @@ public sealed class ProcessSequencer
 
     private async Task GasAsync(ProcessRecipe r, CancellationToken ct)
     {
-        if (r.Mfc.All(v => v <= 0)) return;
+        if (!Enumerable.Range(0, 8).Any(r.MfcUsed)) return;
         SetStep("通氣穩定");
-        for (int i = 0; i < 8; i++) _m.SetMfc(i, r.Mfc[i], r.Mfc[i] > 0);
+        // 步驟表裡才用到的通道也先開上游閥（流量 = 起始值，可能是 0），切換時不用再動閥
+        for (int i = 0; i < 8; i++) _m.SetMfc(i, r.Mfc[i], r.MfcUsed(i));
         await DelayAsync(r.GasStabilizeS, ct);
     }
 
-    private async Task AldAsync(AldRecipe ald, CancellationToken ct)
+    /// <returns>這段跑完後的 MFC 設定（下一段的起點）</returns>
+    private async Task<double[]> AldAsync(AldRecipe ald, int index, int count, double[] mfcStart, CancellationToken ct)
     {
-        SetStep($"ALD：{ald.Cycles} cycles");
+        string seg = count > 1 ? $"ALD 第 {index + 1}/{count} 段 {ald.Name}" : "ALD";
+        SetStep($"{seg}：{ald.Cycles} cycles");
         Require(_m.Snapshot.SlitClosed && _m.Snapshot.ArmClearOfSv, "Slit valve 未關或手臂未退出");
+        if (ald.UsesRf) throw new SequenceException("配方有 RF 步驟，但 RF 控制還沒接上（硬體待確認）");
+        if (ald.O3SetPct > 0) throw new SequenceException("配方有使用 O3，但 O3 產生器控制還沒接上（硬體待確認）");
         _m.DownloadAld(ald);
         await DelayAsync(0.3, ct);   // 讓步驟表經背板送到製程板
         _m.StartAld();
@@ -192,12 +225,20 @@ public sealed class ProcessSequencer
         {
             ct.ThrowIfCancellationRequested();
             CheckHealthy();
-            SetStep($"ALD：cycle {_m.Snapshot.AldCycle}/{ald.Cycles}", quiet: true);
-            if (DateTime.Now > deadline) throw new SequenceException("ALD 執行逾時");
+            SetStep($"{seg}：cycle {_m.Snapshot.AldCycle}/{ald.Cycles}", quiet: true);
+            if (DateTime.Now > deadline) throw new SequenceException($"{seg} 執行逾時");
             await Task.Delay(_poll, ct);
         }
         if (_m.Snapshot.AldCycle < ald.Cycles)
-            throw new SequenceException($"ALD 中斷在 cycle {_m.Snapshot.AldCycle}/{ald.Cycles}");
+            throw new SequenceException($"{seg} 中斷在 cycle {_m.Snapshot.AldCycle}/{ald.Cycles}");
+
+        // 步驟表切換過的 MFC：先把設定值改成最後的值，再下 STOP 解除製程板的覆寫，流量不會跳動
+        var after = ald.MfcAfter(mfcStart);
+        if (ald.UsesMfcSwitch)
+            for (int i = 0; i < 8; i++)
+                if (after[i] != mfcStart[i]) _m.SetMfc(i, after[i], true);
+        _m.StopAld();
+        return after;
     }
 
     private Task EndProcessAsync(ProcessRecipe r, CancellationToken ct)

@@ -12,16 +12,18 @@
   "heatTimeoutS": 3600,
   "mfc": [ 0, 20, 0, 0, 0, 0, 0, 0 ],
   "gasStabilizeS": 10,
-  "ald": {
-    "name": "Al2O3",
-    "cycles": 100,
-    "steps": [
-      { "label": "Precursor A pulse", "valveMask": 1, "durationMs": 20 },
-      { "label": "Purge",             "valveMask": 2, "durationMs": 5000 },
-      { "label": "Precursor B pulse", "valveMask": 4, "durationMs": 20 },
-      { "label": "Purge",             "valveMask": 2, "durationMs": 5000 }
-    ]
-  },
+  "segments": [
+    {
+      "name": "Al2O3",
+      "cycles": 100,
+      "steps": [
+        { "label": "Precursor A pulse", "valveMask": 1, "durationMs": 20 },
+        { "label": "Purge",             "valveMask": 2, "durationMs": 5000 },
+        { "label": "Precursor B pulse", "valveMask": 4, "durationMs": 20 },
+        { "label": "Purge",             "valveMask": 2, "durationMs": 5000 }
+      ]
+    }
+  ],
   "ventAfter": false,
   "ventTargetTorr": 740,
   "ventTimeoutS": 600,

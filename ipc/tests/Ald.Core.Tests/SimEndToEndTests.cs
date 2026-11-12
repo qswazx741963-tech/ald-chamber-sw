@@ -82,15 +82,46 @@ public sealed class SimEndToEndTests : IDisposable
             Name = "e2e", HeaterSpDegC = sp, HeatToleranceC = 5, HeatSettleS = 1, HeatTimeoutS = 60,
             BaseTorr = 5e-3, PumpTimeoutS = 30, TurboSpinUpTimeoutS = 30,
             Mfc = new double[] { 0, 20, 0, 0, 0, 0, 0, 0 }, GasStabilizeS = 0.5,
-            Ald = new AldRecipe { Cycles = 20, Steps = { new("A", 1, 20), new("Purge", 2, 100), new("B", 4, 20), new("Purge", 2, 100) } },
+            Segments =
+            [
+                new AldRecipe { Name = "Al2O3", Cycles = 20, Steps = { new("A", 1, 20), new("Purge", 2, 100), new("B", 4, 20), new("Purge", 2, 100) } },
+                // 第 2 段：Purge 時 MFC2 切到 150 sccm（製程板步驟表執行），B 脈衝前切回 20
+                new AldRecipe
+                {
+                    Name = "TiO2", Cycles = 6,
+                    Steps =
+                    {
+                        new("A", 1, 20),
+                        new("Purge", 2, 1500) { Mfc = [null, 150, null, null, null, null, null, null] },
+                        new("B", 4, 20) { Mfc = [null, 20, null, null, null, null, null, null] },
+                        new("Purge", 2, 300),
+                    },
+                },
+            ],
             VentAfter = true, VentTimeoutS = 30, TurboSpinDownTimeoutS = 30,
         };
         var seq = new ProcessSequencer(m, TimeSpan.FromMilliseconds(50));
         seq.Progress += p => _out.WriteLine($"{p.Time:HH:mm:ss.fff} {p.State} {p.Step} {p.Message}");
+        double maxMfc2Seg1 = 0, maxMfc2Seg2 = 0;
+        using var watch = new CancellationTokenSource();
+        var watcher = Task.Run(async () =>
+        {
+            while (!watch.IsCancellationRequested)
+            {
+                var v = m.Snapshot.MfcValue[1];
+                if (seq.Step.Contains("第 1/2 段")) maxMfc2Seg1 = Math.Max(maxMfc2Seg1, v);
+                if (seq.Step.Contains("第 2/2 段")) maxMfc2Seg2 = Math.Max(maxMfc2Seg2, v);
+                await Task.Delay(10);
+            }
+        });
         var st = await seq.RunAsync(recipe);
+        watch.Cancel(); await watcher;
         Assert.Equal(SequencerState.Done, st);
         Assert.True(m.Snapshot.ManometerTorr > 700, $"回填後 {m.Snapshot.ManometerTorr} Torr");
-        Assert.Equal(20, m.Snapshot.AldCycle);
+        Assert.Equal(6, m.Snapshot.AldCycle);                  // 最後一段的 cycle 數
+        _out.WriteLine($"MFC2 最大值：第 1 段 {maxMfc2Seg1:0.0}、第 2 段 {maxMfc2Seg2:0.0} sccm");
+        Assert.InRange(maxMfc2Seg1, 15, 25);                  // 第 1 段沒有切換：維持起始 20
+        Assert.True(maxMfc2Seg2 > 100, $"第 2 段 Purge 應切到 150 sccm，實際最大 {maxMfc2Seg2:0.0}");
 
         // 互鎖：PM 在大氣、LL 在真空 → 開 SV 要被主控板擋（IPC 預檢也擋）
         var r = m.Loadlock.Execute(LoadlockCommand.SvOpen);
