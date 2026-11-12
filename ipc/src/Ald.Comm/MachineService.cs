@@ -34,6 +34,7 @@ public sealed class MachineService : IMachine, IDisposable
     public MachineService(MachineConfig cfg)
     {
         _cfg = cfg;
+        AlarmManager.ExpectedMapVersion = RegisterMap.MapVersion;
         Interlocks.Settings = cfg.ToInterlockSettings();
         var slots = cfg.Slots.Select(s => new SlotImage
         {
@@ -120,6 +121,9 @@ public sealed class MachineService : IMachine, IDisposable
         ushort[]? Ir(int slot) => imgs.TryGetValue(slot, out var s) && s.Online ? s.Input : null;
         bool pending = Loadlock.LastResult == MainBoard.Input.LlCmdResultValues.Sent;
         var snap = SnapshotBuilder.Build(link.Connected, Ir, _cfg, pending);
+        // 主控板回應了但不算在線：多半是暫存器表版本不同（例如舊版 ald-ecat 還開著）→ 告訴人員實際看到的版本
+        if (link.Connected && !snap.SlotOnline[0] && imgs.TryGetValue(0, out var m0) && m0.Input.Length > 2)
+            snap = snap with { MapVersionSeen = m0.Input[2] };
         _snap = snap;
         foreach (var c in Alarms.Update(snap)) AlarmChanged?.Invoke(c);
         Updated?.Invoke(snap);

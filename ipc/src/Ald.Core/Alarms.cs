@@ -63,6 +63,9 @@ public sealed class AlarmManager
         }
     }
 
+    /// <summary>IPC 這邊的暫存器表版本（Ald.Comm 啟動時設成 RegisterMap.MapVersion；Ald.Core 不參考 Ald.Comm）。</summary>
+    public static int ExpectedMapVersion { get; set; }
+
     private static readonly string[] SlotNames = { "主控板", "製程板", "加熱板", "真空板", "馬達板" };
 
     /// <summary>目前快照該有的警報。</summary>
@@ -71,6 +74,14 @@ public sealed class AlarmManager
         if (!s.Connected)
         {
             yield return new("LINK", AlarmLevel.Alarm, "通訊", "主控板未連線（ald-ecat 主站程式未啟動或 EtherCAT 中斷）");
+            yield break;
+        }
+        if (!s.SlotOnline[0])
+        {
+            yield return s.MapVersionSeen > 0 && s.MapVersionSeen != ExpectedMapVersion
+                ? new("MAP_VERSION", AlarmLevel.Alarm, "主控板",
+                      $"暫存器表版本不同：主控板（或 ald-ecat 虛擬機台）是 v{s.MapVersionSeen}，人機是 v{ExpectedMapVersion}。請關掉舊版程式 / 更新主控板韌體後重開")
+                : new("SLOT0_OFFLINE", AlarmLevel.Alarm, "主控板", "主控板沒有正常回應（板型 / 版本不符或還在開機）");
             yield break;
         }
         for (int i = 1; i < s.SlotOnline.Length; i++)
