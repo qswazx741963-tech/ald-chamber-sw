@@ -4,7 +4,7 @@
 
 #define ALD_MAP_VERSION  3u
 #define ALD_SLOT_STRIDE  200u
-#define ALD_MAX_SLOTS    9u
+#define ALD_MAX_SLOTS    6u
 #define ALD_SLOT_NONE    0xFFu
 
 #define BOARD_TYPE_MAIN       0u

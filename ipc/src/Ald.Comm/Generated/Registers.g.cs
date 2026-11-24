@@ -5,7 +5,7 @@ public static class RegisterMap
 {
     public const ushort MapVersion = 3;
     public const ushort SlotStride = 200;
-    public const int MaxSlots = 9;
+    public const int MaxSlots = 6;
     /// <summary>HR 開機預設值（絕對位址, 原始值），與主控板 / 主站程式同一份</summary>
     public static readonly (ushort Addr, ushort Value)[] HoldingDefaults =
     {
