@@ -9,10 +9,9 @@ using Avalonia.Media;
 namespace Ald.Hmi;
 
 /// <summary>
-/// Recipe 頁（2026-11-12 改版）：選檔 → 編輯 → 檢查 → 存檔（版次 + 修改紀錄）。執行一律從主頁 Sequence。
-/// 左邊是配方整體設定（抽真空、溫度檢查、起始 MFC、結束、進階逾時），右邊是 ALD 各段與步驟表。
-/// ONLINE 或權限不足（工程師以下）時只能看。
-/// 表單沒有的欄位沿用讀進來的檔案內容，存檔不會被洗掉。
+/// Recipe 頁（2026-11-24 改版，參考使用者給的配方表）：每個 Step 一欄橫向並排，參數一列一列直排：
+/// 步驟名稱、結束條件、時間、預估時間、Cycles、子步驟（V1~V7 閥序 + ms）、O3、壓力、加熱溫度、MFC 1~8。
+/// 選檔 → 編輯 → 檢查 → 存檔（版次 + 修改紀錄）。執行一律從主頁 Sequence。ONLINE 或權限不足（工程師以下）時只能看。
 /// </summary>
 public partial class MainWindow
 {
@@ -23,29 +22,31 @@ public partial class MainWindow
     private bool _loadingRecipe;
 
     // 編輯中的內容
-    private List<AldRecipe> _segs = new();
-    private int _segSel;
-    private readonly double[] _heatSp = new double[16];
-    private readonly NumericUpDown[] _rMfc = new NumericUpDown[8];
-    private readonly Dictionary<string, NumericUpDown> _rAdv = new();
+    private List<ProcessStep> _steps = new();
+    private readonly HashSet<string> _badInput = new();   // 格式錯誤的輸入框（key = 步驟 + 欄位）
     private bool _dirty, _filling, _rEdit = true;
     private Action? _pendingDiscard;
     private string[] _valveNames = new string[7];
+    /// <summary>MFC 格子：沒勾「設定」時顯示沿用的值，內容改了要跟著更新。</summary>
+    private readonly List<(int Step, int Ch, CheckBox Set, NumericUpDown Num)> _mfcCells = new();
+    private readonly List<(int Step, TextBlock Text)> _estCells = new();
 
-    private static readonly IBrush SegOn = new SolidColorBrush(Color.Parse("#1565C0"));
-    private static readonly IBrush SegOff = new SolidColorBrush(Color.Parse("#E3E8EE"));
-    private static readonly IBrush RowAlt = new SolidColorBrush(Color.Parse("#F3F6F9"));
+    private const double LabelW = 150, ColW = 300;
+    private static readonly IBrush HeadBg = new SolidColorBrush(Color.Parse("#D5DDE6"));
+    private static readonly IBrush LabelBg = new SolidColorBrush(Color.Parse("#E8EDF2"));
+    private static readonly IBrush SectionBg = new SolidColorBrush(Color.Parse("#C9D2DC"));
+    private static readonly IBrush CellLine = new SolidColorBrush(Color.Parse("#C9D2DC"));
+    private static readonly IBrush DimText = new SolidColorBrush(Color.Parse("#8A96A3"));
     private static readonly IBrush WarnText = new SolidColorBrush(Color.Parse("#A15C00"));
+    private static readonly IBrush MarkBg = new SolidColorBrush(Color.Parse("#FFF3CD"));
 
-    /// <summary>進階欄位：名稱、最小、最大、遞增、格式。</summary>
-    private static readonly (string Key, string Label, double Min, double Max, double Inc, string Fmt)[] AdvFields =
+    private static readonly (StepKind Kind, string Text)[] KindItems =
     [
-        ("pump", "抽氣逾時 s", 10, 36000, 60, "0"),
-        ("turboUp", "Turbo 啟動逾時 s", 10, 7200, 60, "0"),
-        ("heat", "等溫度逾時 s", 10, 36000, 60, "0"),
-        ("ventTarget", "回填目標 Torr", 100, 800, 10, "0"),
-        ("vent", "回填逾時 s", 10, 7200, 60, "0"),
-        ("turboDown", "Turbo 停止逾時 s", 10, 7200, 60, "0"),
+        (StepKind.PumpDown, "到真空（抽真空）"),
+        (StepKind.HeatCheck, "到溫度（確認溫度）"),
+        (StepKind.Gas, "依時間（通氣 / Purge）"),
+        (StepKind.Ald, "依 Cycle 數（ALD）"),
+        (StepKind.Vent, "到大氣（回填）"),
     ];
 
     private string[] HeaterNames => _m?.Config.Heaters.Channels.Select(h => h.Name).ToArray() ?? Enumerable.Range(1, 16).Select(i => $"#{i}").ToArray();
@@ -54,76 +55,24 @@ public partial class MainWindow
     private void WireRecipe()
     {
         _valveNames = ValveNames.Load(Hw.ValveNamesPath, Hw.AldValveNames);
+        _recipe = NewRecipeTemplate();
+        foreach (var tb in new[] { "TxtRName", "TxtRDesc" }) C<TextBox>(tb).TextChanged += (_, _) => Dirty();
+        C<ScrollViewer>("SvRTable").ScrollChanged += (_, _) => FreezeHeaders();
 
-        // 起始 MFC：8 列
-        var g = C<Grid>("GrdRMfc");
-        var mfc = _m?.Config.Mfc.Channels;
-        for (int i = 0; i < 8; i++)
+        // 新增步驟（加在最後）
+        var add = new MenuFlyout();
+        foreach (var (kind, text) in KindItems)
         {
-            g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            var t = new TextBlock { Text = mfc is null ? $"{i + 1}" : $"{i + 1} {mfc[i].Name} ({mfc[i].Unit})", VerticalAlignment = VerticalAlignment.Center, FontSize = 13 };
-            var n = new NumericUpDown { Minimum = 0, Maximum = (decimal)(mfc?[i].FullScale ?? 2000), Increment = 1, FormatString = "0.#", Margin = new(0, 1), ShowButtonSpinner = false };
-            n.ValueChanged += (_, _) => Dirty();
-            Grid.SetRow(t, i); Grid.SetRow(n, i); Grid.SetColumn(n, 1);
-            g.Children.Add(t); g.Children.Add(n);
-            _rMfc[i] = n;
+            var mi = new MenuItem { Header = text };
+            mi.Click += (_, _) =>
+            {
+                if (_steps.Count >= ProcessRecipe.MaxSteps) { Msg($"步驟最多 {ProcessRecipe.MaxSteps} 個"); return; }
+                _steps.Add(DefaultStep(kind));
+                RebuildTable(); Dirty();
+            };
+            add.Items.Add(mi);
         }
-        // 進階
-        var adv = C<Grid>("GrdRAdv");
-        for (int i = 0; i < AdvFields.Length; i++)
-        {
-            var f = AdvFields[i];
-            adv.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            var t = new TextBlock { Text = f.Label, VerticalAlignment = VerticalAlignment.Center };
-            var n = new NumericUpDown { Minimum = (decimal)f.Min, Maximum = (decimal)f.Max, Increment = (decimal)f.Inc, FormatString = f.Fmt, Margin = new(0, 1), ShowButtonSpinner = false };
-            n.ValueChanged += (_, _) => Dirty();
-            Grid.SetRow(t, i); Grid.SetRow(n, i); Grid.SetColumn(n, 1);
-            adv.Children.Add(t); adv.Children.Add(n);
-            _rAdv[f.Key] = n;
-        }
-
-        foreach (var tb in new[] { "TxtRName", "TxtRDesc", "TxtRBase", "TxtRCross" }) C<TextBox>(tb).TextChanged += (_, _) => Dirty();
-        foreach (var cb in new[] { "ChkRPump", "ChkRVent" }) C<CheckBox>(cb).IsCheckedChanged += (_, _) => Dirty();
-        foreach (var nu in new[] { "NumRTol", "NumRSettle", "NumRGas" }) C<NumericUpDown>(nu).ValueChanged += (_, _) => Dirty();
-
-        C<ComboBox>("CmbRHeatAdd").SelectionChanged += (_, _) =>
-        {
-            if (_filling || C<ComboBox>("CmbRHeatAdd").SelectedItem is not ComboBoxItem { Tag: int ch }) return;
-            _heatSp[ch] = _m?.HeaterSetpoint(ch) is { } sp && sp > 0 ? Math.Round(sp) : 100;
-            RebuildHeat();
-            Dirty();
-        };
-
-        // 段
-        C<TextBox>("TxtRSegName").TextChanged += (_, _) => SegEdit(s => s.Name = (C<TextBox>("TxtRSegName").Text ?? "").Trim());
-        C<NumericUpDown>("NumRCycles").ValueChanged += (_, _) => SegEdit(s => s.Cycles = (int)(C<NumericUpDown>("NumRCycles").Value ?? 1));
-        C<NumericUpDown>("NumRO3").ValueChanged += (_, _) => SegEdit(s => s.O3SetPct = (double)(C<NumericUpDown>("NumRO3").Value ?? 0));
-        C<Button>("BtnRSegUp").Click += (_, _) => MoveSeg(-1);
-        C<Button>("BtnRSegDown").Click += (_, _) => MoveSeg(+1);
-        C<Button>("BtnRSegCopy").Click += (_, _) =>
-        {
-            if (_segSel >= _segs.Count) return;
-            var c = Clone(_segs[_segSel]);
-            c.Name += " 複製";
-            _segs.Insert(_segSel + 1, c);
-            _segSel++;
-            RebuildSegs(); Dirty();
-        };
-        C<Button>("BtnRSegDel").Click += (_, _) =>
-        {
-            if (_segSel >= _segs.Count) return;
-            _segs.RemoveAt(_segSel);
-            _segSel = Math.Max(0, Math.Min(_segSel, _segs.Count - 1));
-            RebuildSegs(); Dirty();
-        };
-        C<Button>("BtnRStepAdd").Click += (_, _) =>
-        {
-            if (_segSel >= _segs.Count) return;
-            var steps = _segs[_segSel].Steps;
-            if (steps.Count >= AldRecipe.MaxSteps) { Msg($"每段最多 {AldRecipe.MaxSteps} 步"); return; }
-            steps.Add(new AldStep("Purge", 0, 1000));
-            RebuildSteps(); Dirty();
-        };
+        C<Button>("BtnRStepAdd").Flyout = add;
 
         // 閥管路名稱
         var vg = C<Grid>("GrdValveNames");
@@ -145,7 +94,7 @@ public partial class MainWindow
                 ValveNames.Save(Hw.ValveNamesPath, _valveNames);
                 _alarmLog?.Add(OpSource, "Info", "ALD 閥管路名稱：" + string.Join("、", Enumerable.Range(0, 7).Select(i => ValveNames.Label(_valveNames, i))), evt: "OPERATOR");
                 C<Button>("BtnRValveNames").Flyout!.Hide();
-                RebuildSteps();
+                RebuildTable();
             }
             catch (Exception e) { Msg($"閥名稱存檔失敗：{e.Message}"); }
         };
@@ -162,11 +111,7 @@ public partial class MainWindow
         C<Button>("BtnRecipeReload").Click += (_, _) => ReloadRecipeList(null);
         C<Button>("BtnRecipeNew").Click += (_, _) => ConfirmDiscard("新配方", () =>
         {
-            _recipe = new ProcessRecipe
-            {
-                Name = "新配方",
-                Segments = [new AldRecipe { Name = "段 1", Cycles = 100, Steps = { new("Precursor A", 1, 20), new("Purge", 2, 5000), new("Precursor B", 4, 20), new("Purge", 2, 5000) } }],
-            };
+            _recipe = NewRecipeTemplate();
             _recipePath = null;
             SelectFileQuiet(null);
             FillForm(_recipe);
@@ -193,6 +138,19 @@ public partial class MainWindow
         ReloadRecipeList(null);
     }
 
+    private ProcessRecipe NewRecipeTemplate()
+        => ProcessRecipe.Of("新配方", DefaultStep(StepKind.PumpDown), DefaultStep(StepKind.Gas) with { Name = "通氣穩定" }, DefaultStep(StepKind.Ald));
+
+    /// <summary>新增步驟的預設值。確認溫度預設帶入加熱板目前有開的組。</summary>
+    private ProcessStep DefaultStep(StepKind kind) => kind switch
+    {
+        StepKind.PumpDown => ProcessStep.NewPumpDown(),
+        StepKind.HeatCheck => ProcessStep.NewHeatCheck(Enumerable.Range(0, 16).Select(i => _m?.HeaterSetpoint(i) is { } sp && sp > 0 ? Math.Round(sp) : 0).ToArray()),
+        StepKind.Gas => ProcessStep.NewGas(null, 10, "Purge"),
+        StepKind.Ald => ProcessStep.NewAld(new AldRecipe { Name = "ALD", Cycles = 100, Steps = { new("Precursor A", 1, 20), new("Purge", 2, 5000), new("Precursor B", 4, 20), new("Purge", 2, 5000) } }),
+        _ => ProcessStep.NewVent(),
+    };
+
     // ------------------------------------------------------------ 檔案
     private void OpenRecipe(string path)
     {
@@ -214,8 +172,7 @@ public partial class MainWindow
     private void SelectFileQuiet(string? path)
     {
         _loadingRecipe = true;
-        var cmb = C<ComboBox>("CmbRecipeFile");
-        cmb.SelectedItem = path is null ? null : Path.GetFileName(path);
+        C<ComboBox>("CmbRecipeFile").SelectedItem = path is null ? null : Path.GetFileName(path);
         _loadingRecipe = false;
     }
 
@@ -239,6 +196,13 @@ public partial class MainWindow
         Steps = a.Steps.Select(s => s with { Mfc = s.Mfc is null ? null : (double?[])s.Mfc.Clone() }).ToList(),
     };
 
+    private static ProcessStep Clone(ProcessStep s) => s with
+    {
+        Mfc = s.Mfc is null ? null : (double?[])s.Mfc.Clone(),
+        Heat = s.Heat is null ? null : s.Heat with { HeaterSpDegC = (double[])s.Heat.HeaterSpDegC.Clone() },
+        Ald = s.Ald is null ? null : Clone(s.Ald),
+    };
+
     private void FillForm(ProcessRecipe r)
     {
         _filling = true;
@@ -246,25 +210,9 @@ public partial class MainWindow
         {
             C<TextBox>("TxtRName").Text = r.Name;
             C<TextBox>("TxtRDesc").Text = r.Description;
-            C<CheckBox>("ChkRPump").IsChecked = r.PumpDown;
-            C<CheckBox>("ChkRVent").IsChecked = r.VentAfter;
-            C<TextBox>("TxtRBase").Text = r.BaseTorr.ToString("G3", CultureInfo.InvariantCulture);
-            C<TextBox>("TxtRCross").Text = r.CrossoverTorr.ToString("G3", CultureInfo.InvariantCulture);
-            for (int i = 0; i < 16; i++) _heatSp[i] = i < r.HeaterSpDegC.Length ? r.HeaterSpDegC[i] : 0;
-            for (int i = 0; i < 8; i++) _rMfc[i].Value = (decimal)(i < r.Mfc.Length ? r.Mfc[i] : 0);
-            C<NumericUpDown>("NumRTol").Value = (decimal)r.HeatToleranceC;
-            C<NumericUpDown>("NumRSettle").Value = (decimal)r.HeatSettleS;
-            C<NumericUpDown>("NumRGas").Value = (decimal)r.GasStabilizeS;
-            _rAdv["pump"].Value = (decimal)r.PumpTimeoutS;
-            _rAdv["turboUp"].Value = (decimal)r.TurboSpinUpTimeoutS;
-            _rAdv["heat"].Value = (decimal)r.HeatTimeoutS;
-            _rAdv["ventTarget"].Value = (decimal)r.VentTargetTorr;
-            _rAdv["vent"].Value = (decimal)r.VentTimeoutS;
-            _rAdv["turboDown"].Value = (decimal)r.TurboSpinDownTimeoutS;
-            _segs = r.AldSegments.Select(Clone).ToList();
-            _segSel = 0;
-            RebuildHeat();
-            RebuildSegs();
+            _steps = r.Steps.Select(Clone).ToList();
+            _badInput.Clear();
+            RebuildTable();
         }
         finally { _filling = false; }
         _dirty = false;
@@ -276,7 +224,7 @@ public partial class MainWindow
     private bool FormDiffers()
     {
         if (!TryReadForm(out var r, quiet: true)) return true;
-        return RecipeFile.ToJson(r with { Segments = r.Segments, Ald = null }) != RecipeFile.ToJson(_recipe with { Segments = _recipe.AldSegments.ToList(), Ald = null });
+        return RecipeFile.ToJson(r) != RecipeFile.ToJson(_recipe);
     }
 
     private bool TryReadForm(out ProcessRecipe r, bool quiet = false)
@@ -286,39 +234,24 @@ public partial class MainWindow
         {
             string name = (C<TextBox>("TxtRName").Text ?? "").Trim();
             if (name.Length == 0) throw new FormatException("請填配方名稱");
-            double Torr(string box, string what)
-                => double.TryParse(C<TextBox>(box).Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v > 0
-                    ? v : throw new FormatException($"{what} 要填正數（例如 5e-3）");
-            double N(NumericUpDown n) => (double)(n.Value ?? 0);
-            if (!quiet)
-                for (int i = 0; i < _segs.Count; i++)
-                    if (_segs[i].Name.Trim().Length == 0) _segs[i].Name = $"段 {i + 1}";
-            r = _recipe with
+            if (_badInput.Count > 0) throw new FormatException("有欄位格式錯誤：" + string.Join("、", _badInput.OrderBy(x => x)) + "（壓力請填正數，例如 5e-3）");
+            var steps = _steps.Select(Clone).ToList();
+            for (int i = 0; i < steps.Count; i++)
             {
-                Name = name,
-                Description = (C<TextBox>("TxtRDesc").Text ?? "").Trim(),
-                PumpDown = C<CheckBox>("ChkRPump").IsChecked == true,
-                VentAfter = C<CheckBox>("ChkRVent").IsChecked == true,
-                BaseTorr = Torr("TxtRBase", "Base pressure"),
-                CrossoverTorr = Torr("TxtRCross", "Crossover"),
-                HeaterSpDegC = (double[])_heatSp.Clone(),
-                HeatToleranceC = N(C<NumericUpDown>("NumRTol")),
-                HeatSettleS = N(C<NumericUpDown>("NumRSettle")),
-                Mfc = _rMfc.Select(N).ToArray(),
-                GasStabilizeS = N(C<NumericUpDown>("NumRGas")),
-                PumpTimeoutS = N(_rAdv["pump"]),
-                TurboSpinUpTimeoutS = N(_rAdv["turboUp"]),
-                HeatTimeoutS = N(_rAdv["heat"]),
-                VentTargetTorr = N(_rAdv["ventTarget"]),
-                VentTimeoutS = N(_rAdv["vent"]),
-                TurboSpinDownTimeoutS = N(_rAdv["turboDown"]),
-                Segments = _segs.Select(Clone).ToList(),
-                Ald = null,
-            };
+                var s = steps[i];
+                if (s.Name.Trim().Length == 0) s = steps[i] = s with { Name = KindName(s.Kind) };
+                if (s.Ald is { } a) a.Name = s.Name;   // ALD 段名稱跟步驟名稱一致
+            }
+            r = _recipe with { Name = name, Description = (C<TextBox>("TxtRDesc").Text ?? "").Trim(), Steps = steps };
             return true;
         }
         catch (FormatException e) { if (!quiet) Msg(e.Message); return false; }
     }
+
+    private static string KindName(StepKind k) => k switch
+    {
+        StepKind.PumpDown => "抽真空", StepKind.HeatCheck => "確認溫度", StepKind.Gas => "通氣", StepKind.Ald => "ALD", _ => "回填",
+    };
 
     /// <summary>配方本身的檢查 + 這台機器的 config（加熱上限、MFC 滿刻度、RF 上限、RF / O3 是否已接上）。有錯就不能執行。</summary>
     private List<string> Check(ProcessRecipe r)
@@ -326,34 +259,38 @@ public partial class MainWindow
         var e = r.Validate().ToList();
         if (_m is null) return e;
         var cfg = _m.Config;
-        for (int i = 0; i < 16; i++)
-            if (r.HeaterSpDegC[i] > cfg.Heaters.Channels[i].LimitDegC)
-                e.Add($"加熱 #{i + 1} {cfg.Heaters.Channels[i].Name} {r.HeaterSpDegC[i]:0} °C 超過上限 {cfg.Heaters.Channels[i].LimitDegC:0} °C");
-        // 配方不改加熱：要的溫度跟加熱板常駐設定對不上，跑了也只會等到逾時
-        if (_m.Snapshot.Connected)
-            for (int i = 0; i < 16; i++)
-                if (r.HeaterSpDegC[i] > 0 && !(Math.Abs((_m.HeaterSetpoint(i) ?? double.NaN) - r.HeaterSpDegC[i]) <= r.HeatToleranceC))
-                    e.Add($"加熱 #{i + 1} {cfg.Heaters.Channels[i].Name} 配方需要 {r.HeaterSpDegC[i]:0} °C，" +
-                          $"加熱板設定是 {(_m.HeaterSetpoint(i) is { } sp ? $"{sp:0} °C" : "關")}（請先到手動操作頁設定）");
-        for (int i = 0; i < 8; i++)
-            if (r.Mfc[i] > cfg.Mfc.Channels[i].FullScale)
-                e.Add($"起始 MFC {i + 1} {r.Mfc[i]} 超過滿刻度 {cfg.Mfc.Channels[i].FullScale} {cfg.Mfc.Channels[i].Unit}");
-        var segs = r.AldSegments;
-        for (int g = 0; g < segs.Count; g++)
+        for (int k = 0; k < r.Steps.Count; k++)
         {
-            string at = $"第 {g + 1} 段";
-            for (int k = 0; k < segs[g].Steps.Count; k++)
+            var st = r.Steps[k];
+            string at = $"Step {k + 1} {st.Name}";
+            if (st.Heat is { } h && st.Kind == StepKind.HeatCheck)
+                for (int i = 0; i < 16 && i < h.HeaterSpDegC.Length; i++)
+                {
+                    var ch = cfg.Heaters.Channels[i];
+                    if (h.HeaterSpDegC[i] > ch.LimitDegC) e.Add($"{at}：加熱 #{i + 1} {ch.Name} {h.HeaterSpDegC[i]:0} °C 超過上限 {ch.LimitDegC:0} °C");
+                    // 配方不改加熱：要的溫度跟加熱板常駐設定對不上，跑了也只會等到逾時
+                    if (h.HeaterSpDegC[i] > 0 && _m.Snapshot.Connected && !(Math.Abs((_m.HeaterSetpoint(i) ?? double.NaN) - h.HeaterSpDegC[i]) <= h.ToleranceC))
+                        e.Add($"{at}：加熱 #{i + 1} {ch.Name} 配方需要 {h.HeaterSpDegC[i]:0} °C，加熱板設定是 {(_m.HeaterSetpoint(i) is { } sp ? $"{sp:0} °C" : "關")}（請先到加熱頁設定）");
+                }
+            if (st.Mfc is { Length: 8 } m && st.UsesMfc)
+                for (int c = 0; c < 8; c++)
+                    if (m[c] > cfg.Mfc.Channels[c].FullScale)
+                        e.Add($"{at}：MFC {c + 1} {m[c]} 超過滿刻度 {cfg.Mfc.Channels[c].FullScale} {cfg.Mfc.Channels[c].Unit}");
+            if (st.Ald is { } a && st.Kind == StepKind.Ald)
             {
-                var s = segs[g].Steps[k];
-                if (s.Mfc is { Length: 8 } m)
-                    for (int c = 0; c < 8; c++)
-                        if (m[c] > cfg.Mfc.Channels[c].FullScale)
-                            e.Add($"{at} 第 {k + 1} 步 MFC {c + 1} {m[c]} 超過滿刻度 {cfg.Mfc.Channels[c].FullScale} {cfg.Mfc.Channels[c].Unit}");
-                if (s.Rf1W > cfg.Process.Rf1MaxW) e.Add($"{at} 第 {k + 1} 步 RF1 {s.Rf1W:0} W 超過上限 {cfg.Process.Rf1MaxW:0} W");
-                if (s.Rf2W > cfg.Process.Rf2MaxW) e.Add($"{at} 第 {k + 1} 步 RF2 {s.Rf2W:0} W 超過上限 {cfg.Process.Rf2MaxW:0} W");
+                for (int j = 0; j < a.Steps.Count; j++)
+                {
+                    var s = a.Steps[j];
+                    if (s.Mfc is { Length: 8 } sm)
+                        for (int c = 0; c < 8; c++)
+                            if (sm[c] > cfg.Mfc.Channels[c].FullScale)
+                                e.Add($"{at} 子步驟 {j + 1}：MFC {c + 1} {sm[c]} 超過滿刻度 {cfg.Mfc.Channels[c].FullScale} {cfg.Mfc.Channels[c].Unit}");
+                    if (s.Rf1W > cfg.Process.Rf1MaxW) e.Add($"{at} 子步驟 {j + 1}：RF1 {s.Rf1W:0} W 超過上限 {cfg.Process.Rf1MaxW:0} W");
+                    if (s.Rf2W > cfg.Process.Rf2MaxW) e.Add($"{at} 子步驟 {j + 1}：RF2 {s.Rf2W:0} W 超過上限 {cfg.Process.Rf2MaxW:0} W");
+                }
+                if (a.UsesRf && !cfg.Process.RfReady) e.Add($"{at} 有 RF：RF 控制還沒接上（硬體確認後才能執行，可以先存檔）");
+                if (a.O3SetPct > 0 && !cfg.Process.O3Ready) e.Add($"{at} 有用 O3：O3 產生器控制還沒接上（硬體確認後才能執行，可以先存檔）");
             }
-            if (segs[g].UsesRf && !cfg.Process.RfReady) e.Add($"{at} 有 RF 步驟：RF 控制還沒接上（硬體確認後才能執行，可以先存檔）");
-            if (segs[g].O3SetPct > 0 && !cfg.Process.O3Ready) e.Add($"{at} 有用 O3：O3 產生器控制還沒接上（硬體確認後才能執行，可以先存檔）");
         }
         return e;
     }
@@ -362,15 +299,14 @@ public partial class MainWindow
     private static List<string> Warnings(ProcessRecipe r)
     {
         var w = new List<string>();
-        var segs = r.AldSegments;
-        for (int g = 0; g < segs.Count; g++)
-            for (int k = 0; k < segs[g].Steps.Count; k++)
-            {
-                var s = segs[g].Steps[k];
-                if (s.HasMfcChange && s.DurationMs < 1000)
-                    w.Add($"第 {g + 1} 段 第 {k + 1} 步只有 {s.DurationMs} ms 卻切換 MFC：MFC 反應約 0.5–1 s，流量可能還沒到位就換下一步");
-            }
-        if (segs.Count == 0 && !r.VentAfter && r.PumpDown) w.Add("沒有 ALD 段：只會抽真空 / 確認溫度 / 通氣");
+        for (int k = 0; k < r.Steps.Count; k++)
+            if (r.Steps[k].Ald is { } a && r.Steps[k].Kind == StepKind.Ald)
+                for (int j = 0; j < a.Steps.Count; j++)
+                    if (a.Steps[j].HasMfcChange && a.Steps[j].DurationMs < 1000)
+                        w.Add($"Step {k + 1} 子步驟 {j + 1} 只有 {a.Steps[j].DurationMs} ms 卻切換 MFC：MFC 反應約 0.5–1 s，流量可能還沒到位就換下一步");
+        if (!r.Steps.Any(s => s.Kind == StepKind.Ald)) w.Add("沒有 ALD 步驟");
+        if (r.Steps.Any(s => s.Kind == StepKind.Ald) && !r.Steps.TakeWhile(s => s.Kind != StepKind.Ald).Any(s => s.Kind == StepKind.PumpDown))
+            w.Add("ALD 之前沒有抽真空步驟：要確定 PM 已經在真空");
         return w;
     }
 
@@ -415,286 +351,451 @@ public partial class MainWindow
     {
         if (_filling) return;
         _checkDirty = true;
-        UpdateTimes();
+        RefreshComputed();
     }
     private bool _checkDirty;
 
-    // ------------------------------------------------------------ 溫度（只列用到的）
-    private void RebuildHeat()
+    // ------------------------------------------------------------ 表格
+    private Grid _tbl = null!;
+
+    /// <summary>整張表重畫（步驟增刪、搬移、換種類、子步驟增刪時）。數值修改不重畫，只更新計算欄。</summary>
+    private void RebuildTable()
     {
-        var p = C<StackPanel>("PnlRHeat");
-        p.Children.Clear();
-        var names = HeaterNames;
-        for (int ch = 0; ch < 16; ch++)
-        {
-            if (!(_heatSp[ch] > 0)) continue;
-            int c = ch;
-            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,80,Auto") };
-            var t = new TextBlock { Text = $"#{c + 1} {names[c]}", VerticalAlignment = VerticalAlignment.Center, FontSize = 13 };
-            var n = new NumericUpDown { Minimum = 1, Maximum = (decimal)(_m?.Config.Heaters.Channels[c].LimitDegC ?? 650), Increment = 5, FormatString = "0", Value = (decimal)_heatSp[c], ShowButtonSpinner = false };
-            n.ValueChanged += (_, _) => { _heatSp[c] = (double)(n.Value ?? 0); Dirty(); };
-            var x = new Button { Content = "✕", Padding = new(6, 2), Margin = new(4, 0, 0, 0) };
-            ToolTip.SetTip(x, "不檢查這組");
-            x.Click += (_, _) => { _heatSp[c] = 0; RebuildHeat(); Dirty(); };
-            Grid.SetColumn(n, 1); Grid.SetColumn(x, 2);
-            row.Children.Add(t); row.Children.Add(n); row.Children.Add(x);
-            p.Children.Add(row);
-        }
-        if (p.Children.Count == 0) p.Children.Add(new TextBlock { Text = "（不檢查溫度）", Foreground = Brushes.Gray, FontSize = 13 });
         bool was = _filling;
         _filling = true;
-        var cmb = C<ComboBox>("CmbRHeatAdd");
-        cmb.ItemsSource = Enumerable.Range(0, 16).Where(ch => !(_heatSp[ch] > 0))
-            .Select(ch => new ComboBoxItem { Content = $"#{ch + 1} {names[ch]}", Tag = ch }).ToList();
-        cmb.SelectedIndex = -1;
-        _filling = was;
+        try { BuildTable(); }
+        finally { _filling = was; }
+        FreezeHeaders();
+        RefreshComputed();
     }
 
-    // ------------------------------------------------------------ 段
-    private void SegEdit(Action<AldRecipe> edit)
+    private void BuildTable()
     {
-        if (_filling || _segSel >= _segs.Count) return;
-        edit(_segs[_segSel]);
-        RefreshSegLabels();
-        Dirty();
-    }
-
-    private void MoveSeg(int d)
-    {
-        int j = _segSel + d;
-        if (_segSel >= _segs.Count || j < 0 || j >= _segs.Count) return;
-        (_segs[_segSel], _segs[j]) = (_segs[j], _segs[_segSel]);
-        _segSel = j;
-        RebuildSegs(); Dirty();
-    }
-
-    private static string SegLabel(int i, AldRecipe s) => $"{i + 1}. {(s.Name.Length > 0 ? s.Name : $"段 {i + 1}")} ×{s.Cycles}";
-
-    private void RebuildSegs()
-    {
-        var p = C<WrapPanel>("PnlRSegs");
-        p.Children.Clear();
-        for (int i = 0; i < _segs.Count; i++)
-        {
-            int k = i;
-            var b = new Button { Content = SegLabel(i, _segs[i]), Margin = new(0, 0, 6, 4), Padding = new(12, 6), Tag = "seg" };
-            b.Click += (_, _) => { _segSel = k; RebuildSegs(); };
-            p.Children.Add(b);
-        }
-        var add = new Button { Content = "＋ 新增段", Margin = new(0, 0, 6, 4), Padding = new(12, 6), IsEnabled = _rEdit };
-        add.Click += (_, _) =>
-        {
-            _segs.Add(new AldRecipe { Name = $"段 {_segs.Count + 1}", Cycles = 100, Steps = { new("Precursor", 1, 20), new("Purge", 2, 5000) } });
-            _segSel = _segs.Count - 1;
-            RebuildSegs(); Dirty();
-        };
-        p.Children.Add(add);
-        RefreshSegLabels();
-
-        bool was = _filling;
-        _filling = true;
-        bool has = _segSel < _segs.Count;
-        C<StackPanel>("PnlRSegHead").IsVisible = has;
-        if (has)
-        {
-            var s = _segs[_segSel];
-            C<TextBox>("TxtRSegName").Text = s.Name;
-            C<NumericUpDown>("NumRCycles").Value = s.Cycles;
-            C<NumericUpDown>("NumRO3").Value = (decimal)s.O3SetPct;
-        }
-        _filling = was;
-        RebuildSteps();
-    }
-
-    private void RefreshSegLabels()
-    {
-        int i = 0;
-        foreach (var b in C<WrapPanel>("PnlRSegs").Children.OfType<Button>().Where(b => (string?)b.Tag == "seg"))
-        {
-            b.Content = SegLabel(i, _segs[i]);
-            b.Background = i == _segSel ? SegOn : SegOff;
-            b.Foreground = i == _segSel ? Brushes.White : Brushes.Black;
-            b.FontWeight = i == _segSel ? FontWeight.Bold : FontWeight.Normal;
-            i++;
-        }
-        UpdateTimes();
-    }
-
-    private void UpdateTimes()
-    {
-        static string T(double s) => TimeSpan.FromSeconds(Math.Round(s)).ToString(@"hh\:mm\:ss");
-        double total = _segs.Sum(s => s.TotalSeconds);
-        C<TextBlock>("TxtRTotal").Text = _segs.Count == 0
-            ? "沒有 ALD 段（只做抽真空 / 確認溫度 / 回填）。按「＋ 新增段」加入。"
-            : $"共 {_segs.Count} 段，ALD 約 {T(total)}（不含抽真空、等溫度、回填）";
-        var t = C<TextBlock>("TxtRSegTime");
-        if (_segSel >= _segs.Count) { t.Text = ""; return; }
-        var g = _segs[_segSel];
-        var msg = $"每 cycle {g.CycleSeconds:0.###} s，這段約 {T(g.TotalSeconds)}";
-        int presets = g.MfcPresets().Count;
-        if (presets > 0) msg += $"；MFC 切換 {presets}/{AldRecipe.MaxMfcPresets} 種";
-        var fast = g.Steps.Select((s, i) => (s, i)).Where(x => x.s.HasMfcChange && x.s.DurationMs < 1000).Select(x => x.i + 1).ToList();
-        if (fast.Count > 0) msg += $"\n⚠ 第 {string.Join("、", fast)} 步不到 1 s 就切換 MFC，MFC 反應約 0.5–1 s，可能跟不上";
-        if (presets > AldRecipe.MaxMfcPresets) msg += $"\n⚠ MFC 切換組合超過 {AldRecipe.MaxMfcPresets} 種（相同設定算同一種）";
-        if (g.UsesRf && !Hw.RfReady) msg += "\n⚠ RF 控制還沒接上：可以存檔，但目前不能執行";
-        if (g.O3SetPct > 0 && !Hw.O3Ready) msg += "\n⚠ O3 產生器控制還沒接上：可以存檔，但目前不能執行";
-        t.Text = msg;
-        t.Foreground = msg.Contains('⚠') ? WarnText : new SolidColorBrush(Color.Parse("#5A6B7D"));
-    }
-
-    // ------------------------------------------------------------ 步驟表
-    private void RebuildSteps()
-    {
-        var g = C<Grid>("GrdRSteps");
+        _tbl = C<Grid>("GrdRTable");
+        var g = _tbl;
         g.Children.Clear();
         g.RowDefinitions.Clear();
         g.ColumnDefinitions.Clear();
-        bool rf1 = Hw.Rf1MaxW > 0, rf2 = Hw.Rf2MaxW > 0;
-        // # | 名稱 | V1..V7 | 時間 | MFC | RF1 | RF2 | 操作
-        g.ColumnDefinitions.Add(new ColumnDefinition(28, GridUnitType.Pixel));
-        g.ColumnDefinitions.Add(new ColumnDefinition(124, GridUnitType.Pixel));
-        for (int v = 0; v < 7; v++) g.ColumnDefinitions.Add(new ColumnDefinition(44, GridUnitType.Pixel));
-        g.ColumnDefinitions.Add(new ColumnDefinition(80, GridUnitType.Pixel));
-        g.ColumnDefinitions.Add(new ColumnDefinition(120, GridUnitType.Pixel));
-        g.ColumnDefinitions.Add(new ColumnDefinition(rf1 ? 70 : 0, GridUnitType.Pixel));
-        g.ColumnDefinitions.Add(new ColumnDefinition(rf2 ? 70 : 0, GridUnitType.Pixel));
-        g.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
-        if (_segSel >= _segs.Count) return;
-        var seg = _segs[_segSel];
+        _frozen.Clear();
+        _mfcCells.Clear();
+        _estCells.Clear();
+        g.ColumnDefinitions.Add(new ColumnDefinition(LabelW, GridUnitType.Pixel));
+        for (int k = 0; k < _steps.Count; k++) g.ColumnDefinitions.Add(new ColumnDefinition(ColW, GridUnitType.Pixel));
+        var mfc = _m?.Config.Mfc.Channels;
 
-        void Add(Control c, int row, int col)
+        int row = 0;
+        int NewRow() { g.RowDefinitions.Add(new RowDefinition(GridLength.Auto)); return row++; }
+
+        // 表頭
+        int r0 = NewRow();
+        Put(new TextBlock { Text = _steps.Count == 0 ? "（沒有步驟，按下方「＋ 新增步驟」）" : "", FontWeight = FontWeight.Bold }, r0, 0, HeadBg);
+        for (int k = 0; k < _steps.Count; k++) Put(StepHead(k), r0, k + 1, HeadBg);
+
+        void Row(string label, Func<int, ProcessStep, Control?> cell, string? tip = null)
         {
-            Grid.SetRow(c, row); Grid.SetColumn(c, col);
-            g.Children.Add(c);
+            int r = NewRow();
+            var t = new TextBlock { Text = label, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+            if (tip is not null) ToolTip.SetTip(t, tip);
+            Put(t, r, 0, LabelBg);
+            for (int k = 0; k < _steps.Count; k++) Put(cell(k, _steps[k]) ?? Na(), r, k + 1, null);
         }
-        static TextBlock Head(string t) => new()
+        void Section(string label, string colText)
         {
-            Text = t, FontWeight = FontWeight.Bold, FontSize = 12, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Bottom, HorizontalAlignment = HorizontalAlignment.Center, Margin = new(1, 2),
-        };
-
-        g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-        Add(Head("#"), 0, 0);
-        Add(Head("步驟名稱"), 0, 1);
-        for (int v = 0; v < 7; v++)
-            Add(Head(_valveNames[v].Trim().Length > 0 ? $"V{v + 1}\n{_valveNames[v].Trim()}" : $"V{v + 1}"), 0, 2 + v);
-        Add(Head("時間 ms"), 0, 9);
-        Add(Head("MFC 切換"), 0, 10);
-        if (rf1) Add(Head(Hw.RfReady ? "RF1 W" : "RF1 W\n（未接）"), 0, 11);
-        if (rf2) Add(Head(Hw.RfReady ? "RF2 W" : "RF2 W\n（未接）"), 0, 12);
-
-        for (int i = 0; i < seg.Steps.Count; i++)
-        {
-            int k = i, row = i + 1;
-            var st = seg.Steps[k];
-            g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            if (i % 2 == 1) Add(new Border { Background = RowAlt, [Grid.ColumnSpanProperty] = 14 }, row, 0);
-            void Set(Func<AldStep, AldStep> f) { if (_filling) return; seg.Steps[k] = f(seg.Steps[k]); Dirty(); }
-
-            Add(new TextBlock { Text = $"{k + 1}", VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center }, row, 0);
-            var name = new TextBox { Text = st.Label, Margin = new(2) };
-            name.TextChanged += (_, _) => Set(s => s with { Label = (name.Text ?? "").Trim() });
-            Add(name, row, 1);
-            for (int v = 0; v < 7; v++)
-            {
-                int bit = v;
-                var cb = new CheckBox { IsChecked = (st.ValveMask >> bit & 1) != 0, HorizontalAlignment = HorizontalAlignment.Center, MinWidth = 0 };
-                ToolTip.SetTip(cb, ValveNames.Label(_valveNames, bit));
-                cb.IsCheckedChanged += (_, _) => Set(s => s with { ValveMask = (ushort)(cb.IsChecked == true ? s.ValveMask | 1 << bit : s.ValveMask & ~(1 << bit)) });
-                Add(cb, row, 2 + v);
-            }
-            var ms = new NumericUpDown { Minimum = 1, Maximum = 60000, Increment = 10, FormatString = "0", Value = st.DurationMs, Margin = new(2), ShowButtonSpinner = false };
-            ms.ValueChanged += (_, _) => Set(s => s with { DurationMs = (int)(ms.Value ?? 1) });
-            Add(ms, row, 9);
-            Add(MfcButton(seg, k), row, 10);
-            if (rf1) Add(RfBox(st.Rf1W, Hw.Rf1MaxW, v => Set(s => s with { Rf1W = v })), row, 11);
-            if (rf2) Add(RfBox(st.Rf2W, Hw.Rf2MaxW, v => Set(s => s with { Rf2W = v })), row, 12);
-
-            var ops = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new(4, 0) };
-            Button Op(string t, string tip, Action a)
-            {
-                var b = new Button { Content = t, Padding = new(5, 2), MinWidth = 0 };
-                ToolTip.SetTip(b, tip);
-                b.Click += (_, _) => { a(); RebuildSteps(); Dirty(); };
-                ops.Children.Add(b);
-                return b;
-            }
-            Op("↑", "往上移", () => { if (k > 0) (seg.Steps[k - 1], seg.Steps[k]) = (seg.Steps[k], seg.Steps[k - 1]); }).IsEnabled = k > 0;
-            Op("↓", "往下移", () => { if (k < seg.Steps.Count - 1) (seg.Steps[k + 1], seg.Steps[k]) = (seg.Steps[k], seg.Steps[k + 1]); }).IsEnabled = k < seg.Steps.Count - 1;
-            Op("⧉", "複製這一步", () => { if (seg.Steps.Count < AldRecipe.MaxSteps) seg.Steps.Insert(k + 1, seg.Steps[k] with { Mfc = seg.Steps[k].Mfc?.ToArray() }); })
-                .IsEnabled = seg.Steps.Count < AldRecipe.MaxSteps;
-            Op("✕", "刪除這一步", () => seg.Steps.RemoveAt(k));
-            Add(ops, row, 13);
+            int r = NewRow();
+            Put(new TextBlock { Text = label, FontWeight = FontWeight.Bold }, r, 0, SectionBg);
+            for (int k = 0; k < _steps.Count; k++)
+                Put(new TextBlock { Text = _steps[k].UsesMfc ? colText : "", FontSize = 12, Foreground = Brushes.Black }, r, k + 1, SectionBg);
         }
-        if (seg.Steps.Count == 0)
+
+        Row("步驟名稱", NameCell);
+        Row("結束條件", KindCell, "到真空 / 到溫度 / 到大氣：條件到了就結束；依時間：時間到結束；依 Cycle 數：ALD 跑完結束");
+        Row("時間 / 最大時間 (s)", TimeCell, "依時間：這步的時間。其他：最大時間，超過就停止並報警（ALD 填 0 = 自動）");
+        Row("預估時間", EstCell);
+        Row("Cycles", (k, s) => s.Kind == StepKind.Ald ? Num(s.Ald!.Cycles, 1, 60000, 10, "0", v => { _steps[k].Ald!.Cycles = (int)v; Dirty(); }) : null);
+        Row("子步驟（閥序）", SubStepCell, "製程板 1 kHz 執行：每個 cycle 依序跑這些子步驟。勾 = 閥開。⋯ 可以改名稱、切換 MFC、RF");
+        Row("O3 (%)", (k, s) => s.Kind == StepKind.Ald ? Num(s.Ald!.O3SetPct, 0, 100, 1, "0.#", v => { _steps[k].Ald!.O3SetPct = v; Dirty(); }) : null,
+            "O3 產生器設定（0 = 不用）。產生器在這步開始前開好；打進腔體由 V1~V7 其中一顆閥控制（硬體待確認）");
+        Row("壓力", PressureCell, "本機沒有節流閥 / 壓力控制閥：抽真空、回填以外的步驟維持目前抽氣狀態");
+        Row("加熱溫度", HeatCell, "加熱是常駐設定（在加熱頁設），配方只確認溫度有沒有到，不會改加熱設定");
+        Section("氣體（MFC）", "勾選 = 這步開始時設定；沒勾 = 沿用");
+        for (int c = 0; c < 8; c++)
         {
-            g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            var t = new TextBlock { Text = "這段還沒有步驟，按下方「＋ 新增步驟」", Foreground = Brushes.Gray, Margin = new(8) };
-            Grid.SetColumnSpan(t, 12);
-            Add(t, 1, 1);
+            int ch = c;
+            string label = mfc is null ? $"{c + 1}" : $"{c + 1} - {mfc[c].Name}";
+            Row(label, (k, s) => MfcCell(k, s, ch));
         }
-        UpdateTimes();
     }
 
-    private static NumericUpDown RfBox(double w, double max, Action<double> set)
+    private readonly List<(Border Cell, bool Col, bool Row)> _frozen = new();
+
+    private void Put(Control c, int row, int col, IBrush? bg)
     {
-        var n = new NumericUpDown { Minimum = 0, Maximum = (decimal)max, Increment = 10, FormatString = "0", Value = (decimal)w, Margin = new(2), ShowButtonSpinner = false };
-        n.ValueChanged += (_, _) => set((double)(n.Value ?? 0));
+        var b = new Border
+        {
+            Child = c, Background = bg, BorderBrush = CellLine, BorderThickness = new(0, 0, 1, 1), Padding = new(4, 2),
+            [Grid.RowProperty] = row, [Grid.ColumnProperty] = col,
+        };
+        // 左邊參數名稱欄、上面 Step 表頭捲動時固定不動（跟參考的配方表一樣）
+        if (col == 0 || row == 0)
+        {
+            b.ZIndex = (col == 0 ? 1 : 0) + (row == 0 ? 2 : 0);
+            b.RenderTransform = new TranslateTransform();
+            _frozen.Add((b, col == 0, row == 0));
+        }
+        _tbl.Children.Add(b);
+    }
+
+    private void FreezeHeaders()
+    {
+        var off = C<ScrollViewer>("SvRTable").Offset;
+        foreach (var (b, col, row) in _frozen)
+            if (b.RenderTransform is TranslateTransform t) { t.X = col ? off.X : 0; t.Y = row ? off.Y : 0; }
+    }
+
+    private static TextBlock Na(string text = "—") => new() { Text = text, Foreground = DimText, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
+
+    private NumericUpDown Num(double value, double min, double max, double inc, string fmt, Action<double> set, double width = 110)
+    {
+        var n = new NumericUpDown
+        {
+            Minimum = (decimal)min, Maximum = (decimal)max, Increment = (decimal)inc, FormatString = fmt, ShowButtonSpinner = false,
+            Value = (decimal)Math.Clamp(value, min, max), Width = width, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
+        };
+        n.ValueChanged += (_, _) => { if (!_filling) set((double)(n.Value ?? (decimal)min)); };
         return n;
     }
 
-    /// <summary>MFC 切換按鈕：顯示摘要，點開可設定每個通道「沿用 / 切換到某值」。</summary>
-    private Button MfcButton(AldRecipe seg, int k)
+    private void SetStep(int k, Func<ProcessStep, ProcessStep> f) { if (_filling) return; _steps[k] = f(_steps[k]); Dirty(); }
+
+    private Control StepHead(int k)
     {
+        var p = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        p.Children.Add(new TextBlock { Text = $"Step {k + 1}", FontWeight = FontWeight.Bold, FontSize = 15, VerticalAlignment = VerticalAlignment.Center });
+        var ops = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, [Grid.ColumnProperty] = 1 };
+        void Op(string t, string tip, bool enabled, Action a)
+        {
+            var b = new Button { Content = t, Padding = new(6, 1), MinWidth = 0, IsEnabled = enabled && _rEdit };
+            ToolTip.SetTip(b, tip);
+            b.Click += (_, _) => { a(); RebuildTable(); Dirty(); };
+            ops.Children.Add(b);
+        }
+        Op("◀", "往前移", k > 0, () => (_steps[k - 1], _steps[k]) = (_steps[k], _steps[k - 1]));
+        Op("▶", "往後移", k < _steps.Count - 1, () => (_steps[k + 1], _steps[k]) = (_steps[k], _steps[k + 1]));
+        Op("⧉", "複製這一步（插在後面）", _steps.Count < ProcessRecipe.MaxSteps, () => _steps.Insert(k + 1, Clone(_steps[k]) with { Name = _steps[k].Name + " 複製" }));
+        Op("✕", "刪除這一步", true, () => _steps.RemoveAt(k));
+        p.Children.Add(ops);
+        return p;
+    }
+
+    private Control NameCell(int k, ProcessStep s)
+    {
+        var t = new TextBox { Text = s.Name };
+        t.TextChanged += (_, _) => SetStep(k, x => x with { Name = (t.Text ?? "").Trim() });
+        return t;
+    }
+
+    private Control KindCell(int k, ProcessStep s)
+    {
+        var cmb = new ComboBox { ItemsSource = KindItems.Select(x => x.Text).ToList(), SelectedIndex = Array.FindIndex(KindItems, x => x.Kind == s.Kind), HorizontalAlignment = HorizontalAlignment.Stretch };
+        cmb.SelectionChanged += (_, _) =>
+        {
+            if (_filling || cmb.SelectedIndex < 0) return;
+            var kind = KindItems[cmb.SelectedIndex].Kind;
+            if (kind == _steps[k].Kind) return;
+            var old = _steps[k];
+            var n = DefaultStep(kind);
+            if (n.UsesMfc && old.UsesMfc) n = n with { Mfc = old.Mfc };   // 氣體設定盡量保留
+            _steps[k] = n;
+            RebuildTable(); Dirty();
+        };
+        return cmb;
+    }
+
+    private Control TimeCell(int k, ProcessStep s)
+    {
+        var p = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        double max = s.Kind == StepKind.Ald ? 864000 : 36000;
+        p.Children.Add(Num(s.TimeS, 0, max, s.Kind == StepKind.Gas ? 1 : 60, "0.#", v => SetStep(k, x => x with { TimeS = v })));
+        p.Children.Add(new TextBlock
+        {
+            Text = s.Kind switch { StepKind.Gas => "時間", StepKind.Ald => "最大（0 = 自動）", _ => "最大時間" },
+            Foreground = DimText, FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+        });
+        return p;
+    }
+
+    private Control EstCell(int k, ProcessStep s)
+    {
+        var t = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+        _estCells.Add((k, t));
+        return t;
+    }
+
+    private static string Hms(double s) => TimeSpan.FromSeconds(Math.Round(s)).ToString(@"hh\:mm\:ss");
+
+    private string EstText(ProcessStep s) => s.Kind switch
+    {
+        StepKind.Gas => $"{s.TimeS:0.#} s",
+        StepKind.Ald when s.Ald is { } a => $"{Hms(a.TotalSeconds)}（每 cycle {a.CycleSeconds:0.###} s）"
+            + (a.MfcPresets().Count > 0 ? $"\nMFC 切換 {a.MfcPresets().Count}/{AldRecipe.MaxMfcPresets} 種" : ""),
+        StepKind.PumpDown => "看實際抽氣",
+        StepKind.HeatCheck => "已到溫就直接下一步",
+        _ => "看實際回填",
+    };
+
+    private Control? PressureCell(int k, ProcessStep s)
+    {
+        TextBox Torr(double v, string key, Func<ProcessStep, double, ProcessStep> set)
+        {
+            var t = new TextBox { Text = v.ToString("G3", CultureInfo.InvariantCulture), Width = 80 };
+            t.TextChanged += (_, _) =>
+            {
+                if (_filling) return;
+                string id = $"Step {k + 1} {key}";
+                if (double.TryParse(t.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var x) && x > 0 && double.IsFinite(x))
+                { _badInput.Remove(id); SetStep(k, st => set(st, x)); }
+                else { _badInput.Add(id); Dirty(); }
+            };
+            return t;
+        }
+        Control Line(string label, Control box, string unit)
+        {
+            var p = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new(0, 1) };
+            p.Children.Add(new TextBlock { Text = label, Width = 66, VerticalAlignment = VerticalAlignment.Center });
+            p.Children.Add(box);
+            p.Children.Add(new TextBlock { Text = unit, VerticalAlignment = VerticalAlignment.Center });
+            return p;
+        }
+        switch (s.Kind)
+        {
+            case StepKind.PumpDown:
+            {
+                var p = s.Pump ?? new PumpParams();
+                var sp = new StackPanel();
+                sp.Children.Add(Line("抽到 Base", Torr(p.BaseTorr, "Base", (st, x) => st with { Pump = (st.Pump ?? new()) with { BaseTorr = x } }), "Torr"));
+                sp.Children.Add(Line("Crossover", Torr(p.CrossoverTorr, "Crossover", (st, x) => st with { Pump = (st.Pump ?? new()) with { CrossoverTorr = x } }), "Torr（切 Turbo）"));
+                return sp;
+            }
+            case StepKind.Vent:
+            {
+                var v = s.Vent ?? new VentParams();
+                return Line("回填到", Num(v.TargetTorr, 100, 800, 10, "0", x => SetStep(k, st => st with { Vent = (st.Vent ?? new()) with { TargetTorr = x } }), 90), "Torr");
+            }
+            default: return Na("維持（不控壓）");
+        }
+    }
+
+    private Control? HeatCell(int k, ProcessStep s)
+    {
+        if (s.Kind != StepKind.HeatCheck) return Na("維持常駐設定");
+        var h = s.Heat ?? new HeatParams();
+        var names = HeaterNames;
+        var p = new StackPanel { Spacing = 2 };
+        for (int ch = 0; ch < 16; ch++)
+        {
+            if (!(ch < h.HeaterSpDegC.Length && h.HeaterSpDegC[ch] > 0)) continue;
+            int c = ch;
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,80,Auto,Auto") };
+            row.Children.Add(new TextBlock { Text = $"#{c + 1} {names[c]}", VerticalAlignment = VerticalAlignment.Center, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis });
+            var n = Num(h.HeaterSpDegC[c], 1, _m?.Config.Heaters.Channels[c].LimitDegC ?? 650, 5, "0", v => { _steps[k].Heat!.HeaterSpDegC[c] = v; Dirty(); }, 76);
+            Grid.SetColumn(n, 1);
+            row.Children.Add(n);
+            row.Children.Add(new TextBlock { Text = "°C", VerticalAlignment = VerticalAlignment.Center, Margin = new(4, 0), [Grid.ColumnProperty] = 2 });
+            var x = new Button { Content = "✕", Padding = new(6, 1), MinWidth = 0, [Grid.ColumnProperty] = 3 };
+            ToolTip.SetTip(x, "不確認這組");
+            x.Click += (_, _) => { _steps[k].Heat!.HeaterSpDegC[c] = 0; RebuildTable(); Dirty(); };
+            row.Children.Add(x);
+            p.Children.Add(row);
+        }
+        var add = new ComboBox
+        {
+            PlaceholderText = "＋ 加入要確認的加熱組", HorizontalAlignment = HorizontalAlignment.Stretch,
+            ItemsSource = Enumerable.Range(0, 16).Where(ch => !(h.HeaterSpDegC[ch] > 0)).Select(ch => new ComboBoxItem { Content = $"#{ch + 1} {names[ch]}", Tag = ch }).ToList(),
+        };
+        add.SelectionChanged += (_, _) =>
+        {
+            if (_filling || add.SelectedItem is not ComboBoxItem { Tag: int ch }) return;
+            _steps[k].Heat!.HeaterSpDegC[ch] = _m?.HeaterSetpoint(ch) is { } sp && sp > 0 ? Math.Round(sp) : 100;
+            RebuildTable(); Dirty();
+        };
+        p.Children.Add(add);
+        var tol = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new(0, 2, 0, 0) };
+        tol.Children.Add(new TextBlock { Text = "容差 ±", VerticalAlignment = VerticalAlignment.Center });
+        tol.Children.Add(Num(h.ToleranceC, 0.5, 50, 0.5, "0.0", v => SetStep(k, st => st with { Heat = st.Heat! with { ToleranceC = v } }), 60));
+        tol.Children.Add(new TextBlock { Text = "°C　穩定", VerticalAlignment = VerticalAlignment.Center });
+        tol.Children.Add(Num(h.SettleS, 0, 36000, 10, "0", v => SetStep(k, st => st with { Heat = st.Heat! with { SettleS = v } }), 60));
+        tol.Children.Add(new TextBlock { Text = "s", VerticalAlignment = VerticalAlignment.Center });
+        p.Children.Add(tol);
+        return p;
+    }
+
+    private Control? MfcCell(int k, ProcessStep s, int ch)
+    {
+        if (!s.UsesMfc) return s.Kind == StepKind.Vent ? Na("關") : Na();
+        var fs = _m?.Config.Mfc.Channels[ch].FullScale ?? 2000;
+        var m = s.Mfc;
+        bool set = m is { } a && ch < a.Length && a[ch] is not null;
+        var p = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        var cb = new CheckBox { IsChecked = set, MinWidth = 0, Content = "設定", VerticalAlignment = VerticalAlignment.Center };
+        var n = new NumericUpDown { Minimum = 0, Maximum = (decimal)fs, Increment = 1, FormatString = "0.#", ShowButtonSpinner = false, Width = 90, IsEnabled = set, Value = set ? (decimal)Math.Clamp(m![ch]!.Value, 0, fs) : 0 };
+        void Write()
+        {
+            if (_filling) return;
+            var arr = _steps[k].Mfc is { Length: 8 } cur ? (double?[])cur.Clone() : new double?[8];
+            arr[ch] = cb.IsChecked == true ? (double)(n.Value ?? 0) : null;
+            _steps[k] = _steps[k] with { Mfc = arr.Any(x => x is not null) ? arr : null };
+            Dirty();
+        }
+        cb.IsCheckedChanged += (_, _) => { n.IsEnabled = cb.IsChecked == true; Write(); };
+        n.ValueChanged += (_, _) => { if (cb.IsChecked == true) Write(); };
+        p.Children.Add(cb);
+        p.Children.Add(n);
+        _mfcCells.Add((k, ch, cb, n));
+        return p;
+    }
+
+    // ------------------------------------------------------------ 子步驟
+    private Control? SubStepCell(int k, ProcessStep s)
+    {
+        if (s.Kind != StepKind.Ald || s.Ald is not { } ald) return null;
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition(20, GridUnitType.Pixel));
+        for (int v = 0; v < 7; v++) g.ColumnDefinitions.Add(new ColumnDefinition(26, GridUnitType.Pixel));
+        g.ColumnDefinitions.Add(new ColumnDefinition(60, GridUnitType.Pixel));
+        g.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+        void Add(Control c, int r, int col) { Grid.SetRow(c, r); Grid.SetColumn(c, col); g.Children.Add(c); }
+        static TextBlock H(string t) => new() { Text = t, FontSize = 11, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center };
+
+        g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        Add(H("#"), 0, 0);
+        for (int v = 0; v < 7; v++)
+        {
+            var h = H($"V{v + 1}");
+            ToolTip.SetTip(h, ValveNames.Label(_valveNames, v));
+            Add(h, 0, 1 + v);
+        }
+        Add(H("ms"), 0, 8);
+        for (int i = 0; i < ald.Steps.Count; i++)
+        {
+            int j = i, r = i + 1;
+            var st = ald.Steps[j];
+            g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            if (st.HasMfcChange || st.Rf1W > 0 || st.Rf2W > 0)
+                Add(new Border { Background = MarkBg, [Grid.ColumnSpanProperty] = 10 }, r, 0);
+            var idx = new TextBlock { Text = $"{j + 1}", VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
+            ToolTip.SetTip(idx, RecipeText.Step(st, _valveNames));
+            Add(idx, r, 0);
+            for (int v = 0; v < 7; v++)
+            {
+                int bit = v;
+                var cb = new CheckBox { IsChecked = (st.ValveMask >> bit & 1) != 0, HorizontalAlignment = HorizontalAlignment.Center, MinWidth = 0, Padding = new(0) };
+                ToolTip.SetTip(cb, ValveNames.Label(_valveNames, bit));
+                cb.IsCheckedChanged += (_, _) =>
+                {
+                    if (_filling) return;
+                    ald.Steps[j] = ald.Steps[j] with { ValveMask = (ushort)(cb.IsChecked == true ? ald.Steps[j].ValveMask | 1 << bit : ald.Steps[j].ValveMask & ~(1 << bit)) };
+                    Dirty();
+                };
+                Add(cb, r, 1 + v);
+            }
+            Add(Num(st.DurationMs, 1, 60000, 10, "0", x => { ald.Steps[j] = ald.Steps[j] with { DurationMs = (int)x }; Dirty(); }, 56), r, 8);
+            Add(SubStepMore(k, ald, j), r, 9);
+        }
+        var add = new Button { Content = "＋ 子步驟", Padding = new(8, 2), Margin = new(0, 4, 0, 0), IsEnabled = ald.Steps.Count < AldRecipe.MaxSteps };
+        ToolTip.SetTip(add, $"每段最多 {AldRecipe.MaxSteps} 個子步驟");
+        add.Click += (_, _) => { ald.Steps.Add(new AldStep("Purge", 0, 1000)); RebuildTable(); Dirty(); };
+        g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        Grid.SetColumnSpan(add, 9);
+        Add(add, ald.Steps.Count + 1, 0);
+        return g;
+    }
+
+    /// <summary>子步驟的「⋯」：名稱、MFC 切換、RF、上下移、複製、刪除。</summary>
+    private Button SubStepMore(int k, AldRecipe seg, int j)
+    {
+        var st = seg.Steps[j];
+        bool mark = st.HasMfcChange || st.Rf1W > 0 || st.Rf2W > 0;
+        var b = new Button { Content = mark ? "⋯ *" : "⋯", Padding = new(6, 1), MinWidth = 0, Margin = new(4, 1, 0, 1) };
+        ToolTip.SetTip(b, RecipeText.Step(st, _valveNames));
         var mfc = _m?.Config.Mfc.Channels;
-        string Summary() => seg.Steps[k].HasMfcChange ? RecipeText.Mfc(seg.Steps[k].Mfc!) : "沿用";
-        var b = new Button { Content = Summary(), HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new(2), FontSize = 12 };
-        ToolTip.SetTip(b, seg.Steps[k].HasMfcChange ? Summary() : "這一步開始時要切換的 MFC（沒勾 = 沿用上一步）");
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,90") };
+        var panel = new StackPanel { Spacing = 6, Width = 360 };
+        panel.Children.Add(new TextBlock { Text = $"Step {k + 1} 子步驟 {j + 1}", FontWeight = FontWeight.Bold });
+        var name = new TextBox { Text = st.Label, Watermark = "名稱，例如 TMA pulse" };
+        panel.Children.Add(name);
+        panel.Children.Add(new TextBlock { Text = "這個子步驟開始時切換 MFC（沒勾 = 沿用；切換後一直維持到下次切換）", Foreground = Brushes.Gray, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,90") };
         var checks = new CheckBox[8];
         var nums = new NumericUpDown[8];
         for (int c = 0; c < 8; c++)
         {
-            int ch = c;
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            checks[c] = new CheckBox { Content = mfc is null ? $"MFC {c + 1}" : $"{c + 1} {mfc[c].Name}（{mfc[c].Use}）", Margin = new(0, 0, 8, 0) };
-            nums[c] = new NumericUpDown { Minimum = 0, Maximum = (decimal)(mfc?[c].FullScale ?? 2000), Increment = 1, FormatString = "0.#", Margin = new(0, 1), ShowButtonSpinner = false };
+            bool on = st.Mfc is { } m && c < m.Length && m[c] is not null;
+            checks[c] = new CheckBox { Content = mfc is null ? $"MFC {c + 1}" : $"{c + 1} {mfc[c].Name}（{mfc[c].Unit}）", IsChecked = on };
+            nums[c] = new NumericUpDown { Minimum = 0, Maximum = (decimal)(mfc?[c].FullScale ?? 2000), Increment = 1, FormatString = "0.#", ShowButtonSpinner = false, IsEnabled = on, Value = on ? (decimal)st.Mfc![c]!.Value : 0 };
+            int ch = c;
+            checks[c].IsCheckedChanged += (_, _) => nums[ch].IsEnabled = checks[ch].IsChecked == true;
             Grid.SetRow(checks[c], c); Grid.SetRow(nums[c], c); Grid.SetColumn(nums[c], 1);
             grid.Children.Add(checks[c]); grid.Children.Add(nums[c]);
-            void Changed()
-            {
-                if (_filling) return;
-                nums[ch].IsEnabled = checks[ch].IsChecked == true;
-                var m = Enumerable.Range(0, 8).Select(i => checks[i].IsChecked == true ? (double?)(double)(nums[i].Value ?? 0) : null).ToArray();
-                seg.Steps[k] = seg.Steps[k] with { Mfc = m.Any(x => x is not null) ? m : null };
-                b.Content = Summary();
-                ToolTip.SetTip(b, Summary());
-                Dirty();
-            }
-            checks[c].IsCheckedChanged += (_, _) => Changed();
-            nums[c].ValueChanged += (_, _) => Changed();
         }
-        var panel = new StackPanel { Spacing = 6 };
-        panel.Children.Add(new TextBlock { Text = $"第 {k + 1} 步開始時切換 MFC", FontWeight = FontWeight.Bold });
-        panel.Children.Add(new TextBlock { Text = "沒勾的通道沿用上一步；切換後一直維持（下一段也維持），直到再被切換", Foreground = Brushes.Gray, FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxWidth = 360 });
         panel.Children.Add(grid);
-        var fly = new Flyout { Content = panel, Placement = PlacementMode.Bottom };
-        fly.Opened += (_, _) =>
+        NumericUpDown? rf1 = null, rf2 = null;
+        if (Hw.Rf1MaxW > 0 || Hw.Rf2MaxW > 0)
         {
-            _filling = true;
-            var m = seg.Steps[k].Mfc;
-            for (int c = 0; c < 8; c++)
+            var rf = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            if (Hw.Rf1MaxW > 0) { rf.Children.Add(new TextBlock { Text = "RF1 W", VerticalAlignment = VerticalAlignment.Center }); rf.Children.Add(rf1 = new NumericUpDown { Minimum = 0, Maximum = (decimal)Hw.Rf1MaxW, Increment = 10, FormatString = "0", ShowButtonSpinner = false, Width = 80, Value = (decimal)st.Rf1W }); }
+            if (Hw.Rf2MaxW > 0) { rf.Children.Add(new TextBlock { Text = "RF2 W", VerticalAlignment = VerticalAlignment.Center }); rf.Children.Add(rf2 = new NumericUpDown { Minimum = 0, Maximum = (decimal)Hw.Rf2MaxW, Increment = 10, FormatString = "0", ShowButtonSpinner = false, Width = 80, Value = (decimal)st.Rf2W }); }
+            if (!Hw.RfReady) rf.Children.Add(new TextBlock { Text = "（RF 未接上）", Foreground = WarnText, VerticalAlignment = VerticalAlignment.Center });
+            panel.Children.Add(rf);
+        }
+        var fly = new Flyout { Content = panel, Placement = PlacementMode.Bottom };
+        var ops = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        void Op(string t, bool enabled, Action a)
+        {
+            var x = new Button { Content = t, IsEnabled = enabled && _rEdit };
+            x.Click += (_, _) => { fly.Hide(); a(); RebuildTable(); Dirty(); };
+            ops.Children.Add(x);
+        }
+        Op("套用", true, () =>
+        {
+            var m = Enumerable.Range(0, 8).Select(i => checks[i].IsChecked == true ? (double?)(double)(nums[i].Value ?? 0) : null).ToArray();
+            seg.Steps[j] = seg.Steps[j] with
             {
-                checks[c].IsChecked = m is { } a && c < a.Length && a[c] is not null;
-                nums[c].Value = (decimal)(m is { } a2 && c < a2.Length && a2[c] is { } v ? v : 0);
-                nums[c].IsEnabled = checks[c].IsChecked == true && _rEdit;
-                checks[c].IsEnabled = _rEdit;
-            }
-            _filling = false;
-        };
+                Label = (name.Text ?? "").Trim(), Mfc = m.Any(x => x is not null) ? m : null,
+                Rf1W = (double)(rf1?.Value ?? 0), Rf2W = (double)(rf2?.Value ?? 0),
+            };
+        });
+        Op("↑", j > 0, () => (seg.Steps[j - 1], seg.Steps[j]) = (seg.Steps[j], seg.Steps[j - 1]));
+        Op("↓", j < seg.Steps.Count - 1, () => (seg.Steps[j + 1], seg.Steps[j]) = (seg.Steps[j], seg.Steps[j + 1]));
+        Op("複製", seg.Steps.Count < AldRecipe.MaxSteps, () => seg.Steps.Insert(j + 1, seg.Steps[j] with { Mfc = seg.Steps[j].Mfc?.ToArray() }));
+        Op("刪除", true, () => seg.Steps.RemoveAt(j));
+        panel.Children.Add(ops);
+        panel.IsEnabled = true;
+        name.IsEnabled = grid.IsEnabled = _rEdit;
         b.Flyout = fly;
         return b;
     }
+
+    /// <summary>更新計算欄：預估時間、沿用的 MFC 值、總時間。</summary>
+    private void RefreshComputed()
+    {
+        bool was = _filling;
+        _filling = true;
+        try
+        {
+            var cur = MfcAtStepsOf(_steps);
+            foreach (var (k, ch, cb, n) in _mfcCells)
+                if (cb.IsChecked != true && k < cur.Count) n.Value = (decimal)Math.Min((double)n.Maximum, cur[k][ch]);
+            foreach (var (k, t) in _estCells)
+                if (k < _steps.Count) t.Text = EstText(_steps[k]);
+        }
+        finally { _filling = was; }
+        double ald = _steps.Where(s => s.Kind == StepKind.Ald && s.Ald is not null).Sum(s => s.Ald!.TotalSeconds);
+        double gas = _steps.Where(s => s.Kind == StepKind.Gas).Sum(s => s.TimeS);
+        C<TextBlock>("TxtRTotal").Text = _steps.Count == 0 ? "" :
+            $"共 {_steps.Count} 步，ALD 約 {Hms(ald)}、通氣 {Hms(gas)}（不含抽真空、等溫度、回填）";
+    }
+
+    private static List<double[]> MfcAtStepsOf(List<ProcessStep> steps) => new ProcessRecipe { Steps = steps }.MfcAtSteps();
 
     // ------------------------------------------------------------ 每 200 ms
     private void RenderRecipe()
@@ -703,15 +804,14 @@ public partial class MainWindow
         if (edit != _rEdit)
         {
             _rEdit = edit;
-            C<StackPanel>("PnlRecipeLeft").IsEnabled = edit;
-            C<StackPanel>("PnlRSegHead").IsEnabled = edit;
-            C<Grid>("GrdRSteps").IsEnabled = edit;
+            C<Grid>("PnlRecipeHead").IsEnabled = edit;
+            C<Grid>("GrdRTable").IsEnabled = edit;
             C<Button>("BtnRStepAdd").IsEnabled = edit;
             C<Button>("BtnRValveNames").IsEnabled = edit;
             C<Button>("BtnRecipeSave").IsEnabled = edit;
             C<Button>("BtnRecipeSaveAs").IsEnabled = edit;
             C<Button>("BtnRecipeNew").IsEnabled = edit;
-            RebuildSegs();   // 「＋ 新增段」跟著鎖
+            RebuildTable();   // 表頭的搬移 / 刪除鍵跟著鎖
         }
         var lockBox = C<Border>("BdRecipeLock");
         lockBox.IsVisible = !edit;

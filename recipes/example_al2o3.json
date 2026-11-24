@@ -1,31 +1,101 @@
 {
   "_comment": "範例製程配方（ProcessRecipe）。ALD 閥對應管路待確認（V1=前驅物 A？V2=Purge？V3=前驅物 B？）。heaterSpDegC / mfc 為 0 的通道不用。",
   "name": "Example Al2O3",
-  "pumpDown": true,
-  "crossoverTorr": 0.5,
-  "baseTorr": 0.005,
-  "pumpTimeoutS": 1800,
-  "turboSpinUpTimeoutS": 900,
-  "heaterSpDegC": [ 150, 150, 0, 0, 0, 80, 120, 120, 120, 100, 100, 150, 0, 0, 0, 0 ],
-  "heatToleranceC": 3,
-  "heatSettleS": 60,
-  "heatTimeoutS": 3600,
-  "mfc": [ 0, 20, 0, 0, 0, 0, 0, 0 ],
-  "gasStabilizeS": 10,
-  "segments": [
+  "description": "",
+  "revision": 0,
+  "modifiedBy": "",
+  "steps": [
+    {
+      "name": "抽真空",
+      "kind": "pumpDown",
+      "timeS": 1800,
+      "pump": {
+        "baseTorr": 0.005,
+        "crossoverTorr": 0.5,
+        "turboSpinUpTimeoutS": 900
+      }
+    },
+    {
+      "name": "確認溫度",
+      "kind": "heatCheck",
+      "timeS": 3600,
+      "heat": {
+        "heaterSpDegC": [
+          150,
+          150,
+          0,
+          0,
+          0,
+          80,
+          120,
+          120,
+          120,
+          100,
+          100,
+          150,
+          0,
+          0,
+          0,
+          0
+        ],
+        "toleranceC": 3,
+        "settleS": 60
+      }
+    },
+    {
+      "name": "通氣穩定",
+      "kind": "gas",
+      "timeS": 10,
+      "mfc": [
+        0,
+        20,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
     {
       "name": "Al2O3",
-      "cycles": 100,
-      "steps": [
-        { "label": "Precursor A pulse", "valveMask": 1, "durationMs": 20 },
-        { "label": "Purge",             "valveMask": 2, "durationMs": 5000 },
-        { "label": "Precursor B pulse", "valveMask": 4, "durationMs": 20 },
-        { "label": "Purge",             "valveMask": 2, "durationMs": 5000 }
-      ]
+      "kind": "ald",
+      "timeS": 0,
+      "ald": {
+        "name": "Al2O3",
+        "cycles": 100,
+        "steps": [
+          {
+            "label": "Precursor A pulse",
+            "valveMask": 1,
+            "durationMs": 20,
+            "rf1W": 0,
+            "rf2W": 0
+          },
+          {
+            "label": "Purge",
+            "valveMask": 2,
+            "durationMs": 5000,
+            "rf1W": 0,
+            "rf2W": 0
+          },
+          {
+            "label": "Precursor B pulse",
+            "valveMask": 4,
+            "durationMs": 20,
+            "rf1W": 0,
+            "rf2W": 0
+          },
+          {
+            "label": "Purge",
+            "valveMask": 2,
+            "durationMs": 5000,
+            "rf1W": 0,
+            "rf2W": 0
+          }
+        ],
+        "o3SetPct": 0
+      }
     }
-  ],
-  "ventAfter": false,
-  "ventTargetTorr": 740,
-  "ventTimeoutS": 600,
-  "turboSpinDownTimeoutS": 1200
+  ]
 }

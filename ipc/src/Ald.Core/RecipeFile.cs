@@ -20,18 +20,18 @@ public static class RecipeFile
         AllowTrailingCommas = true,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,   // 中文直接存，不轉 \uXXXX
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    /// <summary>讀配方；舊格式（單一 "ald"）自動轉成一段 "segments"。</summary>
+    /// <summary>讀配方；舊格式（2026-11-24 以前沒有頂層 "steps"）自動轉成步驟清單。</summary>
     public static ProcessRecipe Parse(string json)
     {
-        var r = JsonSerializer.Deserialize<ProcessRecipe>(json, Opt) ?? throw new FormatException("配方檔是空的");
-        if (r.Segments.Count == 0 && r.Ald is { } a)
-        {
-            if (string.IsNullOrWhiteSpace(a.Name)) a.Name = r.Name;
-            r = r with { Segments = [a], Ald = null };
-        }
-        return r;
+        var node = System.Text.Json.Nodes.JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true })
+                   as System.Text.Json.Nodes.JsonObject ?? throw new FormatException("配方檔是空的");
+        bool isNew = node.Any(kv => string.Equals(kv.Key, "steps", StringComparison.OrdinalIgnoreCase));
+        if (isNew) return JsonSerializer.Deserialize<ProcessRecipe>(json, Opt) ?? throw new FormatException("配方檔是空的");
+        var o = JsonSerializer.Deserialize<LegacyRecipe>(json, Opt) ?? throw new FormatException("配方檔是空的");
+        return o.Convert();
     }
 
     public static string ToJson(ProcessRecipe r) => JsonSerializer.Serialize(r, Opt);
@@ -116,21 +116,31 @@ public static class RecipeText
     public static string Describe(ProcessRecipe r, IReadOnlyList<string>? valveNames = null)
     {
         var sb = new System.Text.StringBuilder();
-        var heat = r.HeaterSpDegC.Select((t, ch) => (t, ch)).Where(v => v.t > 0).Select(v => $"#{v.ch + 1} {v.t:0} °C");
-        var gas = r.Mfc.Select((v, ch) => (v, ch)).Where(v => v.v > 0).Select(v => $"MFC{v.ch + 1} {v.v:0.#}");
         sb.AppendLine($"配方 {r.Name}{(r.Revision > 0 ? $"（版次 {r.Revision}）" : "")}");
-        sb.AppendLine($"抽真空 {(r.PumpDown ? "是" : "否")}  結束回填 {(r.VentAfter ? "是" : "否")}");
-        sb.AppendLine($"溫度 {(heat.Any() ? string.Join("、", heat) : "不檢查")}");
-        sb.AppendLine($"起始氣體 {(gas.Any() ? string.Join("、", gas) : "無")}");
-        var segs = r.AldSegments;
-        if (segs.Count == 0) sb.AppendLine("無 ALD");
-        for (int i = 0; i < segs.Count; i++)
+        for (int i = 0; i < r.Steps.Count; i++)
         {
-            var g = segs[i];
-            sb.AppendLine($"ALD 第 {i + 1} 段 {g.Name}：{g.Cycles} cycles{(g.O3SetPct > 0 ? $"，O3 {g.O3SetPct:0.#} %" : "")}");
-            foreach (var s in g.Steps) sb.AppendLine("  " + Step(s, valveNames));
+            var st = r.Steps[i];
+            sb.AppendLine($"Step {i + 1} {st.Name}：{StepSummary(st)}");
+            if (st.Ald is { } g && st.Kind == StepKind.Ald)
+                foreach (var s in g.Steps) sb.AppendLine("  " + Step(s, valveNames));
         }
+        if (r.Steps.Count == 0) sb.AppendLine("（沒有步驟）");
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>一個步驟的一行摘要。</summary>
+    public static string StepSummary(ProcessStep st)
+    {
+        string mfc = st.Mfc is { } m && m.Any(v => v is not null) ? "，" + Mfc(m) : "";
+        return st.Kind switch
+        {
+            StepKind.PumpDown => $"抽真空到 {st.Pump?.BaseTorr:G3} Torr（最多 {st.TimeS:0} s）",
+            StepKind.HeatCheck => "確認溫度 " + string.Join("、", (st.Heat?.HeaterSpDegC ?? []).Select((t, ch) => (t, ch)).Where(v => v.t > 0).Select(v => $"#{v.ch + 1} {v.t:0} °C")),
+            StepKind.Gas => $"通氣 {st.TimeS:0.#} s{mfc}",
+            StepKind.Ald => $"ALD {st.Ald?.Cycles} cycles{(st.Ald?.O3SetPct > 0 ? $"，O3 {st.Ald.O3SetPct:0.#} %" : "")}{mfc}",
+            StepKind.Vent => $"回填到 {st.Vent?.TargetTorr:0} Torr",
+            _ => "",
+        };
     }
 
     public static string Step(AldStep s, IReadOnlyList<string>? valveNames = null)
@@ -147,4 +157,58 @@ public static class RecipeText
     /// <summary>MFC 切換摘要，例如 "2→150、5→0"。</summary>
     public static string Mfc(double?[] m)
         => string.Join("、", m.Select((v, c) => (v, c)).Where(x => x.v is not null).Select(x => $"MFC{x.c + 1}→{x.v:0.#}"));
+}
+
+/// <summary>
+/// 2026-11-24 以前的配方格式：固定流程 抽真空 → 確認溫度 → 通氣 → ALD 各段 → 回填。
+/// 只用來讀舊檔（RecipeFile.Parse 自動轉換）與測試，存檔一律是新格式（步驟清單）。
+/// </summary>
+public sealed record LegacyRecipe
+{
+    public string Name { get; init; } = "";
+    public string Description { get; init; } = "";
+    public int Revision { get; init; }
+    public string ModifiedBy { get; init; } = "";
+    public DateTime? ModifiedAt { get; init; }
+    public bool PumpDown { get; init; } = true;
+    public double CrossoverTorr { get; init; } = 0.5;
+    public double BaseTorr { get; init; } = 5e-3;
+    public double PumpTimeoutS { get; init; } = 1800;
+    public double TurboSpinUpTimeoutS { get; init; } = 900;
+    public double[] HeaterSpDegC { get; init; } = new double[16];
+    public double HeatToleranceC { get; init; } = 3;
+    public double HeatSettleS { get; init; } = 60;
+    public double HeatTimeoutS { get; init; } = 3600;
+    public double[] Mfc { get; init; } = new double[8];
+    public double GasStabilizeS { get; init; } = 10;
+    public List<AldRecipe> Segments { get; init; } = new();
+    public AldRecipe? Ald { get; init; }
+    public bool VentAfter { get; init; }
+    public double VentTargetTorr { get; init; } = 740;
+    public double VentTimeoutS { get; init; } = 600;
+    public double TurboSpinDownTimeoutS { get; init; } = 1200;
+
+    public static implicit operator ProcessRecipe(LegacyRecipe l) => l.Convert();
+
+    public ProcessRecipe Convert()
+    {
+        var steps = new List<ProcessStep>();
+        if (PumpDown)
+            steps.Add(ProcessStep.NewPumpDown(new PumpParams { BaseTorr = BaseTorr, CrossoverTorr = CrossoverTorr, TurboSpinUpTimeoutS = TurboSpinUpTimeoutS }, PumpTimeoutS));
+        if (HeaterSpDegC.Any(t => t > 0))
+            steps.Add(ProcessStep.NewHeatCheck(HeaterSpDegC, HeatToleranceC, HeatSettleS, HeatTimeoutS));
+        var segs = Segments.Count > 0 ? Segments : Ald is null ? [] : [Ald];
+        bool gasUsed = Mfc.Any(v => v > 0) || segs.Any(g => g.Steps.Any(s => s.HasMfcChange));
+        if (gasUsed)
+            steps.Add(ProcessStep.NewGas(Mfc.Select(v => (double?)v).ToArray(), GasStabilizeS, "通氣穩定"));
+        for (int i = 0; i < segs.Count; i++)
+        {
+            var g = segs[i];
+            if (string.IsNullOrWhiteSpace(g.Name)) g.Name = segs.Count > 1 ? $"ALD {i + 1}" : (Name.Length > 0 ? Name : "ALD");
+            steps.Add(ProcessStep.NewAld(g));
+        }
+        if (VentAfter)
+            steps.Add(ProcessStep.NewVent(new VentParams { TargetTorr = VentTargetTorr, TurboSpinDownTimeoutS = TurboSpinDownTimeoutS }, VentTimeoutS));
+        return new ProcessRecipe { Name = Name, Description = Description, Revision = Revision, ModifiedBy = ModifiedBy, ModifiedAt = ModifiedAt, Steps = steps };
+    }
 }

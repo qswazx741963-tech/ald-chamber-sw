@@ -85,13 +85,17 @@ public static class RecipeHistory
     /// <summary>依路徑排序，但陣列索引用數字排（steps[10] 排在 steps[9] 後面）。</summary>
     private static string Order(string k) => System.Text.RegularExpressions.Regex.Replace(k, @"\d+", m => m.Value.PadLeft(5, '0'));
 
-    /// <summary>JSON 路徑 → 看得懂的名稱，例如 segments[0].steps[1].durationMs → 第 1 段 第 2 步 時間 ms。</summary>
+    /// <summary>JSON 路徑 → 看得懂的名稱，例如 steps[3].ald.steps[1].durationMs → Step 4 子步驟 2 時間 ms。</summary>
     public static string Label(string path)
     {
-        var s = System.Text.RegularExpressions.Regex.Replace(path, @"segments\[(\d+)\]", m => $"第 {int.Parse(m.Groups[1].Value) + 1} 段");
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"steps\[(\d+)\]", m => $"第 {int.Parse(m.Groups[1].Value) + 1} 步");
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"(mfc)\[(\d+)\]", m => $"MFC{int.Parse(m.Groups[2].Value) + 1}", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"heaterSpDegC\[(\d+)\]", m => $"溫度 #{int.Parse(m.Groups[1].Value) + 1}");
+        static string R(string i, string pat, System.Text.RegularExpressions.MatchEvaluator e, System.Text.RegularExpressions.RegexOptions o = default)
+            => System.Text.RegularExpressions.Regex.Replace(i, pat, e, o);
+        var s = R(path, @"\.ald\.steps\[(\d+)\]", m => $" 子步驟 {int.Parse(m.Groups[1].Value) + 1}");
+        s = R(s, @"segments\[(\d+)\]", m => $"第 {int.Parse(m.Groups[1].Value) + 1} 段");
+        s = R(s, @"steps\[(\d+)\]", m => $"Step {int.Parse(m.Groups[1].Value) + 1}");
+        s = R(s, @"(mfc)\[(\d+)\]", m => $"MFC{int.Parse(m.Groups[2].Value) + 1}", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        s = R(s, @"heaterSpDegC\[(\d+)\]", m => $"溫度 #{int.Parse(m.Groups[1].Value) + 1}");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\.(pump|heat|vent|ald)\.", ".");
         foreach (var (k, v) in Names) s = s.Replace(k, v);
         return s.Replace(".", " ");
     }
@@ -99,11 +103,9 @@ public static class RecipeHistory
     private static readonly (string, string)[] Names =
     [
         ("durationMs", "時間 ms"), ("valveMask", "閥"), ("label", "名稱"), ("rf1W", "RF1 W"), ("rf2W", "RF2 W"),
-        ("cycles", "Cycles"), ("o3SetPct", "O3 %"), ("name", "名稱"), ("description", "說明"),
-        ("pumpDown", "先抽真空"), ("crossoverTorr", "Crossover Torr"), ("baseTorr", "Base Torr"),
-        ("pumpTimeoutS", "抽氣逾時 s"), ("turboSpinUpTimeoutS", "Turbo 啟動逾時 s"),
-        ("heatToleranceC", "溫度容差 °C"), ("heatSettleS", "溫度穩定 s"), ("heatTimeoutS", "等溫度逾時 s"),
-        ("gasStabilizeS", "通氣穩定 s"), ("ventAfter", "結束回填"), ("ventTargetTorr", "回填目標 Torr"),
-        ("ventTimeoutS", "回填逾時 s"), ("turboSpinDownTimeoutS", "Turbo 停止逾時 s"),
+        ("cycles", "Cycles"), ("o3SetPct", "O3 %"), ("name", "名稱"), ("description", "說明"), ("kind", "結束條件"), ("timeS", "時間 s"),
+        ("crossoverTorr", "Crossover Torr"), ("baseTorr", "Base Torr"), ("turboSpinUpTimeoutS", "Turbo 啟動逾時 s"),
+        ("toleranceC", "溫度容差 °C"), ("settleS", "溫度穩定 s"), ("targetTorr", "回填目標 Torr"),
+        ("turboSpinDownTimeoutS", "Turbo 停止逾時 s"),
     ];
 }

@@ -77,7 +77,7 @@ public sealed class SimEndToEndTests : IDisposable
 
         m.SetHeater(6, 120, true);                         // 加熱是常駐設定（手動頁），配方只檢查
         var sp = new double[16]; sp[6] = 120;              // Chamber upper
-        var recipe = new ProcessRecipe
+        var recipe = new LegacyRecipe
         {
             Name = "e2e", HeaterSpDegC = sp, HeatToleranceC = 5, HeatSettleS = 1, HeatTimeoutS = 60,
             BaseTorr = 5e-3, PumpTimeoutS = 30, TurboSpinUpTimeoutS = 30,
@@ -109,8 +109,8 @@ public sealed class SimEndToEndTests : IDisposable
             while (!watch.IsCancellationRequested)
             {
                 var v = m.Snapshot.MfcValue[1];
-                if (seq.Step.Contains("第 1/2 段")) maxMfc2Seg1 = Math.Max(maxMfc2Seg1, v);
-                if (seq.Step.Contains("第 2/2 段")) maxMfc2Seg2 = Math.Max(maxMfc2Seg2, v);
+                if (seq.Step.Contains("Step 4/6")) maxMfc2Seg1 = Math.Max(maxMfc2Seg1, v);
+                if (seq.Step.Contains("Step 5/6")) maxMfc2Seg2 = Math.Max(maxMfc2Seg2, v);
                 await Task.Delay(10);
             }
         });
@@ -164,7 +164,7 @@ public sealed class SimEndToEndTests : IDisposable
         Assert.True(await m.LoadlockAsync(LoadlockCommand.Pump, 0, TimeSpan.FromSeconds(30), default), "LL 抽氣");
         Assert.True(await m.LoadlockAsync(LoadlockCommand.RoughOff, 0, TimeSpan.FromSeconds(5), default));
         Assert.True(await m.LoadlockAsync(LoadlockCommand.ArmHome, 0, TimeSpan.FromSeconds(10), default));
-        var pump = new ProcessRecipe { Name = "抽真空", BaseTorr = 5e-3, PumpTimeoutS = 30, TurboSpinUpTimeoutS = 30 };
+        var pump = new LegacyRecipe { Name = "抽真空", BaseTorr = 5e-3, PumpTimeoutS = 30, TurboSpinUpTimeoutS = 30 };
         Assert.Equal(SequencerState.Done, await new ProcessSequencer(m, TimeSpan.FromMilliseconds(50)).RunAsync(pump));
 
         var map = new WaferMap();

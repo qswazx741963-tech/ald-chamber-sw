@@ -8,7 +8,7 @@ public class BatchTests
     private static readonly TimeSpan Fast = TimeSpan.FromMilliseconds(1);
     private static readonly TransferConfig Cfg = new() { LiftTimeoutS = 0.2, HeaterTimeoutS = 0.2, LoadlockStepTimeoutS = 0.2 };
 
-    private static ProcessRecipe Recipe(string name) => new()
+    private static LegacyRecipe Recipe(string name) => new()
     {
         Name = name, HeatSettleS = 0.01, GasStabilizeS = 0.01, VentAfter = true,
         Ald = new AldRecipe { Cycles = 2, Steps = { new("A", 1, 20), new("P", 2, 50) } },

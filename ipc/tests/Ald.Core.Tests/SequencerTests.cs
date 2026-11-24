@@ -114,11 +114,11 @@ public class SequencerTests
 {
     private static readonly TimeSpan Fast = TimeSpan.FromMilliseconds(1);
 
-    private static ProcessRecipe Recipe(bool vent = true)
+    private static LegacyRecipe Recipe(bool vent = true)
     {
         var sp = new double[16]; sp[6] = 150; sp[7] = 150;
         var mfc = new double[8]; mfc[1] = 20;
-        return new ProcessRecipe
+        return new LegacyRecipe
         {
             Name = "test", HeaterSpDegC = sp, HeatSettleS = 0.01, Mfc = mfc, GasStabilizeS = 0.01, VentAfter = vent,
             Ald = new AldRecipe { Cycles = 5, Steps = { new("A", 1, 20), new("P", 2, 50) } },
@@ -139,11 +139,12 @@ public class SequencerTests
         Assert.All(m.Mfc, v => Assert.Equal(0, v));                       // 製程結束關氣
         Assert.False(m.VacuumCommand.HasFlag(VacuumOutputs.ChamberVent)); // 回填完關 vent
         Assert.False(m.VacuumCommand.HasFlag(VacuumOutputs.TurboGv));
-        int iPump = steps.FindIndex(x => x.StartsWith("抽真空")), iHeat = steps.IndexOf("確認溫度"),
-            iAld = steps.FindIndex(x => x.StartsWith("ALD")), iVent = steps.FindIndex(x => x.StartsWith("回填"));
+        int iPump = steps.FindIndex(x => x.Contains(" 抽真空")), iHeat = steps.FindIndex(x => x.EndsWith(" 確認溫度")),
+            iAld = steps.FindIndex(x => x.Contains("cycles")), iVent = steps.FindIndex(x => x.Contains(" 回填："));
+        Assert.True(iPump >= 0, string.Join(" | ", steps));
         Assert.True(iPump < iHeat && iHeat < iAld && iAld < iVent);
         Assert.DoesNotContain(m.Log, x => x.StartsWith("HEAT"));          // 配方不改加熱設定
-        Assert.DoesNotContain("等待溫度到位", steps);                       // 已經穩定就不等
+        Assert.DoesNotContain(steps, x => x.EndsWith("等待溫度到位"));                       // 已經穩定就不等
     }
 
     [Fact]
@@ -200,7 +201,7 @@ public class SequencerTests
         var steps = new List<string>();
         seq.Progress += p => steps.Add(p.Step);
         var task = seq.RunAsync(Recipe(vent: false) with { PumpDown = false, HeatSettleS = 0.05 });
-        while (!steps.Contains("等待溫度到位")) await Task.Delay(5);
+        while (!steps.Any(x => x.EndsWith("等待溫度到位"))) await Task.Delay(5);
         await Task.Delay(50);
         Assert.Equal(SequencerState.Running, seq.State);
         m.SetHeater(6, 150, true);                    // 人員在手動頁開加熱

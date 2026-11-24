@@ -1,74 +1,4 @@
-using System.Text.Json.Serialization;
-
 namespace Ald.Core;
-
-/// <summary>
-/// 整段製程配方：抽真空 → 確認溫度 → 通氣 → ALD 第 1 段 → 第 2 段 … →（可選）回填大氣。
-/// 加熱是常駐設定（手動操作頁設好就不動），配方只檢查溫度到位，不會改加熱設定、製程中也不升降溫。
-/// 時間單位都是秒，壓力 Torr，溫度 °C。數值待依實機調整。
-/// </summary>
-public sealed record ProcessRecipe
-{
-    public string Name { get; init; } = "";
-    /// <summary>說明（膜種、用途等），選填。</summary>
-    public string Description { get; init; } = "";
-    /// <summary>版次：每次在人機存檔 +1；ModifiedBy / ModifiedAt 記最後修改人與時間（修改內容另記在配方資料夾 .history/）。</summary>
-    public int Revision { get; init; }
-    public string ModifiedBy { get; init; } = "";
-    public DateTime? ModifiedAt { get; init; }
-
-    public bool PumpDown { get; init; } = true;
-    /// <summary>粗抽到這個壓力後切 Turbo。</summary>
-    public double CrossoverTorr { get; init; } = 0.5;
-    /// <summary>Turbo 抽到這個壓力才開始製程。</summary>
-    public double BaseTorr { get; init; } = 5e-3;
-    public double PumpTimeoutS { get; init; } = 1800;
-    public double TurboSpinUpTimeoutS { get; init; } = 900;
-
-    /// <summary>
-    /// 製程需要的溫度（0 = 不檢查）：只檢查、不改加熱設定。開始時已在 ±HeatToleranceC 內就直接往下；
-    /// 不在範圍內（例如剛開加熱）就等它進範圍並維持 HeatSettleS，超過 HeatTimeoutS 失敗。
-    /// </summary>
-    public double[] HeaterSpDegC { get; init; } = new double[16];
-    public double HeatToleranceC { get; init; } = 3;
-    public double HeatSettleS { get; init; } = 60;
-    public double HeatTimeoutS { get; init; } = 3600;
-
-    /// <summary>起始 MFC（config 單位），0 = 關。ALD 步驟表可以在某一步切換，切換後一直維持（跨段也維持）。</summary>
-    public double[] Mfc { get; init; } = new double[8];
-    public double GasStabilizeS { get; init; } = 10;
-
-    /// <summary>ALD 各段，依序執行。</summary>
-    public List<AldRecipe> Segments { get; init; } = new();
-    /// <summary>舊格式（2026-11-12 以前只有一段）：讀檔時自動搬到 Segments，存檔不再寫出。</summary>
-    public AldRecipe? Ald { get; init; }
-
-    /// <summary>實際要跑的各段（相容舊格式）。</summary>
-    [JsonIgnore]
-    public IReadOnlyList<AldRecipe> AldSegments => Segments.Count > 0 ? Segments : Ald is null ? [] : [Ald];
-
-    /// <summary>MFC 通道 c 在整個製程中有沒有用到（起始值或任何一步 &gt; 0）：用到的通道開上游閥。</summary>
-    public bool MfcUsed(int c) => Mfc[c] > 0 || AldSegments.Any(g => g.Steps.Any(s => s.Mfc is { } m && c < m.Length && m[c] > 0));
-
-    /// <summary>ALD 總時間（秒，不含抽真空 / 等溫度 / 回填）。</summary>
-    [JsonIgnore]
-    public double AldSeconds => AldSegments.Sum(g => g.TotalSeconds);
-
-    public bool VentAfter { get; init; }
-    public double VentTargetTorr { get; init; } = 740;
-    public double VentTimeoutS { get; init; } = 600;
-    public double TurboSpinDownTimeoutS { get; init; } = 1200;
-
-    public IEnumerable<string> Validate()
-    {
-        if (HeaterSpDegC.Length != 16) yield return "HeaterSpDegC 需 16 組";
-        if (Mfc.Length != 8) yield return "Mfc 需 8 組";
-        if (!(BaseTorr > 0) || !(CrossoverTorr > BaseTorr)) yield return "壓力設定錯誤（需 CrossoverTorr > BaseTorr > 0）";
-        var segs = AldSegments;
-        for (int i = 0; i < segs.Count; i++)
-            foreach (var e in segs[i].Validate()) yield return (segs.Count > 1 ? $"第 {i + 1} 段 {segs[i].Name}：" : "ALD：") + e;
-    }
-}
 
 public enum SequencerState { Idle, Running, Done, Aborted, Failed }
 
@@ -111,15 +41,32 @@ public sealed class ProcessSequencer
         {
             Require(_m.Snapshot.AllOnline, "主控板或控制板離線");
             Require(!_m.Snapshot.SafeState, "系統在安全狀態，請先 Reset");
-            if (r.PumpDown) await PumpDownAsync(r, token);
-            await HeatAsync(r, token);
-            await GasAsync(r, token);
-            var mfc = (double[])r.Mfc.Clone();
-            var segs = r.AldSegments;
-            for (int i = 0; i < segs.Count; i++)
-                mfc = await AldAsync(segs[i], i, segs.Count, mfc, token);
-            await EndProcessAsync(r, token);
-            if (r.VentAfter) await VentAsync(r, token);
+            var mfc = new double[8];
+            var opened = new bool[8];
+            for (int i = 0; i < r.Steps.Count; i++)
+            {
+                var st = r.Steps[i];
+                string at = r.Steps.Count > 1 ? $"Step {i + 1}/{r.Steps.Count} {st.Name}" : st.Name;
+                switch (st.Kind)
+                {
+                    case StepKind.PumpDown: await PumpDownAsync(st, at, token); break;
+                    case StepKind.HeatCheck: await HeatAsync(st, at, token); break;
+                    case StepKind.Gas:
+                        SetStep(at);
+                        ApplyMfc(r, st, mfc, opened);
+                        await DelayAsync(st.TimeS, token);
+                        break;
+                    case StepKind.Ald:
+                        ApplyMfc(r, st, mfc, opened);
+                        mfc = await AldAsync(st, at, mfc, token);
+                        break;
+                    case StepKind.Vent:
+                        GasOff(mfc, opened);
+                        await VentAsync(st, at, token);
+                        break;
+                }
+            }
+            EndProcess();
             Report(SequencerState.Done, "完成", r.Name);
         }
         catch (OperationCanceledException)
@@ -141,45 +88,48 @@ public sealed class ProcessSequencer
     }
 
     // ------------------------------------------------------------ 步驟
-    private async Task PumpDownAsync(ProcessRecipe r, CancellationToken ct)
+    private async Task PumpDownAsync(ProcessStep st, string at, CancellationToken ct)
     {
-        SetStep("抽真空：Dry pump");
+        var p = st.Pump ?? new PumpParams();
+        double timeout = st.TimeS;
+        SetStep($"{at}：Dry pump");
         Require(_m.Snapshot.SlitClosed, "Slit valve 未關");
         Vac(VacuumOutputs.DryPumpOn, on: true);
         Vac(VacuumOutputs.ChamberVent, on: false);
         await WaitAsync(s => s.DryPumpRunning, 60, "Dry pump 沒有啟動", ct);
 
-        if (!(_m.Snapshot.ChamberPressureTorr < r.CrossoverTorr))
+        if (!(_m.Snapshot.ChamberPressureTorr < p.CrossoverTorr))
         {
-            SetStep("抽真空：粗抽");
+            SetStep($"{at}：粗抽");
             Vac(VacuumOutputs.TurboGv, on: false);
             Vac(VacuumOutputs.ChamberRough, on: true);
-            await WaitAsync(s => s.ChamberPressureTorr < r.CrossoverTorr, r.PumpTimeoutS,
-                $"粗抽 {r.PumpTimeoutS:F0} s 內沒有低於 {r.CrossoverTorr} Torr（漏氣？）", ct);
+            await WaitAsync(s => s.ChamberPressureTorr < p.CrossoverTorr, timeout,
+                $"粗抽 {timeout:F0} s 內沒有低於 {p.CrossoverTorr} Torr（漏氣？）", ct);
         }
 
-        SetStep("抽真空：Turbo 啟動");
+        SetStep($"{at}：Turbo 啟動");
         Vac(VacuumOutputs.TurboRough | VacuumOutputs.TurboOn, on: true);
-        await WaitAsync(s => s.TurboAtSpeed, r.TurboSpinUpTimeoutS, "Turbo 沒有到達轉速", ct);
+        await WaitAsync(s => s.TurboAtSpeed, p.TurboSpinUpTimeoutS, "Turbo 沒有到達轉速", ct);
 
-        SetStep("抽真空：開 Turbo GV");
+        SetStep($"{at}：開 Turbo GV");
         Vac(VacuumOutputs.ChamberRough, on: false);
         Vac(VacuumOutputs.TurboGv, on: true);
         await WaitAsync(s => s.TurboGateOpened, 30, "Turbo gate valve 沒有打開（互鎖擋下？）", ct);
-        await WaitAsync(s => s.ChamberPressureTorr < r.BaseTorr, r.PumpTimeoutS,
-            $"沒有抽到 base pressure {r.BaseTorr:G3} Torr", ct);
+        await WaitAsync(s => s.ChamberPressureTorr < p.BaseTorr, timeout,
+            $"沒有抽到 base pressure {p.BaseTorr:G3} Torr", ct);
     }
 
-    private async Task HeatAsync(ProcessRecipe r, CancellationToken ct)
+    private async Task HeatAsync(ProcessStep st, string at, CancellationToken ct)
     {
-        var used = Enumerable.Range(0, 16).Where(i => r.HeaterSpDegC[i] > 0).ToArray();
+        var h = st.Heat ?? new HeatParams();
+        var used = Enumerable.Range(0, 16).Where(i => i < h.HeaterSpDegC.Length && h.HeaterSpDegC[i] > 0).ToArray();
         if (used.Length == 0) return;
-        SetStep("確認溫度");
-        bool Ok(MachineSnapshot s, int i) => Math.Abs(s.TempC[i] - r.HeaterSpDegC[i]) <= r.HeatToleranceC;
+        SetStep(at);
+        bool Ok(MachineSnapshot s, int i) => Math.Abs(s.TempC[i] - h.HeaterSpDegC[i]) <= h.ToleranceC;
         if (used.All(i => Ok(_m.Snapshot, i))) return;   // 常駐加熱已經穩定在設定溫度
 
-        SetStep("等待溫度到位");
-        var deadline = DateTime.Now.AddSeconds(r.HeatTimeoutS);
+        SetStep($"{at}：等待溫度到位");
+        var deadline = DateTime.Now.AddSeconds(st.TimeS);
         DateTime? inSince = null;
         while (true)
         {
@@ -187,30 +137,45 @@ public sealed class ProcessSequencer
             CheckHealthy();
             var s = _m.Snapshot;
             if (used.All(i => Ok(s, i))) inSince ??= DateTime.Now; else inSince = null;
-            if (inSince is { } t && (DateTime.Now - t).TotalSeconds >= r.HeatSettleS) return;
+            if (inSince is { } t && (DateTime.Now - t).TotalSeconds >= h.SettleS) return;
             if (DateTime.Now > deadline)
             {
-                var bad = used.Where(i => !Ok(s, i)).Select(i => $"#{i + 1} {s.TempC[i]:F1}/{r.HeaterSpDegC[i]:F0} °C");
-                throw new SequenceException($"溫度沒有到位：{string.Join("、", bad)}（加熱在手動操作頁設定，配方不會改加熱）");
+                var bad = used.Where(i => !Ok(s, i)).Select(i => $"#{i + 1} {s.TempC[i]:F1}/{h.HeaterSpDegC[i]:F0} °C");
+                throw new SequenceException($"溫度沒有到位：{string.Join("、", bad)}（加熱在加熱頁設定，配方不會改加熱）");
             }
             await Task.Delay(_poll, ct);
         }
     }
 
-    private async Task GasAsync(ProcessRecipe r, CancellationToken ct)
+    /// <summary>
+    /// 套用這步的 MFC 設定。第一次用到氣體時，整個配方會用到的通道一起開上游閥
+    /// （ALD 子步驟才切換的通道也先開，製程板切換時只改流量、不動閥）。
+    /// </summary>
+    private void ApplyMfc(ProcessRecipe r, ProcessStep st, double[] cur, bool[] opened)
     {
-        if (!Enumerable.Range(0, 8).Any(r.MfcUsed)) return;
-        SetStep("通氣穩定");
-        // 步驟表裡才用到的通道也先開上游閥（流量 = 起始值，可能是 0），切換時不用再動閥
-        for (int i = 0; i < 8; i++) _m.SetMfc(i, r.Mfc[i], r.MfcUsed(i));
-        await DelayAsync(r.GasStabilizeS, ct);
+        var set = st.Mfc;
+        for (int i = 0; i < 8; i++)
+        {
+            bool change = set is { } m && i < m.Length && m[i] is not null;
+            if (change) cur[i] = set![i]!.Value;
+            bool open = r.MfcUsed(i);
+            if (change || (open && !opened[i])) _m.SetMfc(i, cur[i], open);
+            if (open) opened[i] = true;
+        }
     }
 
-    /// <returns>這段跑完後的 MFC 設定（下一段的起點）</returns>
-    private async Task<double[]> AldAsync(AldRecipe ald, int index, int count, double[] mfcStart, CancellationToken ct)
+    private void GasOff(double[] cur, bool[] opened)
     {
-        string seg = count > 1 ? $"ALD 第 {index + 1}/{count} 段 {ald.Name}" : "ALD";
-        SetStep($"{seg}：{ald.Cycles} cycles");
+        _m.SetAldValves(0);
+        for (int i = 0; i < 8; i++) { _m.SetMfc(i, 0, false); cur[i] = 0; opened[i] = false; }
+    }
+
+    /// <returns>這段跑完後的 MFC 設定（下一步的起點）</returns>
+    private async Task<double[]> AldAsync(ProcessStep st, string at, double[] mfcStart, CancellationToken ct)
+    {
+        var ald = st.Ald!;
+        if (ald.Name != st.Name) ald.Name = st.Name;
+        SetStep($"{at}：{ald.Cycles} cycles");
         Require(_m.Snapshot.SlitClosed && _m.Snapshot.ArmClearOfSv, "Slit valve 未關或手臂未退出");
         if (ald.UsesRf) throw new SequenceException("配方有 RF 步驟，但 RF 控制還沒接上（硬體待確認）");
         if (ald.O3SetPct > 0) throw new SequenceException("配方有使用 O3，但 O3 產生器控制還沒接上（硬體待確認）");
@@ -218,21 +183,20 @@ public sealed class ProcessSequencer
         await DelayAsync(0.3, ct);   // 讓步驟表經背板送到製程板
         _m.StartAld();
         await WaitAsync(s => s.AldRunning, 5, "ALD 沒有開始（主控板互鎖擋下或參數被拒）", ct);
-        double cycleS = ald.Steps.Sum(x => x.DurationMs) / 1000.0;
-        double timeout = ald.Cycles * cycleS * 1.2 + 30;
+        double timeout = st.TimeS > 0 ? st.TimeS : ald.TotalSeconds * 1.2 + 30;
         var deadline = DateTime.Now.AddSeconds(timeout);
         while (_m.Snapshot.AldRunning)
         {
             ct.ThrowIfCancellationRequested();
             CheckHealthy();
-            SetStep($"{seg}：cycle {_m.Snapshot.AldCycle}/{ald.Cycles}", quiet: true);
-            if (DateTime.Now > deadline) throw new SequenceException($"{seg} 執行逾時");
+            SetStep($"{at}：cycle {_m.Snapshot.AldCycle}/{ald.Cycles}", quiet: true);
+            if (DateTime.Now > deadline) throw new SequenceException($"{at} 執行逾時");
             await Task.Delay(_poll, ct);
         }
         if (_m.Snapshot.AldCycle < ald.Cycles)
-            throw new SequenceException($"{seg} 中斷在 cycle {_m.Snapshot.AldCycle}/{ald.Cycles}");
+            throw new SequenceException($"{at} 中斷在 cycle {_m.Snapshot.AldCycle}/{ald.Cycles}");
 
-        // 步驟表切換過的 MFC：先把設定值改成最後的值，再下 STOP 解除製程板的覆寫，流量不會跳動
+        // 子步驟切換過的 MFC：先把設定值改成最後的值，再下 STOP 解除製程板的覆寫，流量不會跳動
         var after = ald.MfcAfter(mfcStart);
         if (ald.UsesMfcSwitch)
             for (int i = 0; i < 8; i++)
@@ -241,26 +205,26 @@ public sealed class ProcessSequencer
         return after;
     }
 
-    private Task EndProcessAsync(ProcessRecipe r, CancellationToken ct)
+    private void EndProcess()
     {
         SetStep("製程結束");
         _m.SetAldValves(0);
-        for (int i = 0; i < 8; i++) _m.SetMfc(i, 0, false);
-        return Task.CompletedTask;   // 加熱維持常駐設定
+        for (int i = 0; i < 8; i++) _m.SetMfc(i, 0, false);   // 加熱維持常駐設定
     }
 
-    private async Task VentAsync(ProcessRecipe r, CancellationToken ct)
+    private async Task VentAsync(ProcessStep st, string at, CancellationToken ct)
     {
-        SetStep("回填：關 GV、停 Turbo");
+        var v = st.Vent ?? new VentParams();
+        SetStep($"{at}：關 GV、停 Turbo");
         Vac(VacuumOutputs.TurboGv | VacuumOutputs.ChamberRough, on: false);
         await WaitAsync(s => s.TurboGateClosed, 30, "Turbo gate valve 沒有關", ct);
         Vac(VacuumOutputs.TurboOn, on: false);
-        await WaitAsync(s => !s.TurboAtSpeed, r.TurboSpinDownTimeoutS, "Turbo 沒有降速", ct);
-        SetStep("回填：Vent");
+        await WaitAsync(s => !s.TurboAtSpeed, v.TurboSpinDownTimeoutS, "Turbo 沒有降速", ct);
+        SetStep($"{at}：Vent");
         Vac(VacuumOutputs.ChamberVent, on: true);
         await WaitAsync(s => s.ChamberVenting, 10, "Vent 閥沒有打開（互鎖擋下？）", ct);
-        await WaitAsync(s => s.ManometerTorr >= r.VentTargetTorr || s.ChamberGaugeStatus == GaugeStatus.OverRange,
-            r.VentTimeoutS, "回填逾時", ct);
+        await WaitAsync(s => s.ManometerTorr >= v.TargetTorr || s.ChamberGaugeStatus == GaugeStatus.OverRange,
+            st.TimeS, "回填逾時", ct);
         Vac(VacuumOutputs.ChamberVent, on: false);
     }
 

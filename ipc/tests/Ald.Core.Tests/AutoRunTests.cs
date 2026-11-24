@@ -8,11 +8,11 @@ public class AutoRunTests
     private static readonly TimeSpan Fast = TimeSpan.FromMilliseconds(1);
     private static readonly TransferConfig Cfg = new() { LiftTimeoutS = 0.2, HeaterTimeoutS = 0.2, LoadlockStepTimeoutS = 0.2 };
 
-    private static ProcessRecipe Recipe(bool vent)
+    private static LegacyRecipe Recipe(bool vent)
     {
         var sp = new double[16]; sp[6] = 150;
         var mfc = new double[8]; mfc[1] = 20;
-        return new ProcessRecipe
+        return new LegacyRecipe
         {
             Name = "auto", HeaterSpDegC = sp, HeatSettleS = 0.01, Mfc = mfc, GasStabilizeS = 0.01, VentAfter = vent,
             Ald = new AldRecipe { Cycles = 3, Steps = { new("A", 1, 20), new("P", 2, 50) } },

@@ -16,3 +16,4 @@ ipc/data/
 
 # 安裝包
 dist/
+TestResults/

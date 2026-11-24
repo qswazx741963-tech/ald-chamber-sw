@@ -50,9 +50,9 @@ public partial class MainWindow
         Add("批次（多片）…", () => { C<TabControl>("Tabs").SelectedItem = Tab("批次"); _status = "在批次頁排好片，按「開始批次」"; });
         menu.Items.Add(new Separator());
         Add("PM 抽真空", () => OpenSeq("PM 抽真空", "Dry pump → 粗抽到 crossover → Turbo 到速 → 開 Turbo GV → 到 base pressure。",
-            check: _ => new(), run: (_, _) => RunRecipe(new ProcessRecipe { Name = "抽真空" })));
+            check: _ => new(), run: (_, _) => RunRecipe(ProcessRecipe.PumpOnly("抽真空"))));
         Add("PM 回填大氣", () => OpenSeq("PM 回填大氣", "關 Turbo GV → 停 Turbo → 開 Vent 回填到大氣。PM 裡有片也會回填，請確認。",
-            check: _ => new(), run: (_, _) => RunRecipe(new ProcessRecipe { Name = "回填大氣", PumpDown = false, VentAfter = true })));
+            check: _ => new(), run: (_, _) => RunRecipe(ProcessRecipe.VentOnly("回填大氣"))));
         menu.Items.Add(new Separator());
         Add("送片 LL → PM", () => OpenSeq("送片 LL → PM", "開 SV → 手臂伸入 → Wafer lift 上升接片 → 手臂退回 → 關 SV。",
             check: _ => TransferSequencer.Precheck(TransferDirection.LoadToPm, _m!.Snapshot, _wafers!).ToList(),
