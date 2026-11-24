@@ -4,7 +4,7 @@
 
 | 層 | 位置 | 反應時間 | 用途 |
 | --- | --- | --- | --- |
-| 1 硬體 | 背板 SAFE 線、EMO、過溫開關、TRANSFER_PERMIT 繼電器 | 立即 | 人員 / 危險氣體 / 設備損壞，**不靠軟體** |
+| 1 硬體 | 背板 SAFE 線（硬體閘控各板危險輸出，N2 purge 除外，見 `backplane.md`）、EMO（切 24V_IO）、過溫開關、PERMIT 繼電器 | 立即 | 人員 / 危險氣體 / 設備損壞，**不靠軟體** |
 | 2 主控板 | `firmware/main_board/app/interlock.c` | < 10 ms | **全部跨系統互鎖的真正執行者**：Loadlock 側 LL-01~08（命令經主控板 RS-485 送給 SLK）+ PM 側 PM-01~06、MON-01~04 |
 | 3 IPC | `ipc/src/Ald.Core/Interlocks.cs` | 送命令前 | 預檢：送命令前先擋、在畫面顯示原因（主控板仍會再檢查一次） |
 

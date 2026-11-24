@@ -23,7 +23,7 @@
    ├─ 槽 2 加熱板：16 組 SSR / K 型熱電偶（14 用 + 2 預留）、4 個過溫開關、各組溫度上限
    ├─ 槽 3 真空板：Turbo GV、粗抽 / vent 閥、Dry pump、Turbo、真空計
    ├─ 槽 4 馬達板：Heater module 軸、Wafer lift 氣缸
-   └─ 槽 5~8 預留擴充（執行板最多 8 塊）
+   └─ 槽 5 預留擴充（背板 6 槽，執行板最多 5 塊）
 ```
 
 > Loadlock 的閥、Slit valve、手臂、Indexer 由 **SLK 模組**自己控制，SLK 維持現狀不改。

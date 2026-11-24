@@ -190,7 +190,7 @@ static void test_motion_axis(void)
 static void test_exec_bad_slot(void)
 {
     fake_reset();
-    fake_slot = 9; fake_board_type = BOARD_TYPE_PROCESS;   /* 只支援槽 1~8 */
+    fake_slot = 6; fake_board_type = BOARD_TYPE_PROCESS;   /* 只支援槽 1~5（背板 6 槽） */
     exec_app_init();
     CHECK_EQ(g_ir[COM_IR_BOARD_TYPE], 0xFFFF);            /* 不啟用角色 */
     uint8_t buf[64];

@@ -4,7 +4,7 @@
  * IPC 經 EtherCAT PDO 讀寫的就是這兩個陣列（對應表見 pdo_map.h；Modbus TCP 備用時直接用絕對位址）。
  *   g_ir[slot * ALD_SLOT_STRIDE + 區內位址]：板子 → IPC
  *   g_hr[slot * ALD_SLOT_STRIDE + 區內位址]：IPC → 板子
- * 槽 1~8 的內容由背板（bp_proto）週期性跟執行板同步。
+ * 槽 1~5 的內容由背板（bp_proto）週期性跟執行板同步。
  */
 #pragma once
 #include <stdint.h>
