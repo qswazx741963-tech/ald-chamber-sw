@@ -34,7 +34,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | IR 12 | 12 | SYS_STATE | u16 | 1 |  |  |  | 值: 0=BOOT, 1=SAFE, 2=IDLE, 3=PROCESS, 4=TRANSFER, 5=ALARM |
 | IR 13 | 13 | IL_DENY | u16 | 1 |  |  |  | 最近一次被主控板互鎖擋下的原因（可能多個同時成立） bits: 0=SAFE_ACTIVE, 1=SLOT_OFFLINE, 2=LL_UNKNOWN, 3=LL_ALARM, 4=SV_NOT_CLOSED, 5=SV_NOT_OPEN, 6=DP_HIGH, 7=PRESSURE_UNKNOWN, 8=PM_BUSY, 9=PM_VENTING, 10=ARM_IN_SV_PATH, 11=Z_NOT_DOWN, 12=LL_LID_OPEN, 13=LL_VALVE_CONFLICT, 14=PM_NOT_AT_TRANSFER, 15=LL_BUSY |
 | IR 14 | 14 | IL_DENY_ACTION | u16 | 1 |  |  |  | 最近一次被擋下的動作（IL_ACT_*，見 docs/interlocks.md） |
-| IR 15 | 15 | IL_DENY2 | u16 | 1 |  |  |  | IL_DENY 的延伸（16 個 bit 不夠用） bits: 0=TURBO_GV_OPEN, 1=ARM_MOVING, 2=HEATER_NOT_DOWN |
+| IR 15 | 15 | IL_DENY2 | u16 | 1 |  |  |  | IL_DENY 的延伸（16 個 bit 不夠用） bits: 0=TURBO_GV_OPEN, 1=ARM_MOVING, 2=HEATER_NOT_DOWN, 3=LL_ROUGHING, 4=PM_ROUGHING, 5=FORELINE_TIMEOUT |
 | IR 16 | 16 | DO_OUT | u16 | 1 |  |  |  | 燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈） bits: 0=BUZZER, 1=TOWER_RED, 2=TOWER_YELLOW, 3=TOWER_GREEN, 4=TOWER_BLUE |
 | IR 30 | 30 | TV_PRESSURE | u16 | 1 | 0.001 | Torr |  |  |
 | IR 31 | 31 | TV_POSITION | u16 | 1 | 0.1 | % |  |  |
@@ -86,6 +86,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 155 | 155 | IL_SV_MODE | u16 | 1 |  |  |  | 開 SV 的壓力條件：BELOW = LL 與 PM 都低於 IL_SV_BELOW_MTORR（預設，SLK 壓力計低於下限算低於 1 Torr）；DIFF = 壓差 ≤ IL_SV_DP_MAX_MTORR（LL 需有 mTorr 級壓力計） 值: 0=BELOW, 1=DIFF |
 | HR 156 | 156 | IL_SV_BELOW_MTORR | u16 | 1 |  | mTorr | 1–10000 | BELOW 模式門檻，預設 1000（1 Torr） |
 | HR 157 | 157 | IL_LL_JUMP_MTORR | u16 | 1 |  | mTorr | 1000–60000 | LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr） |
+| HR 158 | 158 | IL_FORELINE_OFF_MAX_S | u16 | 1 |  | s | 5–600 | 共用 Dry Pump：LL 粗抽時主控板暫關 Turbo 前級閥，關超過此秒數就停 LL 粗抽（保護 Turbo），預設 60 |
 | HR 160 | 160 | PM_GAUGE_MODEL | u16 | 1 |  |  |  | 換算公式見 docs/gauges.md 值: 0=NONE, 1=LINEAR, 2=APGX_H, 3=WRG200_X, 4=WRG200_G, 5=WRG200_Q |
 | HR 161 | 161 | PM_GAUGE_AI_ADDR | u16 | 1 |  |  |  | 壓力計電壓（mV）所在的 IR 絕對位址，預設 633 = 槽 3 AI_RAW[3] Chamber APGX-H |
 | HR 162–163 | 162–163 | PM_GAUGE_FS_MTORR | i32 | 1 |  | mTorr |  | LINEAR（電容式 0~10 V）滿刻度，例 1000 Torr = 1000000 |

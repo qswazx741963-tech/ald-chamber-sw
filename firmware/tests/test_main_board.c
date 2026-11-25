@@ -354,6 +354,87 @@ static void test_gateway(void)
     CHECK(il_check(IL_ACT_PM_PROCESS, &in) & IL_DENY(LL_UNKNOWN));
 }
 
+/* 共用 Dry Pump（2026-11-25 使用者選「自動切換前級閥」）：PM-07、LL-07 補充、MON-05 */
+static void test_il_shared_pump(void)
+{
+    il_inputs_t in = ready();
+    CHECK_EQ(il_check(IL_ACT_PM_CHAMBER_ROUGH, &in), 0);
+    CHECK_EQ(il_monitor(&in) & IL_REACT_FORELINE_OFF, 0);
+    in.ll_roughing = true;
+    CHECK_EQ(il_check(IL_ACT_PM_CHAMBER_ROUGH, &in), IL_DENY2(LL_ROUGHING));
+    CHECK(il_monitor(&in) & IL_REACT_FORELINE_OFF);
+    in = ready(); in.pm_chamber_rough_open = true;
+    CHECK_EQ(il_check(IL_ACT_LL_PUMP, &in), IL_DENY2(PM_ROUGHING));
+    in.pm_chamber_rough_open = false; in.pm_foreline_open = true;   /* 前級閥開著不擋，由閘道先關再送 */
+    CHECK_EQ(il_check(IL_ACT_LL_PUMP, &in), 0);
+}
+
+static void test_gateway_shared_pump(void)
+{
+    fake_reset();
+    reg_image_init();
+    ll_gateway_t g; ll_gateway_init(&g);
+    uint16_t *ir = ir_slot(0), *hr = hr_slot(0);
+    il_inputs_t in = {0};
+    fake_now = 1000;
+    ll_gateway_step(&g, ir, hr, &in, fake_now);                   /* 記下開機 SEQ */
+    fake_uart_rx_push(TLM_40MT); fake_uart_rx_push("\n");
+    ll_gateway_rx(&g, ir, fake_now);
+    ll_fill_inputs(&g, &in, fake_now, 500); pm_ready(&in);
+    CHECK(!in.ll_roughing);
+
+    /* Turbo 前級閥開著 → PUMP 先排隊（SENT），不送給 SLK；LL 視為粗抽中 → 主控板關前級閥 */
+    in.pm_foreline_open = true;
+    ipc_cmd(hr, MAIN_HR_LL_CMD_PUMP, 0);
+    ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_SENT);
+    CHECK(strstr(fake_uart_tx, ">SEQ:PUMP") == NULL);
+    ll_fill_inputs(&g, &in, fake_now, 500);
+    CHECK(in.ll_roughing);
+    /* 排隊中再下別的命令 → BUSY */
+    ipc_cmd(hr, MAIN_HR_LL_CMD_ARM_HOME, 0);
+    ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_BUSY);
+
+    /* 前級閥關了，還要等 LL_FORELINE_SETTLE_MS 才送 */
+    in.pm_foreline_open = false;
+    fake_now = 1100; ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK(strstr(fake_uart_tx, ">SEQ:PUMP") == NULL);
+    fake_now = 1100 + LL_FORELINE_SETTLE_MS; ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK(strstr(fake_uart_tx, ">SEQ:PUMP\n") != NULL);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_SENT);
+    CHECK_EQ(g.pending_cmd, MAIN_HR_LL_CMD_PUMP);
+    ll_fill_inputs(&g, &in, fake_now, 500);
+    CHECK(in.ll_roughing);
+
+    /* 前級閥關太久 → 停 LL 粗抽：ABORT + 關粗抽閥，PUMP 命令算失敗 */
+    ll_gateway_stop_rough(&g, ir, fake_now);
+    CHECK(strstr(fake_uart_tx, ">SEQ:ABORT\n") != NULL);
+    CHECK(strstr(fake_uart_tx, ">VLV:ROUGH:0\n") != NULL);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_ERROR);
+    ll_fill_inputs(&g, &in, fake_now, 500);
+    CHECK(!in.ll_roughing);                                       /* TLM RGH=0 */
+
+    /* TLM 顯示粗抽閥開（例如 SLK 面板手動開）→ 也算粗抽中 */
+    fake_uart_rx_push("TLM:CHM=2,ARM=2,SV=1,Z=1,WAF=1,WPR=1,SEQ=0,RGH=1,VNT=0,BYP=1,PRES=40,LID=0,ALM=0,POS=0,SPD=0\n");
+    ll_gateway_rx(&g, ir, fake_now);
+    ll_fill_inputs(&g, &in, fake_now, 500);
+    CHECK(in.ll_roughing);
+
+    /* 前級閥一直關不掉 → 排隊的粗抽命令 3 s 後失敗 */
+    fake_uart_rx_push(TLM_40MT); fake_uart_rx_push("\n");
+    ll_gateway_rx(&g, ir, fake_now);
+    ll_fill_inputs(&g, &in, fake_now, 500); pm_ready(&in);
+    in.pm_foreline_open = true;
+    ipc_cmd(hr, MAIN_HR_LL_CMD_ROUGH_ON, 0);
+    ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_SENT);
+    fake_now += LL_FORELINE_WAIT_MS + 10;
+    ll_gateway_step(&g, ir, hr, &in, fake_now);
+    CHECK_EQ(ir[MAIN_IR_LL_CMD_RESULT], MAIN_IR_LL_CMD_RESULT_ERROR);
+    CHECK(strstr(fake_uart_tx, ">VLV:ROUGH:1") == NULL);
+}
+
 /* ------------------------------------------------------------ EtherCAT PDO */
 static int rx_off(uint8_t slot, uint16_t addr)
 {
@@ -478,6 +559,8 @@ int main(void)
     RUN(test_slk_parse);
     RUN(test_slk_rx_and_cmd);
     RUN(test_gateway);
+    RUN(test_il_shared_pump);
+    RUN(test_gateway_shared_pump);
     RUN(test_ecat_pdo);
     RUN(test_main_loop_safe_without_ipc);
     RUN(test_main_reset_safe_line);

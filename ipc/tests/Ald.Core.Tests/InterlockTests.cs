@@ -33,6 +33,10 @@ public class InterlockTests
     [Fact] public void AldStart_Denied_WhenLoadlockUnknown() => Assert.False(Allowed(MachineAction.AldStart, Ready() with { LoadlockFresh = false }));
 
     // ---- LL-01：開 SV
+    [Fact] public void LoadlockPump_Denied_WhenChamberRoughing()
+        => Assert.False(Allowed(MachineAction.LoadlockPump, Ready() with { VacuumOutputs = VacuumOutputs.ChamberRough | VacuumOutputs.DryPumpOn }));
+    [Fact] public void LoadlockPump_Allowed_WhenOnlyForelineOpen()   // 前級閥由主控板自動暫關，不擋
+        => Assert.True(Allowed(MachineAction.LoadlockPump, Ready() with { VacuumOutputs = VacuumOutputs.TurboRough | VacuumOutputs.DryPumpOn }));
     [Fact] public void SvOpen_Allowed_WhenReady() => Assert.True(Allowed(MachineAction.SlitValveOpen, Ready()));
     [Fact] public void SvOpen_Denied_WhenAldRunning() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { AldRunning = true }));
     [Fact] public void SvOpen_Denied_WhenLoadlockAtAtm() => Assert.False(Allowed(MachineAction.SlitValveOpen, Ready() with { LoadlockPressureTorr = 760 }));

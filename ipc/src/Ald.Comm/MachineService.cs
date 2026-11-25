@@ -98,7 +98,8 @@ public sealed class MachineService : IMachine, IDisposable
             (ushort)(il.ArmSafePosSteps >> 16), (ushort)il.ArmSafePosSteps,
             (ushort)il.SvOpenMode,
             (ushort)Math.Round(il.SvBelowTorr * 1000),
-            (ushort)Math.Round(il.LoadlockJumpTorr * 1000));
+            (ushort)Math.Round(il.LoadlockJumpTorr * 1000),
+            (ushort)Math.Clamp(il.ForelineOffMaxS, 5, 600));
         var pm = _cfg.Gauges.Find(_cfg.Gauges.PmInterlockGauge)!;
         WriteGauge(link, MainBoard.Holding.PmGaugeModel, pm);
         WriteGauge(link, MainBoard.Holding.LlGaugeModel, _cfg.Gauges.LoadlockGauge);

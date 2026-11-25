@@ -75,6 +75,10 @@ public sealed class AutoRunJob
                     await Task.Delay(_poll ?? TimeSpan.FromMilliseconds(200), token);
                 }
             }
+            // 共用 Dry Pump：SLK 抽完粗抽閥還開著，會讓主控板一直擋 Chamber 粗抽、暫關 Turbo 前級閥 → 先關
+            if (_m.Snapshot.LoadlockRoughOpen
+                && !await _m.LoadlockAsync(LoadlockCommand.RoughOff, 0, TimeSpan.FromSeconds(_xferCfg.LoadlockStepTimeoutS), token))
+                throw new AutoRunException($"關 Loadlock 粗抽閥失敗：{_m.LastLoadlockError}");
             int pumpN = r.LeadingPumpSteps, ventN = Math.Min(r.TrailingVentSteps, r.Steps.Count - pumpN);
             if (pumpN > 0) await Sub(r.Slice(0, pumpN, "（抽真空）"), token);
 

@@ -43,6 +43,9 @@
 #define MAIN_IR_IL_DENY2_BIT_TURBO_GV_OPEN           0u
 #define MAIN_IR_IL_DENY2_BIT_ARM_MOVING              1u
 #define MAIN_IR_IL_DENY2_BIT_HEATER_NOT_DOWN         2u
+#define MAIN_IR_IL_DENY2_BIT_LL_ROUGHING             3u
+#define MAIN_IR_IL_DENY2_BIT_PM_ROUGHING             4u
+#define MAIN_IR_IL_DENY2_BIT_FORELINE_TIMEOUT        5u
 #define MAIN_IR_DO_OUT                               16u  /* u16 */
 #define MAIN_IR_DO_OUT_BIT_BUZZER                    0u
 #define MAIN_IR_DO_OUT_BIT_TOWER_RED                 1u
@@ -180,6 +183,9 @@
 #define MAIN_HR_IL_LL_JUMP_MTORR                     157u  /* u16 [mTorr] */
 #define MAIN_HR_IL_LL_JUMP_MTORR_MIN_RAW             1000
 #define MAIN_HR_IL_LL_JUMP_MTORR_MAX_RAW             60000
+#define MAIN_HR_IL_FORELINE_OFF_MAX_S                158u  /* u16 [s] */
+#define MAIN_HR_IL_FORELINE_OFF_MAX_S_MIN_RAW        5
+#define MAIN_HR_IL_FORELINE_OFF_MAX_S_MAX_RAW        600
 #define MAIN_HR_PM_GAUGE_MODEL                       160u  /* u16 */
 #define MAIN_HR_PM_GAUGE_MODEL_NONE                  0u
 #define MAIN_HR_PM_GAUGE_MODEL_LINEAR                1u

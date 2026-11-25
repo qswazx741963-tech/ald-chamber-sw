@@ -57,6 +57,7 @@ public sealed record MachineConfig
         foreach (var (h, i) in Heaters.Channels.Select((h, i) => (h, i)))
             if (h.LimitDegC is < 0 or > 650) yield return $"heaters.channels[{i}].limitDegC 需在 0–650";
         if (Interlock.SvBelowTorr is <= 0 or > 10) yield return "interlock.svBelowTorr 需在 0–10";
+        if (Interlock.ForelineOffMaxS is < 5 or > 600) yield return "interlock.forelineOffMaxS 需在 5–600";
         if (LeakTest.Gauge.ToLowerInvariant() is not ("chamberiongauge" or "chambermanometer" or "chamberconvectron"))
             yield return "leakTest.gauge 需為 chamberIonGauge / chamberManometer / chamberConvectron";
         if (Tower.BlinkMs is < 100 or > 5000) yield return "tower.blinkMs 需在 100–5000";
@@ -108,6 +109,8 @@ public sealed record InterlockConfig
     public bool LoadlockZEnabled { get; init; } = true;
     public int LoadlockStaleMs { get; init; } = 500;
     public int ArmSafePosSteps { get; init; } = 5894;
+    /// <summary>共用 Dry Pump：LL 粗抽時主控板暫關 Turbo 前級閥，關超過此秒數就停 LL 粗抽（主控板 HR IL_FORELINE_OFF_MAX_S，5~600）。</summary>
+    public int ForelineOffMaxS { get; init; } = 60;
 }
 
 public sealed record GaugeConfig

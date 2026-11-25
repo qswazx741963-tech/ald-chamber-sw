@@ -354,6 +354,9 @@ public sealed class OverviewView : Control
         VacValve(g, ForeV, vo, blk, VacuumOutputs.TurboRough, conn);
         VacPair(g, new Rect(658, 559, 40, 32), vo, blk, VacuumOutputs.TurboRough, conn);
         TextM(g, "前級閥", 704, 575, 12, Dim);
+        // 共用 Dry Pump：LL 粗抽時主控板自動暫關前級閥（Turbo 有開才有意義），抽完自動開回
+        if (conn && s.LoadlockRoughOpen && tCmd && !vo.HasFlag(VacuumOutputs.TurboRough))
+            TextM(g, "LL 粗抽中暫關", 704, 591, 11, Moving, bold: true);
 
         // ---------------- Dry pump
         bool dCmd = vo.HasFlag(VacuumOutputs.DryPumpOn);

@@ -16,6 +16,7 @@ public static class RegisterMap
         (154, 5894), // main.IL_ARM_SAFE_POS
         (156, 1000), // main.IL_SV_BELOW_MTORR
         (157, 10000), // main.IL_LL_JUMP_MTORR
+        (158, 60), // main.IL_FORELINE_OFF_MAX_S
         (160, 2), // main.PM_GAUGE_MODEL
         (161, 633), // main.PM_GAUGE_AI_ADDR
         (162, 15), // main.PM_GAUGE_FS_MTORR
@@ -157,6 +158,9 @@ public static class MainBoard
             TurboGvOpen = 1 << 0,
             ArmMoving = 1 << 1,
             HeaterNotDown = 1 << 2,
+            LlRoughing = 1 << 3,
+            PmRoughing = 1 << 4,
+            ForelineTimeout = 1 << 5,
         }
         /// <summary>燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈）</summary>
         public const ushort DoOut = 16;
@@ -387,6 +391,10 @@ public static class MainBoard
         public const ushort IlLlJumpMtorr = 157;
         public const double IlLlJumpMtorrMin = 1000;
         public const double IlLlJumpMtorrMax = 60000;
+        /// <summary>共用 Dry Pump：LL 粗抽時主控板暫關 Turbo 前級閥，關超過此秒數就停 LL 粗抽（保護 Turbo），預設 60 [s]</summary>
+        public const ushort IlForelineOffMaxS = 158;
+        public const double IlForelineOffMaxSMin = 5;
+        public const double IlForelineOffMaxSMax = 600;
         /// <summary>換算公式見 docs/gauges.md</summary>
         public const ushort PmGaugeModel = 160;
         public enum PmGaugeModelValues : ushort

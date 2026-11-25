@@ -153,10 +153,20 @@ public sealed class AlarmManager
         {
             if (s.LastDenyBits != 0)
                 changes.Add(new(new("IL_DENY", AlarmLevel.Info, "互鎖",
-                    $"主控板擋下命令（動作 {s.LastDenyAction}）：{_denyText(s.LastDenyBits)}"), true, now));
+                    $"主控板擋下：{IlActionName(s.LastDenyAction)}，原因：{_denyText(s.LastDenyBits)}"), true, now));
             _lastDeny = s.LastDenyBits;
             _lastDenyAction = s.LastDenyAction;
         }
         return changes;
     }
+
+    /// <summary>主控板 IR IL_DENY_ACTION（firmware interlock.h il_action_t）→ 中文。</summary>
+    public static string IlActionName(ushort act) => act switch
+    {
+        1 => "開 Slit valve", 2 => "關 Slit valve", 3 => "手臂伸進 PM", 4 => "手臂 LL 側移動", 5 => "Z 軸升降",
+        6 => "Loadlock 抽氣 / 粗抽", 7 => "Loadlock 洩壓", 8 => "傳片序列",
+        20 => "ALD 製程 / 前驅物閥", 21 => "RF ON", 22 => "Chamber vent", 23 => "Heater module 升降",
+        24 => "Wafer lift 升降", 25 => "開 Turbo gate valve", 26 => "Chamber 粗抽",
+        _ => $"動作 {act}",
+    };
 }

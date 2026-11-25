@@ -83,7 +83,7 @@ boards:
       - name: IL_DENY2
         addr: 15
         desc: "IL_DENY 的延伸（16 個 bit 不夠用）"
-        bits: [TURBO_GV_OPEN, ARM_MOVING, HEATER_NOT_DOWN]
+        bits: [TURBO_GV_OPEN, ARM_MOVING, HEATER_NOT_DOWN, LL_ROUGHING, PM_ROUGHING, FORELINE_TIMEOUT]
       - name: DO_OUT
         addr: 16
         desc: "燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈）"
@@ -174,6 +174,7 @@ boards:
         values: { BELOW: 0, DIFF: 1 }
       - { name: IL_SV_BELOW_MTORR, addr: 156, unit: mTorr, min: 1, max: 10000, default: 1000, desc: "BELOW 模式門檻，預設 1000（1 Torr）" }
       - { name: IL_LL_JUMP_MTORR,  addr: 157, unit: mTorr, min: 1000, max: 60000, default: 10000, desc: "LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr）" }
+      - { name: IL_FORELINE_OFF_MAX_S, addr: 158, unit: s, min: 5, max: 600, default: 60, desc: "共用 Dry Pump：LL 粗抽時主控板暫關 Turbo 前級閥，關超過此秒數就停 LL 粗抽（保護 Turbo），預設 60" }
       # ---- PM 壓力計（config 型號選單寫進來，主控板用來換算互鎖壓力）
       - name: PM_GAUGE_MODEL
         addr: 160

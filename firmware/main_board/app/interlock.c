@@ -98,6 +98,7 @@ uint32_t il_check(il_action_t act, const il_inputs_t *in)
         if (!sv_closed(in))    d |= IL_DENY(SV_NOT_CLOSED);
         if (in->ll_lid_open)   d |= IL_DENY(LL_LID_OPEN);
         if (in->ll_vent_open)  d |= IL_DENY(LL_VALVE_CONFLICT);
+        if (in->pm_chamber_rough_open) d |= IL_DENY2(PM_ROUGHING);   /* 共用 Dry Pump：Chamber 正在粗抽 */
         break;
 
     case IL_ACT_LL_VENT:                                   /* LL-08 */
@@ -132,6 +133,10 @@ uint32_t il_check(il_action_t act, const il_inputs_t *in)
         else if (!sv_closed(in))       d |= IL_DENY(SV_NOT_CLOSED);
         break;
 
+    case IL_ACT_PM_CHAMBER_ROUGH:                          /* PM-07：共用 Dry Pump，LL 粗抽時 Chamber 不准粗抽 */
+        if (in->ll_roughing)           d |= IL_DENY2(LL_ROUGHING);
+        break;
+
     default:
         break;
     }
@@ -152,6 +157,10 @@ uint8_t il_monitor(const il_inputs_t *in)
 
     /* MON-04：手臂不在外面（或 LL 狀態不明）時 Heater module 還在動 → 立刻停 */
     if (in->pm_heater_moving && !il_arm_clear_of_sv(in)) r |= IL_REACT_HEATER_STOP;
+
+    /* MON-05：共用 Dry Pump。LL 粗抽時 LL 的大氣會灌進共用前級管 → 暫關 Turbo 前級閥（Turbo 短時間沒前級可承受），
+     * Chamber 粗抽閥也關。超時停 LL 粗抽由 main_app 計時（HR IL_FORELINE_OFF_MAX_S） */
+    if (in->ll_roughing) r |= IL_REACT_FORELINE_OFF;
 
     return r;
 }
