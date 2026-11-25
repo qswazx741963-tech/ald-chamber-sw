@@ -11,6 +11,8 @@
 #include "registers_motion.h"
 #include "registers_vacuum.h"
 #include "vm.h"
+#include "world.h"
+#include "interlock.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -97,8 +99,25 @@ int main(void)
     vm_view(&v);
     CHECK(v.sv_state == 1 /* SLK_SV_CLOSED */);
 
-    printf("- LL 抽氣（SEQ:PUMP）→ < 1 Torr\n");
+    printf("- 共用 Dry Pump：Chamber 粗抽中 → LL 抽氣被擋（PM_ROUGHING）\n");
+    CHECK(HR(0, MAIN_HR_IL_FORELINE_OFF_MAX_S) == 60);
     ll_cmd(MAIN_HR_LL_CMD_PUMP);
+    CHECK(!wait_ll_done(500));
+    CHECK(IR(0, MAIN_IR_LL_CMD_RESULT) == MAIN_IR_LL_CMD_RESULT_DENIED);
+    CHECK(IR(0, MAIN_IR_IL_DENY2) & (1u << MAIN_IR_IL_DENY2_BIT_PM_ROUGHING));
+    CHECK(!slk_emu_rough());
+
+    printf("- 關 Chamber 粗抽 → LL 抽氣（SEQ:PUMP）；抽氣中 Chamber 粗抽被擋（LL_ROUGHING）→ < 1 Torr\n");
+    HR(3, VAC_HR_DO_CMD) &= (uint16_t)~(1u << VAC_HR_DO_CMD_BIT_CHAMBER_ROUGH);
+    run(200);
+    ll_cmd(MAIN_HR_LL_CMD_PUMP);
+    run(2000);
+    CHECK(slk_emu_rough());
+    HR(3, VAC_HR_DO_CMD) |= 1u << VAC_HR_DO_CMD_BIT_CHAMBER_ROUGH;
+    run(500);
+    CHECK(!(IR(3, VAC_IR_DO_FB) & (1u << VAC_IR_DO_FB_BIT_CHAMBER_ROUGH)));
+    CHECK(IR(0, MAIN_IR_IL_DENY2) & (1u << MAIN_IR_IL_DENY2_BIT_LL_ROUGHING));
+    CHECK(IR(0, MAIN_IR_IL_DENY_ACTION) == IL_ACT_PM_CHAMBER_ROUGH);
     CHECK(wait_ll_done(60000));
     vm_view(&v);
     CHECK(v.ll_torr < 1.0f);
@@ -111,6 +130,8 @@ int main(void)
     printf("- 關 LL 粗抽、手臂原點復歸 → 開 SV（LL、PM 都 < 1 Torr、Turbo GV 關）\n");
     ll_cmd(MAIN_HR_LL_CMD_ROUGH_OFF);
     CHECK(wait_ll_done(1000));
+    run(500);
+    CHECK(IR(3, VAC_IR_DO_FB) & (1u << VAC_IR_DO_FB_BIT_CHAMBER_ROUGH));   /* LL 抽完 → 自動恢復 IPC 要的 Chamber 粗抽 */
     ll_cmd(MAIN_HR_LL_CMD_ARM_HOME);
     CHECK(wait_ll_done(20000));
     ll_cmd(MAIN_HR_LL_CMD_SV_OPEN);
@@ -142,6 +163,26 @@ int main(void)
     ll_cmd(MAIN_HR_LL_CMD_SV_OPEN);
     CHECK(!wait_ll_done(500));
     CHECK(IR(0, MAIN_IR_LL_CMD_RESULT) == MAIN_IR_LL_CMD_RESULT_DENIED);
+
+    printf("- 共用 Dry Pump：Turbo 運轉中 LL 粗抽 → 前級閥先關好才開 LL 粗抽；關太久（設 5 s）→ 停 LL 粗抽、前級閥開回\n");
+    HR(0, MAIN_HR_IL_FORELINE_OFF_MAX_S) = 5;
+    CHECK(IR(3, VAC_IR_DO_FB) & (1u << VAC_IR_DO_FB_BIT_TURBO_ROUGH));
+    ll_cmd(MAIN_HR_LL_CMD_ROUGH_ON);
+    run(100);
+    CHECK(!slk_emu_rough());                                       /* 排隊中：前級閥還沒關好 */
+    CHECK(!(IR(3, VAC_IR_DO_FB) & (1u << VAC_IR_DO_FB_BIT_TURBO_ROUGH)));
+    CHECK(wait_ll_done(1500));
+    CHECK(slk_emu_rough());
+    run(1000);
+    CHECK(!(IR(3, VAC_IR_DO_FB) & (1u << VAC_IR_DO_FB_BIT_TURBO_ROUGH)));
+    run(5000);
+    CHECK(!slk_emu_rough());
+    CHECK(IR(0, MAIN_IR_IL_DENY2) & (1u << MAIN_IR_IL_DENY2_BIT_FORELINE_TIMEOUT));
+    run(2000);
+    CHECK(IR(3, VAC_IR_DO_FB) & (1u << VAC_IR_DO_FB_BIT_TURBO_ROUGH));
+    vm_view(&v);
+    CHECK(v.pm_torr < 1e-3f);
+    HR(0, MAIN_HR_IL_FORELINE_OFF_MAX_S) = 60;
 
     printf("- 加熱：Chamber upper 設 150 °C，10 分鐘內 > 140 °C、不超過 160 °C\n");
     HR(2, HEAT_HR_HEATER_SP + 6) = 1500;

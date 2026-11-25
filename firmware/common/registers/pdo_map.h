@@ -10,8 +10,8 @@
  */
 #define ALD_ECAT_VENDOR_ID     0x00000000u  /* TODO ETG 申請 */
 #define ALD_ECAT_PRODUCT_CODE  0x00A1D001u
-#define ALD_ECAT_REVISION      2u   /* = map_version */
-#define ALD_PDO_RX_WORDS       209u
+#define ALD_ECAT_REVISION      3u   /* = map_version */
+#define ALD_PDO_RX_WORDS       246u
 #define ALD_PDO_TX_WORDS       152u
 #define ALD_PDO_RX_INDEX       0x1600u
 #define ALD_PDO_TX_INDEX       0x1A00u
@@ -26,33 +26,35 @@ typedef struct { uint8_t slot; uint16_t addr; uint16_t len; uint16_t pdo_off; } 
     { 0u, 20u, 3u, 4u }, /* main */ \
     { 0u, 30u, 3u, 7u }, /* main */ \
     { 0u, 100u, 4u, 10u }, /* main */ \
-    { 0u, 150u, 8u, 14u }, /* main */ \
-    { 0u, 160u, 4u, 22u }, /* main */ \
-    { 0u, 165u, 4u, 26u }, /* main */ \
-    { 1u, 0u, 3u, 30u }, /* process */ \
-    { 1u, 10u, 1u, 33u }, /* process */ \
-    { 1u, 20u, 8u, 34u }, /* process */ \
-    { 1u, 100u, 3u, 42u }, /* process */ \
-    { 1u, 110u, 16u, 45u }, /* process */ \
-    { 1u, 130u, 16u, 61u }, /* process */ \
-    { 2u, 0u, 3u, 77u }, /* heater */ \
-    { 2u, 10u, 1u, 80u }, /* heater */ \
-    { 2u, 20u, 16u, 81u }, /* heater */ \
-    { 2u, 40u, 16u, 97u }, /* heater */ \
-    { 2u, 60u, 16u, 113u }, /* heater */ \
-    { 2u, 80u, 16u, 129u }, /* heater */ \
-    { 2u, 100u, 16u, 145u }, /* heater */ \
-    { 2u, 120u, 16u, 161u }, /* heater */ \
-    { 2u, 140u, 16u, 177u }, /* heater */ \
-    { 3u, 0u, 3u, 193u }, /* vacuum */ \
-    { 3u, 10u, 1u, 196u }, /* vacuum */ \
-    { 4u, 0u, 3u, 197u }, /* motion */ \
-    { 4u, 10u, 1u, 200u }, /* motion */ \
-    { 4u, 20u, 4u, 201u }, /* motion */ \
-    { 4u, 30u, 2u, 205u }, /* motion */ \
-    { 4u, 40u, 2u, 207u }, /* motion */ \
+    { 0u, 150u, 9u, 14u }, /* main */ \
+    { 0u, 160u, 4u, 23u }, /* main */ \
+    { 0u, 165u, 4u, 27u }, /* main */ \
+    { 1u, 0u, 3u, 31u }, /* process */ \
+    { 1u, 10u, 1u, 34u }, /* process */ \
+    { 1u, 20u, 8u, 35u }, /* process */ \
+    { 1u, 100u, 3u, 43u }, /* process */ \
+    { 1u, 110u, 16u, 46u }, /* process */ \
+    { 1u, 130u, 16u, 62u }, /* process */ \
+    { 1u, 150u, 4u, 78u }, /* process */ \
+    { 1u, 160u, 32u, 82u }, /* process */ \
+    { 2u, 0u, 3u, 114u }, /* heater */ \
+    { 2u, 10u, 1u, 117u }, /* heater */ \
+    { 2u, 20u, 16u, 118u }, /* heater */ \
+    { 2u, 40u, 16u, 134u }, /* heater */ \
+    { 2u, 60u, 16u, 150u }, /* heater */ \
+    { 2u, 80u, 16u, 166u }, /* heater */ \
+    { 2u, 100u, 16u, 182u }, /* heater */ \
+    { 2u, 120u, 16u, 198u }, /* heater */ \
+    { 2u, 140u, 16u, 214u }, /* heater */ \
+    { 3u, 0u, 3u, 230u }, /* vacuum */ \
+    { 3u, 10u, 1u, 233u }, /* vacuum */ \
+    { 4u, 0u, 3u, 234u }, /* motion */ \
+    { 4u, 10u, 1u, 237u }, /* motion */ \
+    { 4u, 20u, 4u, 238u }, /* motion */ \
+    { 4u, 30u, 2u, 242u }, /* motion */ \
+    { 4u, 40u, 2u, 244u }, /* motion */ \
 }
-#define ALD_PDO_RX_SEG_COUNT 30u
+#define ALD_PDO_RX_SEG_COUNT 32u
 
 #define ALD_PDO_TX_SEGS { \
     { 0u, 0u, 9u, 0u }, /* main */ \
@@ -95,6 +97,7 @@ typedef struct { uint16_t addr; uint16_t value; } ald_hr_default_t;
     { 154u, 5894u }, /* main.IL_ARM_SAFE_POS */ \
     { 156u, 1000u }, /* main.IL_SV_BELOW_MTORR */ \
     { 157u, 10000u }, /* main.IL_LL_JUMP_MTORR */ \
+    { 158u, 60u }, /* main.IL_FORELINE_OFF_MAX_S */ \
     { 160u, 2u }, /* main.PM_GAUGE_MODEL */ \
     { 161u, 633u }, /* main.PM_GAUGE_AI_ADDR */ \
     { 162u, 15u }, /* main.PM_GAUGE_FS_MTORR */ \
@@ -138,4 +141,4 @@ typedef struct { uint16_t addr; uint16_t value; } ald_hr_default_t;
     { 830u, 1000u }, /* motion.AXIS_SPEED */ \
     { 831u, 1000u }, /* motion.AXIS_SPEED */ \
 }
-#define ALD_HR_DEFAULT_COUNT 49u
+#define ALD_HR_DEFAULT_COUNT 50u

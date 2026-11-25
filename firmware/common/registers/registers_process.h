@@ -2,7 +2,7 @@
 #pragma once
 #include "registers_common.h"
 
-/* process: 製程控制（ALD 閥 ×7、MFC 上游閥 ×8、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知） */
+/* process: 製程控制（ALD 閥 ×7、MFC 上游閥 ×8、ALD VALVE PURGE 閥（MFC 匯流 → ALD 閥組，2026-11-25，DO 15）、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知） */
 #define PROC_DEFAULT_SLOT 1u
 #define PROC_BOARD_TYPE   1u
 
@@ -27,6 +27,7 @@
 #define PROC_IR_DO_FB_BIT_MFC_UP_V6                  12u
 #define PROC_IR_DO_FB_BIT_MFC_UP_V7                  13u
 #define PROC_IR_DO_FB_BIT_MFC_UP_V8                  14u
+#define PROC_IR_DO_FB_BIT_ALD_PURGE_V                15u
 #define PROC_IR_MFC_PV                               30u  /* u16 x8 [%FS] scale 0.01 */
 #define PROC_IR_MFC_PV_COUNT                         8u
 #define PROC_IR_MANOMETER_RAW                        38u  /* u16 [mV] */
@@ -35,7 +36,7 @@
 #define PROC_IR_WAVE_SEQ                             50u  /* u16 */
 
 /* ---- Holding Register (FC03/FC06/FC16)（區內位址；共用表頭見 COM_HR_*） */
-#define PROC_HR_SIZE 146u
+#define PROC_HR_SIZE 192u
 #define PROC_HR_DO_CMD                               10u  /* u16 */
 #define PROC_HR_DO_CMD_BIT_ALD_V1                    0u
 #define PROC_HR_DO_CMD_BIT_ALD_V2                    1u
@@ -52,6 +53,7 @@
 #define PROC_HR_DO_CMD_BIT_MFC_UP_V6                 12u
 #define PROC_HR_DO_CMD_BIT_MFC_UP_V7                 13u
 #define PROC_HR_DO_CMD_BIT_MFC_UP_V8                 14u
+#define PROC_HR_DO_CMD_BIT_ALD_PURGE_V               15u
 #define PROC_HR_MFC_SP                               20u  /* u16 x8 [%FS] scale 0.01 */
 #define PROC_HR_MFC_SP_COUNT                         8u
 #define PROC_HR_MFC_SP_MIN_RAW                       0
@@ -69,3 +71,7 @@
 #define PROC_HR_ALD_STEP_MS_COUNT                    16u
 #define PROC_HR_ALD_STEP_MS_MIN_RAW                  1
 #define PROC_HR_ALD_STEP_MS_MAX_RAW                  60000
+#define PROC_HR_ALD_STEP_MFC_SET                     150u  /* u16 x4 */
+#define PROC_HR_ALD_STEP_MFC_SET_COUNT               4u
+#define PROC_HR_ALD_MFC_PRESET                       160u  /* u16 x32 [%FS] scale 0.01 */
+#define PROC_HR_ALD_MFC_PRESET_COUNT                 32u

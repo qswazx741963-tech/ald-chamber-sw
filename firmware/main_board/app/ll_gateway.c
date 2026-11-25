@@ -52,6 +52,10 @@ void ll_fill_inputs(const ll_gateway_t *g, il_inputs_t *in, uint32_t now_ms, uin
     in->ll_rough_open = s->rgh != 0;
     in->ll_vent_open = s->vnt != 0;
     in->ll_lid_open = s->lid != 0;
+    /* LL 是否正在用共用 Dry Pump。TLM 過期時沿用最後狀態（偏安全：前級閥維持關，超時會停 LL 粗抽） */
+    in->ll_roughing = g->hold_cmd != 0 || g->pending_cmd == MAIN_HR_LL_CMD_PUMP
+        || (g->rough_sent && now_ms - g->rough_sent_ms < LL_ROUGH_GRACE_MS)
+        || (s->tlm_valid && (s->rgh != 0 || s->chm == SLK_CH_PUMPING));
 }
 
 static bool send_cmd(uint16_t cmd, int32_t arg)
@@ -170,6 +174,66 @@ void ll_gateway_rx(ll_gateway_t *g, uint16_t *ir, uint32_t now_ms)
     }
 }
 
+static bool is_rough_cmd(uint16_t cmd) { return cmd == MAIN_HR_LL_CMD_PUMP || cmd == MAIN_HR_LL_CMD_ROUGH_ON; }
+
+/* 真的送給 SLK（互鎖已過），寫結果 */
+static void dispatch(ll_gateway_t *g, uint16_t *ir, uint16_t cmd, int32_t arg, uint32_t now_ms)
+{
+    if (!send_cmd(cmd, arg)) {
+        ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_ERROR;
+        return;
+    }
+    if (is_rough_cmd(cmd)) { g->rough_sent = true; g->rough_sent_ms = now_ms; }
+    if (instant(cmd)) {
+        ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_DONE;
+    } else {
+        ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_SENT;
+        g->pending_cmd = cmd;
+        g->pending_ms = now_ms;
+    }
+}
+
+static void write_deny(uint16_t *ir, uint32_t deny, il_action_t act)
+{
+    ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_DENIED;
+    ir[MAIN_IR_IL_DENY] = (uint16_t)deny;
+    ir[MAIN_IR_IL_DENY2] = (uint16_t)(deny >> 16);
+    ir[MAIN_IR_IL_DENY_ACTION] = (uint16_t)act;
+}
+
+/* 等前級閥關好的粗抽命令：前級閥 DO 關掉滿 LL_FORELINE_SETTLE_MS 才送；送之前再檢查一次互鎖 */
+static void step_hold(ll_gateway_t *g, uint16_t *ir, const il_inputs_t *in, uint32_t now_ms)
+{
+    if (!g->hold_cmd) return;
+    if (in->pm_foreline_open) g->fl_closed_ms = 0;
+    else if (!g->fl_closed_ms) g->fl_closed_ms = now_ms ? now_ms : 1u;
+
+    if (g->fl_closed_ms && now_ms - g->fl_closed_ms >= LL_FORELINE_SETTLE_MS) {
+        uint16_t cmd = g->hold_cmd;
+        g->hold_cmd = 0;
+        uint32_t deny = il_check(IL_ACT_LL_PUMP, in);
+        if (deny) write_deny(ir, deny, IL_ACT_LL_PUMP);
+        else      dispatch(g, ir, cmd, g->hold_arg, now_ms);
+    } else if (now_ms - g->hold_ms > LL_FORELINE_WAIT_MS) {
+        g->hold_cmd = 0;
+        ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_ERROR;
+    }
+}
+
+void ll_gateway_stop_rough(ll_gateway_t *g, uint16_t *ir, uint32_t now_ms)
+{
+    if (g->hold_cmd) { g->hold_cmd = 0; ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_ERROR; }
+    if (g->pending_cmd == MAIN_HR_LL_CMD_PUMP || g->slk.chm == SLK_CH_PUMPING) {
+        send_cmd(MAIN_HR_LL_CMD_ABORT, 0);
+        if (g->pending_cmd == MAIN_HR_LL_CMD_PUMP) { g->pending_cmd = 0; ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_ERROR; }
+    }
+    send_cmd(MAIN_HR_LL_CMD_ROUGH_OFF, 0);
+    g->rough_sent = false;
+    /* 馬上要一筆 TLM，讓「LL 粗抽中」盡快解除、前級閥開回去 */
+    send_cmd(MAIN_HR_LL_CMD_STATUS, 0);
+    g->last_poll_ms = now_ms;
+}
+
 void ll_gateway_step(ll_gateway_t *g, uint16_t *ir, const uint16_t *hr,
                      const il_inputs_t *in, uint32_t now_ms)
 {
@@ -195,23 +259,23 @@ void ll_gateway_step(ll_gateway_t *g, uint16_t *ir, const uint16_t *hr,
         bool urgent = (cmd == MAIN_HR_LL_CMD_ESTOP || cmd == MAIN_HR_LL_CMD_ABORT);
 
         if (deny) {
-            ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_DENIED;
-            ir[MAIN_IR_IL_DENY] = (uint16_t)deny;
-            ir[MAIN_IR_IL_DENY2] = (uint16_t)(deny >> 16);
-            ir[MAIN_IR_IL_DENY_ACTION] = (uint16_t)act;
-        } else if (g->pending_cmd && !urgent) {
+            write_deny(ir, deny, act);
+        } else if ((g->pending_cmd || g->hold_cmd) && !urgent) {
             ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_BUSY;   /* 上一個動作還沒完成 */
-        } else if (!send_cmd(cmd, arg)) {
-            ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_ERROR;
-        } else if (instant(cmd)) {
-            ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_DONE;
-        } else {
+        } else if (is_rough_cmd(cmd) && in->pm_foreline_open) {
+            /* 共用 Dry Pump：Turbo 前級閥還開著 → 先排隊；主控板這圈起把前級閥關掉，關好才送 */
+            g->hold_cmd = cmd;
+            g->hold_arg = arg;
+            g->hold_ms = now_ms;
+            g->fl_closed_ms = 0;
             ir[MAIN_IR_LL_CMD_RESULT] = MAIN_IR_LL_CMD_RESULT_SENT;
-            g->pending_cmd = cmd;
-            g->pending_ms = now_ms;
+        } else {
+            if (urgent) g->hold_cmd = 0;
+            dispatch(g, ir, cmd, arg, now_ms);
         }
         ir[MAIN_IR_LL_CMD_ACK] = seq;
     }
+    step_hold(g, ir, in, now_ms);
 
     publish(g, ir, now_ms, stale);
 }

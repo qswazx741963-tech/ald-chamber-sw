@@ -17,7 +17,6 @@ public partial class MainWindow
     private static readonly (string Text, string? Result)[] HistResults =
         { ("全部結果", null), ("完成 Done", "Done"), ("失敗 Failed", "Failed"), ("中止 Aborted", "Aborted"), ("中斷 Interrupted", RunLog.Interrupted), ("執行中", RunLog.Running) };
 
-    private string RunWaferId() => (C<TextBox>("TxtRunWafer").Text ?? "").Trim();
 
     private long? RunStart(string kind, string waferId, ProcessRecipe r, string batch = "")
     {
@@ -96,12 +95,7 @@ public partial class MainWindow
         string recipe;
         try
         {
-            var r = RecipeFile.Parse(x.RecipeJson);
-            var heat = r.HeaterSpDegC.Select((t, ch) => (t, ch)).Where(v => v.t > 0).Select(v => $"#{v.ch + 1} {v.t:0} °C");
-            var gas = r.Mfc.Select((v, ch) => (v, ch)).Where(v => v.v > 0).Select(v => $"MFC{v.ch + 1} {v.v:0.#}");
-            recipe = $"配方 {r.Name}\n抽真空 {(r.PumpDown ? "是" : "否")}  結束回填 {(r.VentAfter ? "是" : "否")}\n" +
-                     $"溫度 {(heat.Any() ? string.Join("、", heat) : "不檢查")}\n氣體 {(gas.Any() ? string.Join("、", gas) : "無")}\n" +
-                     (r.Ald is { } a ? $"ALD {a.Cycles} cycles：\n{AldStepText.Format(a.Steps)}" : "無 ALD");
+            recipe = RecipeText.Describe(RecipeFile.Parse(x.RecipeJson), _valveNames);
         }
         catch (Exception e) { recipe = $"配方內容讀不出來：{e.Message}"; }
         C<TextBlock>("TxtHistDetail").Text =

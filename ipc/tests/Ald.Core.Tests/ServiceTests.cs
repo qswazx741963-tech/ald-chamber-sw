@@ -162,4 +162,17 @@ public class AlarmManagerTests
         Assert.Contains("Turbo gate valve", d.Info.Message);
         Assert.Empty(m.Update(Healthy() with { LastDenyBits = bits, LastDenyAction = 1 }));
     }
+
+    [Fact]
+    public void Deny_SharedDryPump_NamesActionAndReason()
+    {
+        var m = new AlarmManager(Repo.Config, DenyReasons.Describe);
+        var bits = (uint)MainBoard.Input.IlDeny2Bits.LlRoughing << 16;
+        var d = Assert.Single(m.Update(Healthy() with { LastDenyBits = bits, LastDenyAction = 26 }));
+        Assert.Contains("Chamber 粗抽", d.Info.Message);
+        Assert.Contains("共用 Dry Pump", d.Info.Message);
+        bits = (uint)MainBoard.Input.IlDeny2Bits.ForelineTimeout << 16;
+        d = Assert.Single(m.Update(Healthy() with { LastDenyBits = bits, LastDenyAction = 6 }));
+        Assert.Contains("前級閥", d.Info.Message);
+    }
 }

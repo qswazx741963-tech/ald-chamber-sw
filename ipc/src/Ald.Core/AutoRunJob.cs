@@ -45,7 +45,7 @@ public sealed class AutoRunJob
         if (!s.AllOnline) yield return "主控板或控制板離線";
         if (s.SafeState) yield return "系統在安全狀態，請先 Reset";
         if (map.Loadlock != true || map.Pm != false) yield return "自動跑片需要：Loadlock 手臂上有片、PM 無片";
-        if (!r.PumpDown && !(s.ChamberPressureTorr < 1)) yield return "配方沒有勾抽真空，PM 也不在真空";
+        if (!r.PumpsFirst && !(s.ChamberPressureTorr < 1)) yield return "配方第一步不是抽真空，PM 也不在真空";
     }
 
     public async Task<SequencerState> RunAsync(ProcessRecipe r, CancellationToken ct = default)
@@ -75,12 +75,12 @@ public sealed class AutoRunJob
                     await Task.Delay(_poll ?? TimeSpan.FromMilliseconds(200), token);
                 }
             }
-            if (r.PumpDown)
-                await Sub(new ProcessRecipe
-                {
-                    Name = r.Name + "（抽真空）", PumpDown = true, CrossoverTorr = r.CrossoverTorr, BaseTorr = r.BaseTorr,
-                    PumpTimeoutS = r.PumpTimeoutS, TurboSpinUpTimeoutS = r.TurboSpinUpTimeoutS,
-                }, token);
+            // 共用 Dry Pump：SLK 抽完粗抽閥還開著，會讓主控板一直擋 Chamber 粗抽、暫關 Turbo 前級閥 → 先關
+            if (_m.Snapshot.LoadlockRoughOpen
+                && !await _m.LoadlockAsync(LoadlockCommand.RoughOff, 0, TimeSpan.FromSeconds(_xferCfg.LoadlockStepTimeoutS), token))
+                throw new AutoRunException($"關 Loadlock 粗抽閥失敗：{_m.LastLoadlockError}");
+            int pumpN = r.LeadingPumpSteps, ventN = Math.Min(r.TrailingVentSteps, r.Steps.Count - pumpN);
+            if (pumpN > 0) await Sub(r.Slice(0, pumpN, "（抽真空）"), token);
 
             // 2. 送片
             Phase = "2/5 送片";
@@ -88,7 +88,8 @@ public sealed class AutoRunJob
 
             // 3. 製程（不 vent；已在真空就不再抽）
             Phase = "3/5 製程";
-            await Sub(r with { PumpDown = false, VentAfter = false }, token);
+            int midN = r.Steps.Count - pumpN - ventN;
+            if (midN > 0) await Sub(r.Slice(pumpN, midN), token);
 
             // 4. 取片
             Phase = "4/5 取片";
@@ -96,12 +97,7 @@ public sealed class AutoRunJob
 
             // 5. 回填（配方要求時）
             Phase = "5/5 收尾";
-            if (r.VentAfter)
-                await Sub(new ProcessRecipe
-                {
-                    Name = r.Name + "（回填）", PumpDown = false, VentAfter = true, VentTargetTorr = r.VentTargetTorr,
-                    VentTimeoutS = r.VentTimeoutS, TurboSpinDownTimeoutS = r.TurboSpinDownTimeoutS,
-                }, token);
+            if (ventN > 0) await Sub(r.Slice(r.Steps.Count - ventN, ventN, "（回填）"), token);
             Phase = "";
             Report(SequencerState.Done, "完成", "", r.Name);
         }

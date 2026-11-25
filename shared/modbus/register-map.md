@@ -1,4 +1,4 @@
-# 暫存器表（map_version 2）
+# 暫存器表（map_version 3）
 
 > 自動產生，請勿手改。來源：shared/modbus/registers.yaml
 
@@ -7,7 +7,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | 槽 | 板 | 板型 | IR 範圍 | HR 範圍 |
 | --- | --- | --- | --- | --- |
 | 0 | main | MAIN | 0–126 | 0–168 |
-| 1 | process | PROCESS | 200–250 | 200–345 |
+| 1 | process | PROCESS | 200–250 | 200–391 |
 | 2 | heater | HEATER | 400–465 | 400–555 |
 | 3 | vacuum | VACUUM | 600–637 | 600–610 |
 | 4 | motion | MOTION | 800–841 | 800–841 |
@@ -34,7 +34,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | IR 12 | 12 | SYS_STATE | u16 | 1 |  |  |  | 值: 0=BOOT, 1=SAFE, 2=IDLE, 3=PROCESS, 4=TRANSFER, 5=ALARM |
 | IR 13 | 13 | IL_DENY | u16 | 1 |  |  |  | 最近一次被主控板互鎖擋下的原因（可能多個同時成立） bits: 0=SAFE_ACTIVE, 1=SLOT_OFFLINE, 2=LL_UNKNOWN, 3=LL_ALARM, 4=SV_NOT_CLOSED, 5=SV_NOT_OPEN, 6=DP_HIGH, 7=PRESSURE_UNKNOWN, 8=PM_BUSY, 9=PM_VENTING, 10=ARM_IN_SV_PATH, 11=Z_NOT_DOWN, 12=LL_LID_OPEN, 13=LL_VALVE_CONFLICT, 14=PM_NOT_AT_TRANSFER, 15=LL_BUSY |
 | IR 14 | 14 | IL_DENY_ACTION | u16 | 1 |  |  |  | 最近一次被擋下的動作（IL_ACT_*，見 docs/interlocks.md） |
-| IR 15 | 15 | IL_DENY2 | u16 | 1 |  |  |  | IL_DENY 的延伸（16 個 bit 不夠用） bits: 0=TURBO_GV_OPEN, 1=ARM_MOVING, 2=HEATER_NOT_DOWN |
+| IR 15 | 15 | IL_DENY2 | u16 | 1 |  |  |  | IL_DENY 的延伸（16 個 bit 不夠用） bits: 0=TURBO_GV_OPEN, 1=ARM_MOVING, 2=HEATER_NOT_DOWN, 3=LL_ROUGHING, 4=PM_ROUGHING, 5=FORELINE_TIMEOUT |
 | IR 16 | 16 | DO_OUT | u16 | 1 |  |  |  | 燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈） bits: 0=BUZZER, 1=TOWER_RED, 2=TOWER_YELLOW, 3=TOWER_GREEN, 4=TOWER_BLUE |
 | IR 30 | 30 | TV_PRESSURE | u16 | 1 | 0.001 | Torr |  |  |
 | IR 31 | 31 | TV_POSITION | u16 | 1 | 0.1 | % |  |  |
@@ -86,6 +86,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 155 | 155 | IL_SV_MODE | u16 | 1 |  |  |  | 開 SV 的壓力條件：BELOW = LL 與 PM 都低於 IL_SV_BELOW_MTORR（預設，SLK 壓力計低於下限算低於 1 Torr）；DIFF = 壓差 ≤ IL_SV_DP_MAX_MTORR（LL 需有 mTorr 級壓力計） 值: 0=BELOW, 1=DIFF |
 | HR 156 | 156 | IL_SV_BELOW_MTORR | u16 | 1 |  | mTorr | 1–10000 | BELOW 模式門檻，預設 1000（1 Torr） |
 | HR 157 | 157 | IL_LL_JUMP_MTORR | u16 | 1 |  | mTorr | 1000–60000 | LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr） |
+| HR 158 | 158 | IL_FORELINE_OFF_MAX_S | u16 | 1 |  | s | 5–600 | 共用 Dry Pump：LL 粗抽時主控板暫關 Turbo 前級閥，關超過此秒數就停 LL 粗抽（保護 Turbo），預設 60 |
 | HR 160 | 160 | PM_GAUGE_MODEL | u16 | 1 |  |  |  | 換算公式見 docs/gauges.md 值: 0=NONE, 1=LINEAR, 2=APGX_H, 3=WRG200_X, 4=WRG200_G, 5=WRG200_Q |
 | HR 161 | 161 | PM_GAUGE_AI_ADDR | u16 | 1 |  |  |  | 壓力計電壓（mV）所在的 IR 絕對位址，預設 633 = 槽 3 AI_RAW[3] Chamber APGX-H |
 | HR 162–163 | 162–163 | PM_GAUGE_FS_MTORR | i32 | 1 |  | mTorr |  | LINEAR（電容式 0~10 V）滿刻度，例 1000 Torr = 1000000 |
@@ -95,7 +96,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 
 ## 槽 1：process
 
-製程控制（ALD 閥 ×7、MFC 上游閥 ×8、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）
+製程控制（ALD 閥 ×7、MFC 上游閥 ×8、ALD VALVE PURGE 閥（MFC 匯流 → ALD 閥組，2026-11-25，DO 15）、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）
 
 ### Input Register (FC04)
 
@@ -111,7 +112,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | IR 207 | 7 | LAST_ERROR | u16 | 1 |  |  |  |  |
 | IR 208 | 8 | SLOT_ID | u16 | 1 |  |  |  | 背板腳位讀到的槽號 |
 | IR 210 | 10 | DI | u16 | 1 |  |  |  | bits: 0=RF1_POWER_CABLE_OK, 1=RF1_MATCH_CABLE_OK |
-| IR 220 | 20 | DO_FB | u16 | 1 |  |  |  | bits: 0=ALD_V1, 1=ALD_V2, 2=ALD_V3, 3=ALD_V4, 4=ALD_V5, 5=ALD_V6, 6=ALD_V7, 7=MFC_UP_V1, 8=MFC_UP_V2, 9=MFC_UP_V3, 10=MFC_UP_V4, 11=MFC_UP_V5, 12=MFC_UP_V6, 13=MFC_UP_V7, 14=MFC_UP_V8 |
+| IR 220 | 20 | DO_FB | u16 | 1 |  |  |  | bits: 0=ALD_V1, 1=ALD_V2, 2=ALD_V3, 3=ALD_V4, 4=ALD_V5, 5=ALD_V6, 6=ALD_V7, 7=MFC_UP_V1, 8=MFC_UP_V2, 9=MFC_UP_V3, 10=MFC_UP_V4, 11=MFC_UP_V5, 12=MFC_UP_V6, 13=MFC_UP_V7, 14=MFC_UP_V8, 15=ALD_PURGE_V |
 | IR 230–237 | 30–37 | MFC_PV | u16 | 8 | 0.01 | %FS |  | Bronkhorst EL-FLOW F-201CB ×7 + EL-Press P-602CV ×1（通道 8，壓力）；換成 sccm / psi 在 IPC（config 每台滿刻度） |
 | IR 238 | 38 | MANOMETER_RAW | u16 | 1 |  | mV |  | Barocel 原始電壓（1000 Torr FS），換算在 IPC |
 | IR 240 | 40 | ALD_CYCLE_NOW | u16 | 1 |  |  |  |  |
@@ -125,13 +126,15 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 200 | 0 | HEARTBEAT | u16 | 1 |  |  |  | 上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層） |
 | HR 201 | 1 | COMMAND | u16 | 1 |  |  |  | 值: 0=NONE, 1=START, 2=STOP, 3=RESET_ALARM, 4=ENTER_SAFE |
 | HR 202 | 2 | WATCHDOG_MS | u16 | 1 |  | ms | 200–10000 | 預設 1000，TODO 確認 |
-| HR 210 | 10 | DO_CMD | u16 | 1 |  |  |  | bits: 0=ALD_V1, 1=ALD_V2, 2=ALD_V3, 3=ALD_V4, 4=ALD_V5, 5=ALD_V6, 6=ALD_V7, 7=MFC_UP_V1, 8=MFC_UP_V2, 9=MFC_UP_V3, 10=MFC_UP_V4, 11=MFC_UP_V5, 12=MFC_UP_V6, 13=MFC_UP_V7, 14=MFC_UP_V8 |
+| HR 210 | 10 | DO_CMD | u16 | 1 |  |  |  | bits: 0=ALD_V1, 1=ALD_V2, 2=ALD_V3, 3=ALD_V4, 4=ALD_V5, 5=ALD_V6, 6=ALD_V7, 7=MFC_UP_V1, 8=MFC_UP_V2, 9=MFC_UP_V3, 10=MFC_UP_V4, 11=MFC_UP_V5, 12=MFC_UP_V6, 13=MFC_UP_V7, 14=MFC_UP_V8, 15=ALD_PURGE_V |
 | HR 220–227 | 20–27 | MFC_SP | u16 | 8 | 0.01 | %FS | 0–100 | 0–100 % 滿刻度 = 0–5 V |
 | HR 300 | 100 | ALD_CYCLES | u16 | 1 |  |  | 1–60000 |  |
 | HR 301 | 101 | ALD_STEP_COUNT | u16 | 1 |  |  | 1–16 |  |
 | HR 302 | 102 | PURGE_VALVES | u16 | 1 |  |  |  | 安全狀態下保持開啟的 ALD 閥（bit0 = ALD_V1 … bit6 = ALD_V7），例如 N2 purge。TODO 依管路 |
 | HR 310–325 | 110–125 | ALD_STEP_VALVES | u16 | 16 |  |  |  | 每步要開的 ALD 閥位元（bit0 = ALD_V1 … bit6 = ALD_V7） |
 | HR 330–345 | 130–145 | ALD_STEP_MS | u16 | 16 |  | ms | 1–60000 |  |
+| HR 350–353 | 150–153 | ALD_STEP_MFC_SET | u16 | 4 |  |  |  | 每步開始時切換 MFC（2026-11-12）：每步 4 bit，第 i 步在 150 + i/4 的 bit (i%4)×4 起；0 = 不變，1–4 = 套用 ALD_MFC_PRESET 第 n 組。切換後一直維持到 STOP / 下次 START / 安全狀態。用 4 bit 打包是因為 EtherCAT RxPDO 單一 PDO 最多 254 個 entry |
+| HR 360–391 | 160–191 | ALD_MFC_PRESET | u16 | 32 | 0.01 | %FS |  | MFC 切換組：4 組 × 8 通道（槽位只到 199），第 n 組通道 c 在 160 + (n-1)×8 + c；65535 = 該通道不變 |
 
 ## 槽 2：heater
 

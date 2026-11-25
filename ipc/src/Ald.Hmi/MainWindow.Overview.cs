@@ -63,23 +63,6 @@ public partial class MainWindow
         }
         else { prg.Value = 0; C<TextBlock>("TxtProgress").Text = run.Length > 0 ? "" : "沒有流程在執行"; }
 
-        var v = new StringBuilder();
-        v.AppendLine($"PM 互鎖  {PmP(s)}");
-        v.AppendLine($"Barocel  {P(s.ManometerTorr)}");
-        v.AppendLine($"Ion      {P(s.IonGaugeTorr)}");
-        v.AppendLine($"Foreline {P(s.ForelineTorr)}");
-        v.Append("（Torr）");
-        if (s.VacuumBlocked != VacuumOutputs.None) v.Append($"\n⚠ 互鎖擋下 {s.VacuumBlocked}");
-        C<TextBlock>("TxtVac").Text = v.ToString();
-
-        var l = new StringBuilder();
-        string llp = s.LoadlockPressureUnderRange ? "< 1 Torr" : double.IsNaN(s.LoadlockPressureTorr) ? "---" : $"{s.LoadlockPressureTorr:0.0} Torr";
-        l.AppendLine($"晶圓 {WaferMap.Text(_wafers?.Loadlock)}{(llId.Length > 0 ? " " + llId : "")}");
-        l.AppendLine($"壓力 {llp}{(s.LoadlockPressureSuspect ? "（不可信）" : "")}");
-        l.AppendLine($"SV {SvText[(int)s.SlitValve % 6]}  Z {s.ArmZ}");
-        l.Append($"手臂 {s.ArmPosSteps} step{(s.LoadlockAlarm != 0 ? $"\n⚠ 警報 {s.LoadlockAlarm}" : "")}");
-        C<TextBlock>("TxtLlDetail").Text = l.ToString();
-
         // 加熱：只列有開的組（常駐設定），沒開的組不佔版面
         var h = new StringBuilder();
         var names = m.Config.Heaters.Channels;
@@ -96,9 +79,12 @@ public partial class MainWindow
         C<TextBlock>("TxtHeat").Text = h.ToString();
 
         var mfc = m.Config.Mfc.Channels;
+        int chuck = Math.Max(0, names.ToList().FindIndex(x => x.Name.StartsWith("CHUCK", StringComparison.OrdinalIgnoreCase)));
         C<OverviewView>("Ov").Update(new OverviewModel(s, _wafers?.Loadlock, _wafers?.Pm,
             llId, pmId,
-            s.AldRunning || s.SysState == SystemState.Process, m.Config.Transfer.ArmPmSteps,
-            mfc.Select(c => c.Name).ToArray()));
+            s.AldRunning || s.SysState == SystemState.Process, XferRunning,
+            mfc.Select(c => c.Name).ToArray(), mfc.Select(c => c.Unit).ToArray(), m.MfcSetpoints, _valveNames,
+            m.Config.Process.AldValveCount,
+            s.TempC.Length > chuck ? s.TempC[chuck] : double.NaN, m.HeaterSetpoint(chuck)));
     }
 }

@@ -3,7 +3,7 @@ namespace Ald.Comm.Generated;
 
 public static class RegisterMap
 {
-    public const ushort MapVersion = 2;
+    public const ushort MapVersion = 3;
     public const ushort SlotStride = 200;
     public const int MaxSlots = 9;
     /// <summary>HR 開機預設值（絕對位址, 原始值），與主控板 / 主站程式同一份</summary>
@@ -16,6 +16,7 @@ public static class RegisterMap
         (154, 5894), // main.IL_ARM_SAFE_POS
         (156, 1000), // main.IL_SV_BELOW_MTORR
         (157, 10000), // main.IL_LL_JUMP_MTORR
+        (158, 60), // main.IL_FORELINE_OFF_MAX_S
         (160, 2), // main.PM_GAUGE_MODEL
         (161, 633), // main.PM_GAUGE_AI_ADDR
         (162, 15), // main.PM_GAUGE_FS_MTORR
@@ -157,6 +158,9 @@ public static class MainBoard
             TurboGvOpen = 1 << 0,
             ArmMoving = 1 << 1,
             HeaterNotDown = 1 << 2,
+            LlRoughing = 1 << 3,
+            PmRoughing = 1 << 4,
+            ForelineTimeout = 1 << 5,
         }
         /// <summary>燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈）</summary>
         public const ushort DoOut = 16;
@@ -387,6 +391,10 @@ public static class MainBoard
         public const ushort IlLlJumpMtorr = 157;
         public const double IlLlJumpMtorrMin = 1000;
         public const double IlLlJumpMtorrMax = 60000;
+        /// <summary>共用 Dry Pump：LL 粗抽時主控板暫關 Turbo 前級閥，關超過此秒數就停 LL 粗抽（保護 Turbo），預設 60 [s]</summary>
+        public const ushort IlForelineOffMaxS = 158;
+        public const double IlForelineOffMaxSMin = 5;
+        public const double IlForelineOffMaxSMax = 600;
         /// <summary>換算公式見 docs/gauges.md</summary>
         public const ushort PmGaugeModel = 160;
         public enum PmGaugeModelValues : ushort
@@ -421,7 +429,7 @@ public static class MainBoard
 
 }
 
-/// <summary>製程控制（ALD 閥 ×7、MFC 上游閥 ×8、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）（槽 1，位址 = 200 + 區內位址）</summary>
+/// <summary>製程控制（ALD 閥 ×7、MFC 上游閥 ×8、ALD VALVE PURGE 閥（MFC 匯流 → ALD 閥組，2026-11-25，DO 15）、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）（槽 1，位址 = 200 + 區內位址）</summary>
 public static class ProcessBoard
 {
     public const int Slot = 1;
@@ -482,6 +490,7 @@ public static class ProcessBoard
             MfcUpV6 = 1 << 12,
             MfcUpV7 = 1 << 13,
             MfcUpV8 = 1 << 14,
+            AldPurgeV = 1 << 15,
         }
         /// <summary>Bronkhorst EL-FLOW F-201CB ×7 + EL-Press P-602CV ×1（通道 8，壓力）；換成 sccm / psi 在 IPC（config 每台滿刻度） [%FS]</summary>
         public const ushort MfcPv = 230;
@@ -498,7 +507,7 @@ public static class ProcessBoard
     /// <summary>Holding Register (FC03/FC06/FC16)，以下皆為絕對位址</summary>
     public static class Holding
     {
-        public const ushort Size = 146;
+        public const ushort Size = 192;
         /// <summary>上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層）</summary>
         public const ushort Heartbeat = 200;
         public const ushort Command = 201;
@@ -532,6 +541,7 @@ public static class ProcessBoard
             MfcUpV6 = 1 << 12,
             MfcUpV7 = 1 << 13,
             MfcUpV8 = 1 << 14,
+            AldPurgeV = 1 << 15,
         }
         /// <summary>0–100 % 滿刻度 = 0–5 V [%FS]</summary>
         public const ushort MfcSp = 220;
@@ -555,6 +565,13 @@ public static class ProcessBoard
         public const ushort AldStepMsCount = 16;
         public const double AldStepMsMin = 1;
         public const double AldStepMsMax = 60000;
+        /// <summary>每步開始時切換 MFC（2026-11-12）：每步 4 bit，第 i 步在 150 + i/4 的 bit (i%4)×4 起；0 = 不變，1–4 = 套用 ALD_MFC_PRESET 第 n 組。切換後一直維持到 STOP / 下次 START / 安全狀態。用 4 bit 打包是因為 EtherCAT RxPDO 單一 PDO 最多 254 個 entry</summary>
+        public const ushort AldStepMfcSet = 350;
+        public const ushort AldStepMfcSetCount = 4;
+        /// <summary>MFC 切換組：4 組 × 8 通道（槽位只到 199），第 n 組通道 c 在 160 + (n-1)×8 + c；65535 = 該通道不變 [%FS]</summary>
+        public const ushort AldMfcPreset = 360;
+        public const ushort AldMfcPresetCount = 32;
+        public const double AldMfcPresetScale = 0.01;
     }
 
 }

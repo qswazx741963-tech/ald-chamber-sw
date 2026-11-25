@@ -11,7 +11,7 @@ public sealed record BatchItemResult(BatchItem Item, BatchItemState State, DateT
 /// 多片批次（單 Loadlock、手臂一次一片）：
 ///   每一片：Loadlock 洩壓 → 等人員取出上一片 / 放入這一片並按確認（藍燈）→ 自動跑片（LL 抽氣 → 送片 → 製程 → 取片）。
 ///   最後一片做完：Loadlock 洩壓 → 等人員取出 →（勾選時）PM 回填。
-/// 各片配方的 VentAfter 一律不做（PM 保持真空給下一片），回填只在批次最後。
+/// 各片配方結尾的回填步驟一律不做（PM 保持真空給下一片），回填只在批次最後。
 /// 任一片失敗或中止就整批停下，後面的片標成未跑，不會自動往下做。
 /// </summary>
 public sealed class BatchJob
@@ -115,7 +115,7 @@ public sealed class BatchJob
                     if (p.State == SequencerState.Running) Report(SequencerState.Running, $"{tag}：{p.Step}", p.Message, quiet: true);
                     else if (p.State == SequencerState.Failed) last = $"{p.Step} {p.Message}".Trim();
                 };
-                var st = await _auto.RunAsync(it.Recipe with { VentAfter = false }, token);
+                var st = await _auto.RunAsync(it.Recipe.Slice(0, it.Recipe.Steps.Count - it.Recipe.TrailingVentSteps), token);
                 _auto = null;
                 token.ThrowIfCancellationRequested();
                 if (st == SequencerState.Aborted) throw new OperationCanceledException();
@@ -138,7 +138,7 @@ public sealed class BatchJob
             {
                 SetStep("收尾：PM 回填");
                 var seq = new ProcessSequencer(_m, _poll ?? TimeSpan.FromMilliseconds(200));
-                if (await seq.RunAsync(new ProcessRecipe { Name = "批次結束 PM 回填", PumpDown = false, VentAfter = true }, token) != SequencerState.Done)
+                if (await seq.RunAsync(ProcessRecipe.VentOnly("批次結束 PM 回填"), token) != SequencerState.Done)
                     throw new BatchException($"PM 回填沒有完成：{seq.Step}");
             }
             Report(SequencerState.Done, "完成", $"{items.Count} 片全部完成");

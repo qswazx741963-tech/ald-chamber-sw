@@ -8,6 +8,8 @@ public sealed record MachineSnapshot
     // 連線：index = 槽號（0 主控板、1 製程、2 加熱、3 真空、4 馬達）
     public bool Connected { get; init; }              // IPC ↔ ald-ecat ↔ 主控板（EtherCAT OP）
     public bool[] SlotOnline { get; init; } = new bool[5];
+    /// <summary>主控板不在線時，從它讀到的 MAP_VERSION（0 = 沒讀到）。跟 IPC 的不同 = 兩邊程式版本不一致。</summary>
+    public int MapVersionSeen { get; init; }
     /// <summary>各槽 IR STATUS 位元（READY、RUNNING、SAFE_STATE、WATCHDOG_TRIPPED、PARAM_REJECTED、LOCAL_INTERLOCK、ONLINE）。</summary>
     public ushort[] SlotStatus { get; init; } = new ushort[5];
     public bool SafeState { get; init; }
@@ -46,6 +48,7 @@ public sealed record MachineSnapshot
     public bool RfOn { get; init; }
     public ushort AldValves { get; init; }                     // ALD_V1~7 實際輸出（bit0 = V1）
     public ushort MfcUpstreamValves { get; init; }             // MFC_UP_V1~8（bit0 = V1）
+    public bool AldPurgeOpen { get; init; }                    // ALD_PURGE_V（MFC 匯流 → ALD 閥組）
     public double[] MfcPct { get; init; } = Filled(8, double.NaN);    // % 滿刻度
     public double[] MfcValue { get; init; } = Filled(8, double.NaN);  // 換成 config 單位（sccm / psi）
     public int AldCycle { get; init; }

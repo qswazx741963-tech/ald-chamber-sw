@@ -1,5 +1,5 @@
 # =====================================================================
-#  ALD Chamber 暫存器定義（唯一來源 / Single source of truth）— map_version 2
+#  ALD Chamber 暫存器定義（唯一來源 / Single source of truth）— map_version 3
 #  改完執行：python tools/codegen/gen_registers.py
 #
 #  ■ 架構（方案 A，2026-11-10）
@@ -32,7 +32,7 @@
 #                              HR 100-199 參數區
 #  ※ 待確認項目標 TODO
 # =====================================================================
-map_version: 2
+map_version: 3
 slot_stride: 200          # 每槽在 IR、HR 各占 200 個位址
 max_slots: 9              # 槽 0 = 主控板 + 槽 1~8 執行板（最多 8 塊）；CAN ID / SLOT_ID 仍保留 4 bit，日後要加槽只改這裡
 
@@ -83,7 +83,7 @@ boards:
       - name: IL_DENY2
         addr: 15
         desc: "IL_DENY 的延伸（16 個 bit 不夠用）"
-        bits: [TURBO_GV_OPEN, ARM_MOVING, HEATER_NOT_DOWN]
+        bits: [TURBO_GV_OPEN, ARM_MOVING, HEATER_NOT_DOWN, LL_ROUGHING, PM_ROUGHING, FORELINE_TIMEOUT]
       - name: DO_OUT
         addr: 16
         desc: "燈塔 / 蜂鳴器實際輸出（安全狀態主控板強制紅燈；IPC 斷線時只亮紅燈）"
@@ -174,6 +174,7 @@ boards:
         values: { BELOW: 0, DIFF: 1 }
       - { name: IL_SV_BELOW_MTORR, addr: 156, unit: mTorr, min: 1, max: 10000, default: 1000, desc: "BELOW 模式門檻，預設 1000（1 Torr）" }
       - { name: IL_LL_JUMP_MTORR,  addr: 157, unit: mTorr, min: 1000, max: 60000, default: 10000, desc: "LL 壓力最後有效讀值高於此值就直接變「低於下限」= 疑似斷線，預設 10000（10 Torr）" }
+      - { name: IL_FORELINE_OFF_MAX_S, addr: 158, unit: s, min: 5, max: 600, default: 60, desc: "共用 Dry Pump：LL 粗抽時主控板暫關 Turbo 前級閥，關超過此秒數就停 LL 粗抽（保護 Turbo），預設 60" }
       # ---- PM 壓力計（config 型號選單寫進來，主控板用來換算互鎖壓力）
       - name: PM_GAUGE_MODEL
         addr: 160
@@ -195,7 +196,7 @@ boards:
     slot: 1
     board_type: PROCESS
     prefix: PROC
-    desc: 製程控制（ALD 閥 ×7、MFC 上游閥 ×8、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）
+    desc: 製程控制（ALD 閥 ×7、MFC 上游閥 ×8、ALD VALVE PURGE 閥（MFC 匯流 → ALD 閥組，2026-11-25，DO 15）、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）
     input:
       - name: DI
         addr: 10
@@ -203,7 +204,8 @@ boards:
       - name: DO_FB
         addr: 20
         bits: [ALD_V1, ALD_V2, ALD_V3, ALD_V4, ALD_V5, ALD_V6, ALD_V7,
-               MFC_UP_V1, MFC_UP_V2, MFC_UP_V3, MFC_UP_V4, MFC_UP_V5, MFC_UP_V6, MFC_UP_V7, MFC_UP_V8]
+               MFC_UP_V1, MFC_UP_V2, MFC_UP_V3, MFC_UP_V4, MFC_UP_V5, MFC_UP_V6, MFC_UP_V7, MFC_UP_V8,
+               ALD_PURGE_V]
       - { name: MFC_PV,        addr: 30, count: 8, scale: 0.01, unit: "%FS",
           desc: "Bronkhorst EL-FLOW F-201CB ×7 + EL-Press P-602CV ×1（通道 8，壓力）；換成 sccm / psi 在 IPC（config 每台滿刻度）" }
       - { name: MANOMETER_RAW, addr: 38, unit: mV, desc: "Barocel 原始電壓（1000 Torr FS），換算在 IPC" }
@@ -214,13 +216,18 @@ boards:
       - name: DO_CMD
         addr: 10
         bits: [ALD_V1, ALD_V2, ALD_V3, ALD_V4, ALD_V5, ALD_V6, ALD_V7,
-               MFC_UP_V1, MFC_UP_V2, MFC_UP_V3, MFC_UP_V4, MFC_UP_V5, MFC_UP_V6, MFC_UP_V7, MFC_UP_V8]
+               MFC_UP_V1, MFC_UP_V2, MFC_UP_V3, MFC_UP_V4, MFC_UP_V5, MFC_UP_V6, MFC_UP_V7, MFC_UP_V8,
+               ALD_PURGE_V]
       - { name: MFC_SP,          addr: 20, count: 8, scale: 0.01, unit: "%FS", min: 0, max: 100, desc: "0–100 % 滿刻度 = 0–5 V" }
       - { name: ALD_CYCLES,      addr: 100, min: 1, max: 60000 }
       - { name: ALD_STEP_COUNT,  addr: 101, min: 1, max: 16 }
       - { name: PURGE_VALVES,    addr: 102, desc: "安全狀態下保持開啟的 ALD 閥（bit0 = ALD_V1 … bit6 = ALD_V7），例如 N2 purge。TODO 依管路" }
       - { name: ALD_STEP_VALVES, addr: 110, count: 16, desc: "每步要開的 ALD 閥位元（bit0 = ALD_V1 … bit6 = ALD_V7）" }
       - { name: ALD_STEP_MS,     addr: 130, count: 16, unit: ms, min: 1, max: 60000 }
+      - { name: ALD_STEP_MFC_SET, addr: 150, count: 4,
+          desc: "每步開始時切換 MFC（2026-11-12）：每步 4 bit，第 i 步在 150 + i/4 的 bit (i%4)×4 起；0 = 不變，1–4 = 套用 ALD_MFC_PRESET 第 n 組。切換後一直維持到 STOP / 下次 START / 安全狀態。用 4 bit 打包是因為 EtherCAT RxPDO 單一 PDO 最多 254 個 entry" }
+      - { name: ALD_MFC_PRESET,  addr: 160, count: 32, scale: 0.01, unit: "%FS",
+          desc: "MFC 切換組：4 組 × 8 通道（槽位只到 199），第 n 組通道 c 在 160 + (n-1)×8 + c；65535 = 該通道不變" }
 
   # ------------------------------------------------------------------
   heater:

@@ -17,6 +17,10 @@
 
 #define LL_POLL_MS        200u   /* TLM 輪詢週期。SLK 舊版 TLM 會阻塞馬達脈衝，見 docs/loadlock-integration.md */
 #define LL_CMD_TIMEOUT_MS 70000u /* 最長序列 LOAD/UNLOAD 約 60 s */
+/* 共用 Dry Pump（2026-11-25）：LL 粗抽命令先等 Turbo 前級閥關好才送給 SLK */
+#define LL_FORELINE_SETTLE_MS 300u   /* 前級閥 DO 關掉後再等這麼久（閥體動作時間）才開 LL 粗抽 */
+#define LL_FORELINE_WAIT_MS   3000u  /* 等不到前級閥關 → 命令失敗 */
+#define LL_ROUGH_GRACE_MS     1500u  /* 粗抽命令送出後，TLM 還沒反映前也當成「LL 粗抽中」 */
 
 typedef struct {
     slk_state_t slk;
@@ -30,6 +34,13 @@ typedef struct {
     bool        pres_seen_valid;  /* 開機後看過有效讀值（≥ 1 Torr） */
     int32_t     pres_last_valid;
     bool        pres_suspect;
+    /* 共用 Dry Pump */
+    uint16_t    hold_cmd;         /* 已核准、等前級閥關好才送的粗抽命令（PUMP / ROUGH_ON），0 = 沒有 */
+    int32_t     hold_arg;
+    uint32_t    hold_ms;
+    uint32_t    fl_closed_ms;     /* 等待中：看到前級閥關的時間，0 = 還沒關 */
+    bool        rough_sent;
+    uint32_t    rough_sent_ms;
 } ll_gateway_t;
 
 void        ll_gateway_init(ll_gateway_t *g);
@@ -40,5 +51,7 @@ void        ll_gateway_rx(ll_gateway_t *g, uint16_t *ir_main, uint32_t now_ms);
 /* 2. 輪詢 TLM、處理 IPC 命令、更新 IR；in 由呼叫端依最新狀態填好 */
 void        ll_gateway_step(ll_gateway_t *g, uint16_t *ir_main, const uint16_t *hr_main,
                             const il_inputs_t *in, uint32_t now_ms);
-/* 把 SLK 狀態填進互鎖輸入 */
+/* 前級閥關太久（HR IL_FORELINE_OFF_MAX_S）：停 LL 粗抽（ABORT PUMP 序列 + 關粗抽閥），等待中的粗抽命令取消 */
+void        ll_gateway_stop_rough(ll_gateway_t *g, uint16_t *ir_main, uint32_t now_ms);
+/* 把 SLK 狀態填進互鎖輸入（含 ll_roughing） */
 void        ll_fill_inputs(const ll_gateway_t *g, il_inputs_t *in, uint32_t now_ms, uint32_t stale_ms);

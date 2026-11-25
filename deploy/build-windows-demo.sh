@@ -32,6 +32,9 @@ cat > "$PKG/start-demo.bat" <<'EOF'
 @echo off
 rem ALD Chamber demo: start the simulator (10x speed) and the HMI
 cd /d "%~dp0"
+rem close an older simulator / HMI that is still running (otherwise the HMI may talk to the old version)
+taskkill /f /im ald-ecat.exe >nul 2>&1
+taskkill /f /im AldChamber.exe >nul 2>&1
 start "ALD simulator - close this window to stop" sim\ald-ecat.exe --sim --speed 10 --port 1502
 timeout /t 2 /nobreak >nul
 cd hmi
@@ -54,7 +57,8 @@ ALD Chamber 人機 試操作版（Windows）
 
 注意：
 - 這是模擬，沒有接任何硬體。資料（事件記錄、履歷、晶圓位置）存在 hmi\data\，刪掉就回到初始狀態。
-- 關掉黑色視窗但人機還開著 → 人機會顯示斷線；重開 start-demo.bat 即可。
+- 關掉黑色視窗但人機還開著 → 人機會顯示斷線；重開 start-demo.bat 即可（它會先關掉還開著的舊版虛擬機台 / 人機）。
+- 換新版時請解壓到新的資料夾，並確認舊版的黑色視窗已經關掉；版本不同時人機警報會顯示「暫存器表版本不同」。
 EOF
 sed -i 's/$/\r/' "$PKG/說明.txt"
 

@@ -133,6 +133,8 @@ public static class Interlocks
                 => InterlockResult.Deny("Loadlock 艙蓋開啟"),
             MachineAction.LoadlockPump when s.LoadlockVentOpen
                 => InterlockResult.Deny("Loadlock 洩壓閥開啟中"),
+            MachineAction.LoadlockPump when s.VacuumOutputs.HasFlag(VacuumOutputs.ChamberRough)
+                => InterlockResult.Deny("Chamber 粗抽中（共用 Dry Pump），請先關 Chamber 粗抽閥"),
             MachineAction.LoadlockVent when s.LoadlockRoughOpen
                 => InterlockResult.Deny("Loadlock 粗抽閥開啟中"),
 

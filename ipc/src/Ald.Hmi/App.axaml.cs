@@ -39,6 +39,7 @@ public partial class App : Application
             _alarmLog.Purge(cfg.DataLog.KeepDays);
             _trend.Purge(cfg.DataLog.KeepDays);
 
+            cfg = cfg with { Mfc = cfg.Mfc with { Channels = MfcSpecs.Load(cfg.Mfc.SpecPath, cfg.Mfc.Channels) } };   // 人機改過的 MFC 規格
             _machine = new MachineService(cfg);
             _machine.AlarmChanged += c => _alarmLog.Add(c);
             _machine.Updated += s => _trend.Add(s);

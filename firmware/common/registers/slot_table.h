@@ -2,7 +2,7 @@
 #pragma once
 #include <stdint.h>
 
-#define ALD_MAP_VERSION  2u
+#define ALD_MAP_VERSION  3u
 #define ALD_SLOT_STRIDE  200u
 #define ALD_MAX_SLOTS    9u
 #define ALD_SLOT_NONE    0xFFu
@@ -17,7 +17,7 @@
 typedef struct { uint8_t slot; uint8_t board_type; uint16_t ir_size; uint16_t hr_size; } ald_slot_def_t;
 #define ALD_SLOT_TABLE { \
     { 0u, BOARD_TYPE_MAIN, 127u, 169u }, /* main */ \
-    { 1u, BOARD_TYPE_PROCESS, 51u, 146u }, /* process */ \
+    { 1u, BOARD_TYPE_PROCESS, 51u, 192u }, /* process */ \
     { 2u, BOARD_TYPE_HEATER, 66u, 156u }, /* heater */ \
     { 3u, BOARD_TYPE_VACUUM, 38u, 11u }, /* vacuum */ \
     { 4u, BOARD_TYPE_MOTION, 42u, 42u }, /* motion */ \

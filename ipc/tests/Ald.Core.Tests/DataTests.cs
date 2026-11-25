@@ -165,7 +165,7 @@ public sealed class DataTests : IDisposable
     public void RunLog_StartEnd_Query_Interrupted_Csv()
     {
         var t0 = new DateTime(2026, 11, 11, 9, 0, 0, DateTimeKind.Local);
-        var r = new ProcessRecipe { Name = "Al2O3 100c", Ald = new AldRecipe { Cycles = 100 } };
+        var r = new LegacyRecipe { Name = "Al2O3 100c", Ald = new AldRecipe { Cycles = 100 } };
         long a, b, c;
         using (var log = new RunLog(_db))
         {
@@ -184,7 +184,7 @@ public sealed class DataTests : IDisposable
         Assert.Equal(RunLog.Interrupted, all[0].Result);
         Assert.Equal("W01", all[2].WaferId);
         Assert.Equal(TimeSpan.FromMinutes(12), all[2].Duration);
-        Assert.Equal(100, RecipeFile.Parse(all[2].RecipeJson).Ald!.Cycles);              // 配方整份留存
+        Assert.Equal(100, RecipeFile.Parse(all[2].RecipeJson).AldSegments.First().Cycles);              // 配方整份留存
 
         Assert.Equal(2, log2.Query(t0, t0.AddHours(2), keyword: "b20261111").Count);
         Assert.Single(log2.Query(t0, t0.AddHours(2), keyword: "cycle 40"));

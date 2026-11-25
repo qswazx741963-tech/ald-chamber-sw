@@ -32,6 +32,9 @@ public static class DenyReasons
         [Deny2.TurboGvOpen] = "Turbo gate valve 未關",
         [Deny2.ArmMoving] = "Loadlock 手臂移動中",
         [Deny2.HeaterNotDown] = "Heater module 不在下位",
+        [Deny2.LlRoughing] = "Loadlock 粗抽中（共用 Dry Pump）",
+        [Deny2.PmRoughing] = "Chamber 粗抽中（共用 Dry Pump），請先關 Chamber 粗抽閥",
+        [Deny2.ForelineTimeout] = "Turbo 前級閥關太久，已停止 Loadlock 粗抽（保護 Turbo）",
     };
 
     public static string Describe(uint bits)

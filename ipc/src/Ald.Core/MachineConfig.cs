@@ -22,6 +22,7 @@ public sealed record MachineConfig
     public TransferConfig Transfer { get; init; } = new();
     public LeakTestConfig LeakTest { get; init; } = new();
     public TowerConfig Tower { get; init; } = new();
+    public ProcessHwConfig Process { get; init; } = new();
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -56,6 +57,7 @@ public sealed record MachineConfig
         foreach (var (h, i) in Heaters.Channels.Select((h, i) => (h, i)))
             if (h.LimitDegC is < 0 or > 650) yield return $"heaters.channels[{i}].limitDegC 需在 0–650";
         if (Interlock.SvBelowTorr is <= 0 or > 10) yield return "interlock.svBelowTorr 需在 0–10";
+        if (Interlock.ForelineOffMaxS is < 5 or > 600) yield return "interlock.forelineOffMaxS 需在 5–600";
         if (LeakTest.Gauge.ToLowerInvariant() is not ("chamberiongauge" or "chambermanometer" or "chamberconvectron"))
             yield return "leakTest.gauge 需為 chamberIonGauge / chamberManometer / chamberConvectron";
         if (Tower.BlinkMs is < 100 or > 5000) yield return "tower.blinkMs 需在 100–5000";
@@ -63,6 +65,9 @@ public sealed record MachineConfig
         if (!(LeakTest.StartBelowTorr > 0) || !(LeakTest.AbortAboveTorr > LeakTest.StartBelowTorr))
             yield return "leakTest 壓力設定錯誤（需 abortAboveTorr > startBelowTorr > 0）";
         if (LeakTest.MeasureS is < 10 or > 7200) yield return "leakTest.measureS 需在 10–7200";
+        if (Process.AldValveNames.Count != 7) yield return "process.aldValveNames 需 7 個（V1~V7）";
+        if (Process.AldValveCount is < 1 or > 7) yield return "process.aldValveCount 需在 1~7";
+        if (Process.Rf1MaxW < 0 || Process.Rf2MaxW < 0) yield return "process.rf1MaxW / rf2MaxW 不能是負數";
         if (Gauges.Find(Gauges.PmInterlockGauge) is null) yield return $"gauges.pmInterlockGauge 指到不存在的壓力計 {Gauges.PmInterlockGauge}";
     }
 
@@ -104,6 +109,8 @@ public sealed record InterlockConfig
     public bool LoadlockZEnabled { get; init; } = true;
     public int LoadlockStaleMs { get; init; } = 500;
     public int ArmSafePosSteps { get; init; } = 5894;
+    /// <summary>共用 Dry Pump：LL 粗抽時主控板暫關 Turbo 前級閥，關超過此秒數就停 LL 粗抽（主控板 HR IL_FORELINE_OFF_MAX_S，5~600）。</summary>
+    public int ForelineOffMaxS { get; init; } = 60;
 }
 
 public sealed record GaugeConfig
@@ -148,6 +155,68 @@ public sealed record MfcChannelConfig
 public sealed record MfcConfig
 {
     public List<MfcChannelConfig> Channels { get; init; } = new();
+    /// <summary>人機「MFC 規格」存檔位置（2026-11-25）：有這個檔就以它為準，沒有就用上面的 channels。</summary>
+    public string SpecPath { get; init; } = "data/mfc.json";
+}
+
+/// <summary>
+/// MFC 規格（名稱 / 氣體、用途、滿刻度、單位）在人機設定（2026-11-25 使用者要求）。
+/// 製程板只認 % 滿刻度，換算在 IPC，所以改滿刻度不用動韌體；改完立即生效（之後下的設定值照新滿刻度換算）。
+/// </summary>
+public static class MfcSpecs
+{
+    public const int Count = 8;
+    private static readonly JsonSerializerOptions Opt = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true, WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    /// <summary>讀檔；沒有檔案或內容不合格就用 config 的預設。</summary>
+    public static List<MfcChannelConfig> Load(string path, IReadOnlyList<MfcChannelConfig> fallback)
+    {
+        try
+        {
+            if (File.Exists(path) && JsonSerializer.Deserialize<List<MfcChannelConfig>>(File.ReadAllText(path), Opt) is { Count: Count } a
+                && !Validate(a).Any())
+                return a;
+        }
+        catch (Exception) { /* 用預設 */ }
+        return fallback.ToList();
+    }
+
+    public static IEnumerable<string> Validate(IReadOnlyList<MfcChannelConfig> ch)
+    {
+        if (ch.Count != Count) { yield return $"MFC 需 {Count} 組"; yield break; }
+        for (int i = 0; i < ch.Count; i++)
+        {
+            if (string.IsNullOrWhiteSpace(ch[i].Name)) yield return $"MFC {i + 1} 請填名稱";
+            if (!(ch[i].FullScale > 0) || ch[i].FullScale > 1_000_000) yield return $"MFC {i + 1} 滿刻度需大於 0";
+            if (string.IsNullOrWhiteSpace(ch[i].Unit)) yield return $"MFC {i + 1} 請填單位";
+        }
+    }
+
+    public static void Save(string path, IReadOnlyList<MfcChannelConfig> ch)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(ch, Opt));
+        File.Move(path + ".tmp", path, overwrite: true);
+    }
+
+    /// <summary>兩版差異（記操作記錄用），例如「MFC 2 滿刻度 200 → 500」。</summary>
+    public static List<string> Diff(IReadOnlyList<MfcChannelConfig> a, IReadOnlyList<MfcChannelConfig> b)
+    {
+        var d = new List<string>();
+        for (int i = 0; i < Math.Min(a.Count, b.Count); i++)
+        {
+            if (a[i].Name != b[i].Name) d.Add($"MFC {i + 1} 名稱 {a[i].Name} → {b[i].Name}");
+            if (a[i].Use != b[i].Use) d.Add($"MFC {i + 1} 用途 {a[i].Use} → {b[i].Use}");
+            if (a[i].FullScale != b[i].FullScale) d.Add($"MFC {i + 1} 滿刻度 {a[i].FullScale:0.###} → {b[i].FullScale:0.###}");
+            if (a[i].Unit != b[i].Unit) d.Add($"MFC {i + 1} 單位 {a[i].Unit} → {b[i].Unit}");
+        }
+        return d;
+    }
 }
 
 public sealed record HeaterChannelConfig
@@ -200,6 +269,54 @@ public sealed record LeakTestConfig
     public double LimitMtorrPerMin { get; init; } = 1.0;
     /// <summary>量測中壓力超過這個值就提前結束、判定大漏。</summary>
     public double AbortAboveTorr { get; init; } = 1e-2;
+}
+
+/// <summary>製程硬體：ALD 閥管路名稱、RF、O3（2026-11-12）。</summary>
+public sealed record ProcessHwConfig
+{
+    /// <summary>V1~V7 接的管路預設名稱（配方編輯頁顯示用，例如 "TMA"、"N2 Purge"、"O3"）。人機改過就以 ValveNamesPath 的檔案為準。</summary>
+    public List<string> AldValveNames { get; init; } = ["", "", "", "", "", "", ""];
+    /// <summary>實機裝了幾顆 ALD 閥（1~7，2026-11-25 本機 6 顆）：人機只顯示 / 只能勾前幾顆，配方用到超過的閥會擋。製程板暫存器仍是 V1~V7。</summary>
+    public int AldValveCount { get; init; } = 7;
+    /// <summary>人機「閥管路名稱」存檔位置。</summary>
+    public string ValveNamesPath { get; init; } = "data/ald-valves.json";
+    /// <summary>RF 功率上限（W），0 = 沒有這台。預計鎧泰 600 W / 300 W。</summary>
+    public double Rf1MaxW { get; init; } = 600;
+    public double Rf2MaxW { get; init; } = 300;
+    /// <summary>RF 逐步開關已接上（製程板 RF_ON 輸出 + 主控板 UART 設功率）。硬體確認前為 false：含 RF 的配方可以編輯，但不能執行。</summary>
+    public bool RfReady { get; init; }
+    /// <summary>O3 產生器控制已接上。硬體確認前為 false。</summary>
+    public bool O3Ready { get; init; }
+
+    public string ValveLabel(int v) => ValveNames.Label(AldValveNames, v);
+}
+
+/// <summary>ALD 閥 V1~V7 的管路名稱（人機可改，存成 JSON 字串陣列）。</summary>
+public static class ValveNames
+{
+    public static string Label(IReadOnlyList<string> names, int v)
+        => v < names.Count && names[v].Trim().Length > 0 ? $"V{v + 1} {names[v].Trim()}" : $"V{v + 1}";
+
+    /// <summary>讀檔；沒有檔案或格式錯誤就用 config 的預設。</summary>
+    public static string[] Load(string path, IReadOnlyList<string> fallback)
+    {
+        try
+        {
+            if (File.Exists(path) && JsonSerializer.Deserialize<string[]>(File.ReadAllText(path)) is { Length: 7 } a)
+                return a.Select(x => x ?? "").ToArray();
+        }
+        catch (Exception) { /* 用預設 */ }
+        return Enumerable.Range(0, 7).Select(i => i < fallback.Count ? fallback[i] : "").ToArray();
+    }
+
+    public static void Save(string path, IReadOnlyList<string> names)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(names.Select(x => x.Trim()).ToArray(),
+            new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+        File.Move(path + ".tmp", path, overwrite: true);
+    }
 }
 
 /// <summary>人機設定。</summary>

@@ -6,7 +6,7 @@ using Avalonia.Interactivity;
 namespace Ald.Hmi;
 
 /// <summary>
-/// 手動操作頁：真空閥 / 泵、ALD 閥、加熱（常駐設定，配方只檢查不改）、MFC、Heater module、Wafer lift。
+/// 手動操作頁：真空閥 / 泵、ALD 閥、MFC、Heater module、Wafer lift（加熱在「加熱」頁，MainWindow.HeaterPage.cs）。
 /// 命令一律走 MachineService（IPC 端先檢查上限與互鎖，主控板 / 執行板還會再擋一次）；
 /// 流程執行中整頁鎖住，避免手動命令跟流程搶。
 /// </summary>
@@ -23,6 +23,7 @@ public partial class MainWindow
     };
     private readonly CheckBox[] _vacChk = new CheckBox[VacItems.Length];
     private readonly CheckBox[] _aldChk = new CheckBox[7];
+    private CheckBox? _purgeChk;
 
     /// <summary>同步命令：成功寫狀態列 + 操作記錄；被拒（超上限、互鎖）顯示原因。</summary>
     private void Cmd(string what, Action act)
@@ -63,60 +64,33 @@ public partial class MainWindow
                 Cmd($"ALD V{b + 1} {(cb.IsChecked == true ? "開" : "關")}", () => _m.SetAldValves(mask));
             };
             _aldChk[i] = cb;
+            cb.IsVisible = i < (_m?.Config.Process.AldValveCount ?? 7);   // 沒裝的閥不顯示
             ald.Children.Add(cb);
         }
+        _purgeChk = new CheckBox { Content = "ALD VALVE PURGE", Margin = new(0, 0, 12, 0) };
+        _purgeChk.Click += (_, _) =>
+        {
+            if (_m is null) return;
+            bool on = _purgeChk.IsChecked == true;
+            Cmd($"ALD VALVE PURGE {(on ? "開" : "關")}", () => _m.SetAldPurge(on));
+        };
+        ald.Children.Add(_purgeChk);
         C<Button>("BtnAldAllOff").Click += (_, _) => { if (_m is not null) Cmd("ALD 閥全關", () => _m.SetAldValves(0)); };
 
         if (_m is null) return;
         var cfg = _m.Config;
 
-        // 加熱
-        var cmbH = C<ComboBox>("CmbHeater");
-        cmbH.ItemsSource = cfg.Heaters.Channels.Select((h, i) => $"#{i + 1} {h.Name}（上限 {h.LimitDegC:0} °C）").ToList();
-        cmbH.SelectionChanged += (_, _) =>
-        {
-            int ch = cmbH.SelectedIndex;
-            if (ch < 0) return;
-            var num = C<NumericUpDown>("NumHeatSp");
-            num.Maximum = (decimal)Math.Max(0, cfg.Heaters.Channels[ch].LimitDegC);
-            num.Value = (decimal)Math.Min(_m.HeaterSetpoint(ch) ?? 0, cfg.Heaters.Channels[ch].LimitDegC);
-        };
-        cmbH.SelectedIndex = 6;   // CHAMBER_UPPER
-        C<Button>("BtnHeatOn").Click += (_, _) =>
-        {
-            int ch = cmbH.SelectedIndex;
-            double sp = (double)(C<NumericUpDown>("NumHeatSp").Value ?? 0);
-            double ramp = (double)(C<NumericUpDown>("NumHeatRamp").Value ?? 0);
-            Cmd($"加熱 #{ch + 1} {cfg.Heaters.Channels[ch].Name} → {sp:0.0} °C", () =>
-            {
-                _m.SetHeater(ch, sp, true, ramp);
-                _heaters?.Set(ch, true, sp, ramp, $"{_user} 手動設定 #{ch + 1}");
-            });
-        };
-        C<Button>("BtnHeatOff").Click += (_, _) =>
-        {
-            int ch = cmbH.SelectedIndex;
-            Cmd($"加熱 #{ch + 1} 關閉", () =>
-            {
-                _m.SetHeater(ch, 0, false);
-                _heaters?.Set(ch, false, 0, 0, $"{_user} 手動關閉 #{ch + 1}");
-            });
-        };
-        C<Button>("BtnHeatAllOff").Click += (_, _) => Cmd("加熱全部關閉", () =>
-        {
-            for (int i = 0; i < 16; i++) _m.SetHeater(i, 0, false);
-            _heaters?.TakeCurrent(_ => null, $"{_user} 加熱全部關閉");
-        });
+        C<Button>("BtnGoHeat").Click += (_, _) => C<TabControl>("Tabs").SelectedItem = Tab("加熱");
 
         // MFC
         var cmbM = C<ComboBox>("CmbMfc");
-        cmbM.ItemsSource = cfg.Mfc.Channels.Select((c, i) => $"{i + 1} {c.Name}（{c.Use}）").ToList();
+        RefreshManualMfcList();
         cmbM.SelectionChanged += (_, _) =>
         {
             int ch = cmbM.SelectedIndex;
             if (ch < 0) return;
-            C<NumericUpDown>("NumMfc").Maximum = (decimal)cfg.Mfc.Channels[ch].FullScale;
-            C<TextBlock>("TxtMfcUnit").Text = $"設定 {cfg.Mfc.Channels[ch].Unit}";
+            C<NumericUpDown>("NumMfc").Maximum = (decimal)_m.Config.Mfc.Channels[ch].FullScale;
+            C<TextBlock>("TxtMfcUnit").Text = $"設定 {_m.Config.Mfc.Channels[ch].Unit}";
         };
         cmbM.SelectedIndex = 1;
         C<Button>("BtnMfcApply").Click += (_, _) =>
@@ -124,7 +98,7 @@ public partial class MainWindow
             int ch = cmbM.SelectedIndex;
             double v = (double)(C<NumericUpDown>("NumMfc").Value ?? 0);
             bool up = C<CheckBox>("ChkMfcUp").IsChecked == true;
-            Cmd($"MFC {ch + 1} → {v:0.0} {cfg.Mfc.Channels[ch].Unit}{(up ? "，開上游閥" : "")}", () => _m.SetMfc(ch, v, up));
+            Cmd($"MFC {ch + 1} → {v:0.0} {_m.Config.Mfc.Channels[ch].Unit}{(up ? "，開上游閥" : "")}", () => _m.SetMfc(ch, v, up));
         };
         C<Button>("BtnMfcOff").Click += (_, _) => { int ch = cmbM.SelectedIndex; Cmd($"MFC {ch + 1} 關", () => _m.SetMfc(ch, 0, false)); };
         C<Button>("BtnMfcAllOff").Click += (_, _) => Cmd("MFC 全部關閉", () => { for (int i = 0; i < 8; i++) _m.SetMfc(i, 0, false); });
@@ -141,21 +115,36 @@ public partial class MainWindow
         C<Button>("BtnLiftDown").Click += (_, _) => Cmd("Wafer lift 下降", () => _m.SetWaferLift(false));
     }
 
+    /// <summary>手動操作為什麼鎖住（手動頁、總覽點圖示共用）；空字串 = 可操作（安全狀態只是提醒）。</summary>
+    private string ManualLockText(MachineSnapshot s) =>
+        _mode == ControlMode.Online ? "ONLINE（生產模式）：手動操作已鎖住，請從主頁 Sequence 執行；要手動請先切 OFFLINE（手動需工程師登入）" :
+        !Can(Permission.ManualControl) ? "手動操作需要工程師以上權限，請先登入" :
+        !s.Connected ? "主控板未連線" :
+        SequenceRunning ? $"流程「{_runName}」執行中，手動操作已鎖住（要操作請先中止流程）" :
+        XferRunning ? "傳片執行中，手動操作已鎖住" :
+        LeakRunning ? "漏率測試執行中，手動操作已鎖住" :
+        BatchRunning ? "批次執行中，手動操作已鎖住" :
+        s.SafeState ? "系統在安全狀態：執行板會擋下大部分輸出，請先按 Reset" : "";
+
+    private bool ManualLocked(MachineSnapshot s) => !s.Connected || Busy || !Can(Permission.ManualControl);
+
+    /// <summary>手動頁 MFC 下拉選單（MFC 規格改過要重新整理，選的通道不變）。</summary>
+    private void RefreshManualMfcList()
+    {
+        if (_m is null) return;
+        var cmb = C<ComboBox>("CmbMfc");
+        int sel = cmb.SelectedIndex;
+        cmb.ItemsSource = _m.Config.Mfc.Channels.Select((c, i) => $"{i + 1} {c.Name}（{c.Use}）").ToList();
+        if (sel >= 0) cmb.SelectedIndex = sel;
+    }
+
     private void RenderManual(MachineSnapshot s)
     {
         if (_m is null) return;
         bool allowed = Can(Permission.ManualControl);
         bool locked = !s.Connected || Busy || !allowed;
         C<Grid>("PnlManual").IsEnabled = !locked;
-        C<TextBlock>("TxtManualLock").Text =
-            _mode == ControlMode.Online ? "ONLINE（生產模式）：手動操作已鎖住，請從主頁 Sequence 執行；要手動請先切 OFFLINE（手動需工程師登入）" :
-            !allowed ? "手動操作需要工程師以上權限，請先登入" :
-            !s.Connected ? "主控板未連線" :
-            SequenceRunning ? $"流程「{_runName}」執行中，手動操作已鎖住（要操作請先中止流程）" :
-            XferRunning ? "傳片執行中，手動操作已鎖住" :
-            LeakRunning ? "漏率測試執行中，手動操作已鎖住" :
-            BatchRunning ? "批次執行中，手動操作已鎖住" :
-            s.SafeState ? "系統在安全狀態：執行板會擋下大部分輸出，請先按 Reset" : "";
+        C<TextBlock>("TxtManualLock").Text = ManualLockText(s);
 
         var cmd = _m.VacuumCommand;
         var fb = new System.Text.StringBuilder();
@@ -173,14 +162,8 @@ public partial class MainWindow
         C<TextBlock>("TxtVacFb").Text = fb.ToString();
 
         for (int i = 0; i < 7; i++) _aldChk[i].IsChecked = (s.AldValves >> i & 1) != 0;
+        if (_purgeChk is not null) _purgeChk.IsChecked = s.AldPurgeOpen;
 
-        int h = C<ComboBox>("CmbHeater").SelectedIndex;
-        if (h >= 0)
-        {
-            string t = double.IsNaN(s.TempC[h]) ? "斷線" : $"{s.TempC[h]:0.0} °C";
-            C<TextBlock>("TxtHeatInfo").Text = $"目前 {t}  輸出 {s.HeaterDutyPct[h]:0}%\n" +
-                $"加熱板設定 {(_m.HeaterSetpoint(h) is { } sp ? $"{sp:0.0} °C（常駐，配方不會改）" : "關")}";
-        }
         int m = C<ComboBox>("CmbMfc").SelectedIndex;
         if (m >= 0)
             C<TextBlock>("TxtMfcInfo").Text =

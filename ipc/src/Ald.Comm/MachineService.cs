@@ -13,7 +13,7 @@ namespace Ald.Comm;
 /// </summary>
 public sealed class MachineService : IMachine, IDisposable
 {
-    private readonly MachineConfig _cfg;
+    private volatile MachineConfig _cfg;
     private readonly MainBoardLink _link;
     private readonly object _cmdLock = new();
     private volatile MachineSnapshot _snap = new() { SafeState = true };
@@ -21,6 +21,14 @@ public sealed class MachineService : IMachine, IDisposable
     private ushort _procDo, _heaterEnable, _motDo;
 
     public MachineConfig Config => _cfg;
+
+    /// <summary>人機改 MFC 規格（2026-11-25）：換掉 config 的 MFC 段，之後的換算（設定值、讀值、ALD 切換）都用新滿刻度。</summary>
+    public void UpdateMfcSpecs(IReadOnlyList<MfcChannelConfig> channels)
+    {
+        var e = MfcSpecs.Validate(channels).ToList();
+        if (e.Count > 0) throw new ArgumentException(string.Join("；", e));
+        _cfg = _cfg with { Mfc = _cfg.Mfc with { Channels = channels.ToList() } };
+    }
     public LoadlockService Loadlock { get; }
     public AlarmManager Alarms { get; }
     public MachineSnapshot Snapshot => _snap;
@@ -34,6 +42,7 @@ public sealed class MachineService : IMachine, IDisposable
     public MachineService(MachineConfig cfg)
     {
         _cfg = cfg;
+        AlarmManager.ExpectedMapVersion = RegisterMap.MapVersion;
         Interlocks.Settings = cfg.ToInterlockSettings();
         var slots = cfg.Slots.Select(s => new SlotImage
         {
@@ -89,7 +98,8 @@ public sealed class MachineService : IMachine, IDisposable
             (ushort)(il.ArmSafePosSteps >> 16), (ushort)il.ArmSafePosSteps,
             (ushort)il.SvOpenMode,
             (ushort)Math.Round(il.SvBelowTorr * 1000),
-            (ushort)Math.Round(il.LoadlockJumpTorr * 1000));
+            (ushort)Math.Round(il.LoadlockJumpTorr * 1000),
+            (ushort)Math.Clamp(il.ForelineOffMaxS, 5, 600));
         var pm = _cfg.Gauges.Find(_cfg.Gauges.PmInterlockGauge)!;
         WriteGauge(link, MainBoard.Holding.PmGaugeModel, pm);
         WriteGauge(link, MainBoard.Holding.LlGaugeModel, _cfg.Gauges.LoadlockGauge);
@@ -120,6 +130,9 @@ public sealed class MachineService : IMachine, IDisposable
         ushort[]? Ir(int slot) => imgs.TryGetValue(slot, out var s) && s.Online ? s.Input : null;
         bool pending = Loadlock.LastResult == MainBoard.Input.LlCmdResultValues.Sent;
         var snap = SnapshotBuilder.Build(link.Connected, Ir, _cfg, pending);
+        // 主控板回應了但不算在線：多半是暫存器表版本不同（例如舊版 ald-ecat 還開著）→ 告訴人員實際看到的版本
+        if (link.Connected && !snap.SlotOnline[0] && imgs.TryGetValue(0, out var m0) && m0.Input.Length > 2)
+            snap = snap with { MapVersionSeen = m0.Input[2] };
         _snap = snap;
         foreach (var c in Alarms.Update(snap)) AlarmChanged?.Invoke(c);
         Updated?.Invoke(snap);
@@ -195,6 +208,10 @@ public sealed class MachineService : IMachine, IDisposable
         }
     }
 
+    private readonly double[] _mfcSp = new double[8];
+    /// <summary>IPC 最後下給各 MFC 的設定值（config 單位；總覽顯示用）。ALD 執行中製程板依子步驟切換的值不會反映在這裡。</summary>
+    public double[] MfcSetpoints { get { lock (_cmdLock) return (double[])_mfcSp.Clone(); } }
+
     public void SetMfc(int ch, double value, bool upstreamValve)
     {
         if (ch is < 0 or > 7) throw new ArgumentOutOfRangeException(nameof(ch));
@@ -204,8 +221,20 @@ public sealed class MachineService : IMachine, IDisposable
         lock (_cmdLock)
         {
             _link.Write((ushort)(ProcessBoard.Holding.MfcSp + ch), raw);
+            _mfcSp[ch] = value;
             int bit = 7 + ch;   // MFC_UP_V1 = bit 7
             var d = upstreamValve ? (ushort)(_procDo | 1 << bit) : (ushort)(_procDo & ~(1 << bit));
+            _link.Write(ProcessBoard.Holding.DoCmd, d);
+            _procDo = d;
+        }
+    }
+
+    public void SetAldPurge(bool open)
+    {
+        lock (_cmdLock)
+        {
+            const int bit = 15;   // ALD_PURGE_V
+            var d = open ? (ushort)(_procDo | 1 << bit) : (ushort)(_procDo & ~(1 << bit));
             _link.Write(ProcessBoard.Holding.DoCmd, d);
             _procDo = d;
         }
@@ -233,6 +262,22 @@ public sealed class MachineService : IMachine, IDisposable
         _link.Write(ProcessBoard.Holding.AldCycles, (ushort)r.Cycles, (ushort)r.Steps.Count);
         _link.Write(ProcessBoard.Holding.AldStepValves, r.Steps.Select(s => s.ValveMask).ToArray());
         _link.Write(ProcessBoard.Holding.AldStepMs, r.Steps.Select(s => (ushort)s.DurationMs).ToArray());
+
+        // 每步切換 MFC：每步 4 bit 組號（0 = 不變），4 組 × 8 通道 %FS（65535 = 該通道不變）
+        var idx = r.MfcPresetIndex();
+        var set = new ushort[ProcessBoard.Holding.AldStepMfcSetCount];
+        for (int i = 0; i < idx.Length; i++) set[i / 4] |= (ushort)(idx[i] << (i % 4 * 4));
+        var presets = r.MfcPresets();
+        var raw = Enumerable.Repeat((ushort)0xFFFF, ProcessBoard.Holding.AldMfcPresetCount).ToArray();
+        for (int p = 0; p < presets.Count; p++)
+            for (int c = 0; c < 8; c++)
+                if (presets[p][c] is { } v)
+                {
+                    double fs = _cfg.Mfc.Channels[c].FullScale;
+                    raw[p * 8 + c] = Scaling.ToRaw(fs > 0 ? v / fs * 100.0 : 0, ProcessBoard.Holding.AldMfcPresetScale, 0, 100);
+                }
+        _link.Write(ProcessBoard.Holding.AldStepMfcSet, set);
+        _link.Write(ProcessBoard.Holding.AldMfcPreset, raw);
     }
 
     public void StartAld()

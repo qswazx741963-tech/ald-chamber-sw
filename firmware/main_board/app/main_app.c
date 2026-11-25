@@ -46,6 +46,10 @@ static bool     s_reset_pending;   /* 收到 RESET_ALARM：先放開自己拉的
 static uint32_t s_reset_ms;
 static ll_gateway_t s_llg;
 static uint16_t s_lift_out;   /* 上一次核准送出的 Wafer lift 氣缸命令 */
+static uint8_t  s_vac_denied;  /* 持續被擋的真空閥請求（bit0 GV、bit1 Chamber 粗抽）：只在剛被擋那一次記原因，
+                                  不然每 10 ms 覆寫 IL_DENY，蓋掉 Loadlock 命令被擋的原因 */
+static bool     s_fl_forcing;  /* 共用 Dry Pump：IPC 要前級閥開，但因 LL 粗抽被主控板暫關中 */
+static uint32_t s_fl_forced_ms;
 
 static const ald_slot_def_t *slot_def(uint8_t slot)
 {
@@ -149,6 +153,8 @@ static void build_inputs(il_inputs_t *in, uint32_t now)
     in->pm_rf_on = hr0[MAIN_HR_RF_ON] != 0;            /* TODO 改用 RF 電源實際回報 */
     in->pm_venting = vac[VAC_IR_DO_FB] & (1u << VAC_IR_DO_FB_BIT_CHAMBER_VENT);
     in->pm_turbo_gv_closed = vac[VAC_IR_DI] & (1u << VAC_IR_DI_BIT_TURBO_GV_CLOSED);
+    in->pm_chamber_rough_open = vac[VAC_IR_DO_FB] & (1u << VAC_IR_DO_FB_BIT_CHAMBER_ROUGH);
+    in->pm_foreline_open = vac[VAC_IR_DO_FB] & (1u << VAC_IR_DO_FB_BIT_TURBO_ROUGH);
 
     /* 交接（2026-11-11 使用者確認）：Heater module 在下位、Wafer lift 在 down → 手臂送片進來 →
      * Wafer lift up 接住 → 手臂退出 → Heater module up 到 Process 位置。
@@ -177,6 +183,24 @@ static void record_deny(uint32_t deny, il_action_t act)
     ir_slot(0)[MAIN_IR_IL_DENY] = (uint16_t)deny;
     ir_slot(0)[MAIN_IR_IL_DENY2] = (uint16_t)(deny >> 16);
     ir_slot(0)[MAIN_IR_IL_DENY_ACTION] = (uint16_t)act;
+}
+
+/* ---------------------------------------------------------------- 共用 Dry Pump
+ * IPC 要 Turbo 前級閥開（Turbo 需要前級），但 LL 粗抽中被暫關：關超過 HR IL_FORELINE_OFF_MAX_S
+ * → 停 LL 粗抽（保護 Turbo），IL_DENY2 FORELINE_TIMEOUT 告訴 IPC 原因 */
+static void foreline_watch(uint8_t react, uint32_t now)
+{
+    bool want = hr_slot(VAC_DEFAULT_SLOT)[VAC_HR_DO_CMD] & (1u << VAC_HR_DO_CMD_BIT_TURBO_ROUGH);
+    bool forced = want && (react & IL_REACT_FORELINE_OFF);
+    if (!forced) { s_fl_forcing = false; return; }
+    if (!s_fl_forcing) { s_fl_forcing = true; s_fl_forced_ms = now; return; }
+    uint16_t max_s = hr_slot(0)[MAIN_HR_IL_FORELINE_OFF_MAX_S];
+    if (max_s < MAIN_HR_IL_FORELINE_OFF_MAX_S_MIN_RAW || max_s > MAIN_HR_IL_FORELINE_OFF_MAX_S_MAX_RAW) max_s = 60;
+    if (now - s_fl_forced_ms >= (uint32_t)max_s * 1000u) {
+        ll_gateway_stop_rough(&s_llg, ir_slot(0), now);
+        record_deny(IL_DENY2(FORELINE_TIMEOUT), IL_ACT_LL_PUMP);
+        s_fl_forced_ms = now;   /* 重新計時，不會每圈一直送停止命令 */
+    }
 }
 
 /* ---------------------------------------------------------------- PM 命令過濾
@@ -212,8 +236,21 @@ static void filter_hr(uint8_t slot, const il_inputs_t *in, uint8_t react)
         uint16_t gv = 1u << VAC_HR_DO_CMD_BIT_TURBO_GV;
         if (s_hr_out[VAC_HR_DO_CMD] & gv) {
             uint32_t d = il_check(IL_ACT_PM_TURBO_GV_OPEN, in);
-            if (d) { record_deny(d, IL_ACT_PM_TURBO_GV_OPEN); s_hr_out[VAC_HR_DO_CMD] &= (uint16_t)~gv; }
-        }
+            if (d && !(s_vac_denied & 1u)) record_deny(d, IL_ACT_PM_TURBO_GV_OPEN);
+            if (d) s_hr_out[VAC_HR_DO_CMD] &= (uint16_t)~gv;
+            s_vac_denied = (uint8_t)((s_vac_denied & ~1u) | (d ? 1u : 0u));
+        } else s_vac_denied &= (uint8_t)~1u;
+        /* PM-07 / MON-05：共用 Dry Pump。LL 粗抽中 → Chamber 粗抽不准開、Turbo 前級閥暫關。
+         * 每包都從 IPC 的請求重算，所以 LL 抽完下一包就自動恢復 IPC 要的狀態 */
+        uint16_t crough = 1u << VAC_HR_DO_CMD_BIT_CHAMBER_ROUGH;
+        if (s_hr_out[VAC_HR_DO_CMD] & crough) {
+            uint32_t d = il_check(IL_ACT_PM_CHAMBER_ROUGH, in);
+            if (d && !(s_vac_denied & 2u)) record_deny(d, IL_ACT_PM_CHAMBER_ROUGH);
+            if (d) s_hr_out[VAC_HR_DO_CMD] &= (uint16_t)~crough;
+            s_vac_denied = (uint8_t)((s_vac_denied & ~2u) | (d ? 2u : 0u));
+        } else s_vac_denied &= (uint8_t)~2u;
+        if (react & IL_REACT_FORELINE_OFF)
+            s_hr_out[VAC_HR_DO_CMD] &= (uint16_t)~((1u << VAC_HR_DO_CMD_BIT_TURBO_ROUGH) | crough);
     } else if (slot == MOT_DEFAULT_SLOT) {
         /* PM-04 / MON-04：Heater module（軸 0） */
         uint16_t *hc = &s_hr_out[MOT_HR_AXIS_CMD + 0];
@@ -316,6 +353,8 @@ void main_app_init(const fieldbus_ops_t *bus)
     s_bus = bus;
     reg_image_init();
     ll_gateway_init(&s_llg);
+    s_vac_denied = 0;
+    s_fl_forcing = false;
     hal_do_write(DO_TRANSFER_PERMIT, false);   /* 開機先拉掉傳送許可 */
     uint16_t *ir0 = ir_slot(0);
     ir0[COM_IR_BOARD_TYPE] = MAIN_BOARD_TYPE;
@@ -339,6 +378,7 @@ void main_app_loop(void)
     build_inputs(&in, now);
     ll_gateway_step(&s_llg, ir0, hr_slot(0), &in, now);
     uint8_t react = il_monitor(&in);
+    foreline_watch(react, now);
 
     bool permit = !(react & IL_REACT_PERMIT_OFF);
     hal_do_write(DO_TRANSFER_PERMIT, permit);

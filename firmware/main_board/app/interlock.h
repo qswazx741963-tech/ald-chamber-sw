@@ -39,6 +39,7 @@ typedef enum {
     IL_ACT_PM_HEATER_MOVE = 23,   /* Heater module 升降（軸 0 MOVE / HOME） */
     IL_ACT_PM_LIFT_MOVE = 24,     /* Wafer lift 氣缸上 / 下 */
     IL_ACT_PM_TURBO_GV_OPEN = 25, /* Turbo gate valve 開 */
+    IL_ACT_PM_CHAMBER_ROUGH = 26, /* Chamber 粗抽閥開（跟 LL 共用 Dry Pump，2026-11-25） */
 } il_action_t;
 
 /* SLK 壓力計量測下限：讀到 -1 代表 LL < 此值 */
@@ -48,6 +49,7 @@ typedef enum {
 #define IL_REACT_PM_ABORT      0x01u   /* 停 ALD、關前驅物閥、RF off、停 PM vent */
 #define IL_REACT_PERMIT_OFF    0x02u   /* TRANSFER_PERMIT 輸出 OFF（選配：接到 Loadlock 的硬體許可，目前 SLK 不接） */
 #define IL_REACT_HEATER_STOP   0x04u   /* Heater module 立刻停（手臂進到 PM 時 Heater 還在動） */
+#define IL_REACT_FORELINE_OFF  0x08u   /* LL 正在粗抽（共用 Dry Pump）→ 暫關 Turbo 前級閥、Chamber 粗抽閥；LL 抽完自動恢復 IPC 的命令 */
 
 typedef struct {
     /* 系統 */
@@ -60,12 +62,15 @@ typedef struct {
     int32_t  ll_pres_mtorr;      /* -1 = 低於量測下限（SLK 壓力計 1 Torr，LL_GAUGE_MIN_MTORR） */
     bool     ll_pres_suspect;    /* 疑似壓力計斷線（跳變 / 開機未見有效值 / vent 時仍低於下限）→ 壓力未知 */
     bool     ll_rough_open, ll_vent_open, ll_lid_open;
+    bool     ll_roughing;        /* LL 正在用 Dry Pump：粗抽閥開 / PUMP 序列中 / 剛送出粗抽命令（ll_gateway 判斷，TLM 過期也沿用最後狀態） */
     /* PM（來自執行板） */
     int32_t  pm_pres_mtorr;      /* 換算後腔體壓力（低於量測下限時填下限值）；未知 / 超出上限請填 INT32_MAX */
     bool     pm_process_running; /* ALD 序列執行中或任何前驅物閥開 */
     bool     pm_rf_on;
     bool     pm_venting;         /* Chamber vent 閥開 */
     bool     pm_turbo_gv_closed; /* Turbo gate valve 關閉感測器 ON */
+    bool     pm_chamber_rough_open; /* Chamber 粗抽閥開（真空板 DO_FB） */
+    bool     pm_foreline_open;   /* Turbo 前級閥開（真空板 DO_FB TURBO_ROUGH） */
     bool     pm_heater_down;     /* Heater module 在下位（交接高度） */
     bool     pm_heater_moving;   /* Heater module 軸移動 / 回原點中 */
     bool     pm_at_transfer;     /* 交接位置：Heater module 在下位 + Wafer lift 停在上 / 下定位（不在中間） */

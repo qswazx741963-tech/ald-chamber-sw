@@ -110,11 +110,7 @@ public sealed class LeakTestSequencer
                 SetStep($"抽真空到 {_cfg.StartBelowTorr:0.0E+00} Torr");
                 _pump = new ProcessSequencer(_m, _poll);
                 _pump.Progress += p => { if (p.State == SequencerState.Running && p.Step.StartsWith("抽真空")) SetStep(p.Step); };
-                var st = await _pump.RunAsync(new ProcessRecipe
-                {
-                    Name = "漏率測試抽真空", PumpDown = true, CrossoverTorr = _cfg.CrossoverTorr,
-                    BaseTorr = _cfg.StartBelowTorr, PumpTimeoutS = _cfg.PumpTimeoutS,
-                }, token);
+                var st = await _pump.RunAsync(ProcessRecipe.PumpOnly("漏率測試抽真空", new PumpParams { CrossoverTorr = _cfg.CrossoverTorr, BaseTorr = _cfg.StartBelowTorr }, _cfg.PumpTimeoutS), token);
                 token.ThrowIfCancellationRequested();
                 if (st != SequencerState.Done) throw new LeakTestException($"抽真空沒有完成（{_pump.Step}）");
                 await WaitAsync(x => Gauge(x) < _cfg.StartBelowTorr, _cfg.PumpTimeoutS,

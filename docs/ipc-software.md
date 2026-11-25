@@ -31,7 +31,7 @@ make -C ipc/ecat-master                      # ald-ecat（含虛擬機台）
 dotnet run --project ipc/src/Ald.Hmi -- --port 1502
 ```
 
-> `--speed` 加速時，IPC 心跳（真實 50 ms）在模擬時間變長；超過 10 倍速請把 config `watchdogMs` 調大。
+> `--speed` 加速時，虛擬主控板的 IPC 看門狗會跟著放大（送進虛擬主控板的 WATCHDOG_MS × 倍速，上限 10000 ms），人機忙一下不會誤觸發安全狀態；實機不受影響。
 
 模擬已經抓到並修正的韌體問題（單元測試抓不到，因為假硬體太理想）：
 
@@ -55,12 +55,32 @@ dotnet run --project ipc/src/Ald.Hmi -- --port 1502
 
 ## 3. 流程引擎（`ProcessSequencer`）
 
-`ProcessRecipe`：抽真空（Dry pump → 粗抽到 crossover → Turbo 到速 → 開 GV → base pressure）→ 確認溫度
-→ 通氣穩定 → ALD（步驟表下載到製程板，時序由執行板 1 kHz 計時器跑）→ 製程結束（關氣）→（可選）回填。
+`ProcessRecipe`（2026-11-24 改版）：一串**步驟** `steps`（Step 1 … N，最多 40 個）依序執行，步驟種類 `kind` 就是結束條件：
 
-- **加熱是常駐設定**（手動操作頁設好就不動，製程中不升降溫，2026-11-11 使用者確認）：配方的 `heaterSpDegC` 是「需要的溫度」，
-  流程**只檢查、不改加熱設定**。開始時已在 ±容差內就直接往下；不在（例如剛開加熱）就等它進範圍並維持 `heatSettleS`，
-  超過 `heatTimeoutS` 失敗並提示到手動頁設定。人機在執行前會先比對配方溫度與加熱板目前設定，對不上就不給跑。
+| kind | 人機顯示 | 做什麼 / 何時結束 | 參數 |
+|---|---|---|---|
+| `pumpDown` | 到真空（抽真空） | Dry pump → 粗抽到 crossover → Turbo 到速 → 開 GV → 到 base pressure | `pump.baseTorr` / `crossoverTorr`，`timeS` = 最大時間 |
+| `heatCheck` | 到溫度（確認溫度） | 只檢查加熱組在容差內並維持穩定時間（不改加熱） | `heat.heaterSpDegC[16]` / `toleranceC` / `settleS`，`timeS` = 最大時間 |
+| `gas` | 依時間（通氣 / Purge） | 設定 MFC，等 `timeS` 秒 | `mfc`（8 個，`null` = 沿用） |
+| `ald` | 依 Cycle 數（ALD） | 子步驟表下載到製程板，1 kHz 執行 N cycles | `ald.cycles` / `steps` / `o3SetPct`、`mfc`，`timeS` 0 = 自動逾時 |
+| `vent` | 到大氣（回填） | 先關 ALD 閥與 MFC，關 GV、停 Turbo、Vent 到目標壓力 | `vent.targetTorr`，`timeS` = 最大時間 |
+
+全部步驟跑完 → 製程結束（關 ALD 閥、關氣）。上游閥：整個配方有用到的 MFC 通道，第一次設定氣體時一起打開。
+自動跑片 / 批次：開頭連續的抽真空步驟在送片前做，結尾連續的回填步驟在取片後做（批次每片都不回填，只在最後回填）。
+舊格式（2026-11-24 以前的 `pumpDown` / `heaterSpDegC` / `mfc` / `segments` / `ventAfter`，或更早的單一 `ald`）讀檔時自動轉成
+抽真空 → 確認溫度 → 通氣穩定 → ALD 各段 → 回填 的步驟清單（`Ald.Core.LegacyRecipe`），存檔後就是新格式。
+
+- **多段 ALD + 每步切換 MFC**（2026-11-12）：一個配方可以有多個 ALD 步驟（例如 Al2O3 ×50 → TiO2 ×20），依序執行。
+  每個子步驟可以帶 `mfc`（8 個值，`null` = 沿用上一步）：IPC 把不重複的切換設定整理成最多 4 組，下載到製程板
+  `ALD_MFC_PRESET`，每步 4 bit 組號 `ALD_STEP_MFC_SET`；製程板進入該步時在 1 kHz 中斷裡直接寫 AO，跟閥同步。
+  切換後一直維持（跨 cycle、跨段）。段跑完時 IPC 先把 `MFC_SP` 改成最後的值，再下 STOP 解除覆寫，流量不會跳。
+  MFC 反應約 0.5–1 s，不到 1 s 的步驟切換 MFC 人機會提醒。上游閥：整個配方有用到的通道在通氣時就打開。
+- **RF / O3**：步驟 `rf1W` / `rf2W`（W，0 = 關）與段 `o3SetPct` 已在配方格式裡，可以編輯存檔；
+  硬體確定前 config `process.rfReady` / `o3Ready` 為 false，含 RF / O3 的配方不給執行（人機檢查與流程引擎都擋）。
+
+- **加熱是常駐設定**（加熱頁設好就不動，製程中不升降溫，2026-11-11 使用者確認）：「確認溫度」步驟的 `heaterSpDegC` 是「需要的溫度」，
+  流程**只檢查、不改加熱設定**。開始時已在 ±容差內就直接往下；不在（例如剛開加熱）就等它進範圍並維持 `settleS`，
+  超過最大時間失敗並提示到加熱頁設定。人機在執行前會先比對配方溫度與加熱板目前設定，對不上就不給跑。
 - 手動頁顯示的加熱設定是從加熱板讀回的值（IPC 重開也看得到）。
 - **常駐設定存檔與斷電恢復**（`Ald.Core.HeaterPreset`，檔案 config `heaters.presetPath`，預設 `data/heaters.json`）：
   手動頁每次「開啟 / 套用」「關閉此組」「全部關閉」成功後存檔。斷電 / ald-ecat 重開後加熱板設定會變 0，
@@ -173,8 +193,21 @@ Recipe 頁「自動跑片」：準備（LL 抽氣、PM 抽到 base）→ 送片 
   上方 MFC 1~8 與 ALD 閥 V1~V7，下方 Turbo GV、Turbo、前級閥、粗抽閥、Dry pump、Vent。閥開綠 / 關灰 / 動作中橘 / 互鎖擋下紅框；
   泵 運轉綠 / 加速中橘 / 警報紅；晶圓 有片藍 / 製程中綠 / 無片白 / 不明橘，圖上標晶圓編號。
   左欄：**控制模式卡**（ONLINE / OFFLINE、Go Online / Go Offline、Sequence ▾）與 **Chamber 卡**（狀態、PM 晶圓、流程、步驟、經過時間、
-  Heater / Lift、進度條：ALD cycle 與剩餘時間，或批次完成片數、中止流程）。右欄：真空、加熱（只列有開的組）、Loadlock。
-  主頁不放手動按鈕（Loadlock 單步移到手動操作頁）。
+  Heater / Lift、進度條：ALD cycle 與剩餘時間，或批次完成片數、中止流程）與 **加熱卡**（只列有開的組）。
+  **2026-11-25 改成側視管路圖**（依使用者手繪圖與示意 v7，`OverviewView`，設計座標 984×676）：中間 Loadlock ─ Slit Valve ─ ALD Chamber 並排
+  （壓力框、晶圓圓圈寫 ID、傳片時 SV 上方顯示「傳片中」）；上方 ALD 閥組 AV1~AVn（n = config `process.aldValveCount`，本機 6），
+  由 MFC 匯流管經 **ALD VALVE PURGE** 閥（製程板 DO 15，`MachineService.SetAldPurge`；配方 ALD 步驟自動開、GasOff / 結束 / 中止關）進氣；
+  RF 框在閥組右邊（MFC 匯流 → RF → Chamber，功率 Fwd / Ref 等通訊手冊，先顯示 ----）；右上 MFC 8 路（上游閥、名稱、實際、設定灰底、單位）；
+  下方 LL 粗抽 R、LL Vent、Chamber Vent、Chamber 粗抽 R（Vent 共用 VENT N2；粗抽與 Turbo 前級共用同一台 Dry Pump）；
+  右側 Turbo Iso Valve、Turbo（ON / OFF、轉速 ----、全速 / 加速中 / 停止、無異常 / 警報）、前級閥；右下 PM 數值面板（Chuck 溫度、Barocel / Ion /
+  Foreline / PM 互鎖、PM / LL 晶圓 ID、Wafer lift / Heater / 上蓋、互鎖擋下）。數值框白底黑字；閥旁「開 / 關」狀態框。
+  **有流通的管路畫綠色**（`OverviewView.FlowSegments`）：有流量的 MFC → 匯流 → RF → Chamber、經 PURGE 閥與開著的 AV 進 Chamber；
+  Dry pump 運轉時開著的粗抽 / 前級那一路（Turbo 全速 + Iso Valve 開時含 Chamber → Turbo）；Vent 閥開時 VENT N2 → 該腔體。
+  點 AV 閥的小視窗可以直接改管路名稱（跟 Recipe「閥管路名稱…」同一份 `data/ald-valves.json`，權限同配方編輯）。
+  閥數 `aldValveCount` 也決定手動頁、Recipe 子步驟顯示幾顆，配方用到超過的閥會擋（暫存器仍是 V1~V7）。
+  **圖示可以點**（2026-11-12）：滑鼠移上去出現藍色虛線框，點閥 / 泵 / MFC / SV / LL 粗抽、洩壓閥 / PM / Loadlock 跳出小視窗，
+  上面即時狀態、下面操作按鈕（閥開 / 關、泵啟動 / 停止、MFC 設定值 + 上游閥、Lift 上下、Heater 到 Process / 原點、LL 抽氣 / 洩壓 / 開關 SV）。
+  權限與鎖定跟手動頁相同（Loadlock 部分跟 Loadlock 按鈕相同），鎖住時按鈕變灰並寫出原因；命令一樣過 IPC 與主控板互鎖。
   晶圓編號存在 `WaferMap`（送片 / 取片跟著片移動，無片就清掉，重開機讀回）；批次放片時、Recipe 頁填了晶圓編號時寫入。
 - **控制模式 ONLINE / OFFLINE**（`Ald.Core.ControlModes`，類 SEMI E30 的 Online/Offline 概念）：
   - OFFLINE = 工程模式，依權限可手動、編輯；ONLINE = 生產模式，**只能從主頁 Sequence 選單執行流程**。
@@ -190,13 +223,28 @@ Recipe 頁「自動跑片」：準備（LL 抽氣、PM 抽到 base）→ 送片 
 - **警報**：目前警報 + 事件記錄（SQLite `alarm`）。事件記錄可選時間範圍（1 小時～30 天）、等級、關鍵字（比對來源與訊息，
   不分大小寫，`%` `_` 當一般字）查詢；「自動更新」每 2 秒用目前條件重查；畫面最多列 2000 筆；「匯出 CSV」不限筆數，存到 `export/`。
 - **手動操作**：真空閥 / 泵（勾選＝命令，命令與實際不同或被真空板擋下會列出來）、ALD V1~V7、
-  加熱（單組設定 / 升溫速率，數字框上限 = config `limitDegC`）、MFC（含上游閥）、Heater module 移動 / 原點、Wafer lift。
+  MFC（含上游閥）、Heater module 移動 / 原點、Wafer lift。
+- **加熱**（2026-11-12 從手動頁獨立出來）：16 組各一個小框（4×4），直接看溫度、狀態（關 / 升降溫中 / 到溫 ±3 °C / 熱電偶斷線）、
+  設定 / 輸出，改設定按「套用」或「關」；上方共用升溫速率與「全部關閉」。數字框上限 = config `limitDegC`，鎖定規則同手動頁。
   命令被拒會在狀態列顯示原因；主控板最後擋下的原因也會顯示。**流程執行中整頁鎖住**。
 - **傳片**：LL / PM 有沒有片（綠 = 有、灰 = 無、橘 = 不明）、送片 / 取片 / 中止、不能按時列出原因、步驟記錄；
   工程師可在確認實物後修正晶圓位置。傳片與配方流程互斥，傳片中手動操作頁與 Loadlock 按鈕鎖住。
-- **Recipe**：從配方資料夾（`--recipes`，預設程式旁 `recipes/`）選檔 → 表單編常用欄位 → 檢查 / 存檔 / 執行 / 中止，
-  右邊顯示步驟記錄。ALD 步驟一行一步：`名稱, 閥, ms`，閥寫 `V1+V3`、`-`（全關）或數字。
-  逾時等進階欄位直接改 JSON，存檔會保留。存檔先寫暫存檔再取代（斷電不壞原檔）。
+- **Recipe**（2026-11-24 改版，參考使用者給的配方表格式）：從配方資料夾（`--recipes`，預設程式旁 `recipes/`）選檔 → 編輯 → 檢查 → 存檔 / 另存新檔。
+  **只負責編輯，執行一律從主頁 Sequence**。上面是配方名稱、說明；下面一張表：**每個 Step 一欄橫向並排，參數一列一列直排**，
+  左邊參數名稱欄與上面 Step 表頭捲動時固定不動。列：步驟名稱、結束條件（下拉換種類）、時間 / 最大時間、預估時間、Cycles、
+  子步驟（V1~V7 勾選 + ms；「⋯」改名稱、MFC 切換、RF1 / RF2、上下移、複製、刪除；有切換的子步驟底色標黃）、O3 %、
+  壓力（抽真空的 Base / Crossover、回填目標；本機沒有節流閥，其他步驟「維持」）、加熱溫度（確認溫度步驟列要的組、容差、穩定時間）、
+  MFC 1~8（勾「設定」= 這步開始時設定，沒勾 = 沿用，灰字顯示沿用的值）。表頭 ◀ ▶ ⧉ ✕ 搬移 / 複製 / 刪除步驟，下方「＋ 新增步驟」選種類加在最後。
+  閥欄位提示管路名稱（「閥管路名稱…」設定，存 config `process.valveNamesPath`，預設 `data/ald-valves.json`）。
+  **MFC 規格**（「MFC 規格…」，2026-11-25）：8 組各設 名稱 / 氣體、用途、滿刻度、單位，整台機器共用，存 config `mfc.specPath`
+  （預設 `data/mfc.json`；沒有這個檔或內容不合格就用 `machine.json` 的 `mfc.channels`）。存檔立即生效（`MachineService.UpdateMfcSpecs`）：
+  製程板只認 % 滿刻度，設定值與讀值的換算都在 IPC，所以改滿刻度不用改韌體。權限同配方編輯（工程師以上、OFFLINE、無流程執行），
+  修改內容記操作記錄（例如「MFC 4 滿刻度 200 → 500」）。配方存的是 config 單位的流量，改了滿刻度要按「檢查」確認沒超過新滿刻度。
+  趨勢頁的訊號名稱在開程式時讀，改名後重開才更新。
+  ONLINE 或工程師以下只能看。有未存檔的修改時換檔 / 新配方會先問。
+  **版次與修改紀錄**（`Ald.Core.RecipeHistory`）：存檔版次 +1、記修改人 / 時間；舊版備份到配方資料夾
+  `.history/<檔名>.r<版次>.json`，修改內容（欄位：舊值 → 新值）記在 `.history/<檔名>.log`，「修改紀錄」按鈕可看。
+  沒改東西不加版次。存檔先寫暫存檔再取代（斷電不壞原檔）。
 - **趨勢**：讀 SQLite `trend` 表；上圖壓力（對數）、下圖溫度 / MFC，左邊勾選訊號；10 分鐘～7 天；
   「即時更新」每 2 秒重畫，關掉後可滑鼠拖曳 / 滾輪縮放；超過 4000 點自動抽樣；「匯出 CSV」存到資料庫旁 `export/`（全部欄位，Excel 可直接開）。
   圖表元件 ScottPlot（MIT）。
@@ -221,7 +269,7 @@ Recipe 頁「自動跑片」：準備（LL 抽氣、PM 抽到 base）→ 送片 
 - **保養**：左邊漏率測試（量測時間、合格上限可臨時改；即時畫壓升點與擬合線；歷史記錄），右邊保養計數
   （選項目 → 設提醒上限 / 保養完成歸零）。漏率測試與配方 / 傳片互斥，執行中手動操作頁鎖住。
 - 配方格式（`RecipeFile`）：一個 JSON = 一個 `ProcessRecipe`，範例 `recipes/example_al2o3.json`；
-  `recipes/sim_quick_test.json` 是給模擬器用的短配方（10 倍速約 35 秒跑完）。
+  `recipes/sim_quick_test.json` 是給模擬器用的短配方（10 倍速約 35 秒跑完），`recipes/sim_laminate.json` 是兩段 + MFC 切換的示範。
 
 ## 5. 記錄（SQLite，`dataLog.path`）
 
@@ -238,7 +286,7 @@ Recipe 頁「自動跑片」：準備（LL 抽氣、PM 抽到 base）→ 送片 
 | `make -C firmware/tests` | 韌體邏輯單元測試（主控板 188、執行板 40） |
 | `make -C sim` | 整機模擬整合測試 42 項：開機上線、Reset、抽真空、開 SV 互鎖、Turbo GV 聯動、加熱上限、馬達、心跳中斷 |
 | `make -C ipc/ecat-master test` | ald-ecat bridge（含 HR 預設值） |
-| `cd ipc && dotnet test` | C# 130 項（含控制模式、含配方檔、帳號 / 權限、趨勢、事件記錄查詢 / 匯出、跑片履歷、加熱常駐設定比對 / 恢復、傳片、自動跑片、多片批次、漏率測試、保養計數、燈號規則 / 警報確認），含**端到端**：MachineService ↔ ald-ecat --sim（20 倍速）跑完整段配方、送片 + 取片、從大氣自動跑片、兩片批次、漏率測試、燈塔（安全狀態強制紅燈）、心跳中斷進安全狀態 |
+| `cd ipc && dotnet test` | C# 133 項（含多段配方 / MFC 切換 / 修改紀錄）（含控制模式、含配方檔、帳號 / 權限、趨勢、事件記錄查詢 / 匯出、跑片履歷、加熱常駐設定比對 / 恢復、傳片、自動跑片、多片批次、漏率測試、保養計數、燈號規則 / 警報確認），含**端到端**：MachineService ↔ ald-ecat --sim（20 倍速）跑完整段配方、送片 + 取片、從大氣自動跑片、兩片批次、漏率測試、燈塔（安全狀態強制紅燈）、心跳中斷進安全狀態 |
 
 ## 待做
 
