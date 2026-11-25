@@ -207,6 +207,10 @@ public sealed class MachineService : IMachine, IDisposable
         }
     }
 
+    private readonly double[] _mfcSp = new double[8];
+    /// <summary>IPC 最後下給各 MFC 的設定值（config 單位；總覽顯示用）。ALD 執行中製程板依子步驟切換的值不會反映在這裡。</summary>
+    public double[] MfcSetpoints { get { lock (_cmdLock) return (double[])_mfcSp.Clone(); } }
+
     public void SetMfc(int ch, double value, bool upstreamValve)
     {
         if (ch is < 0 or > 7) throw new ArgumentOutOfRangeException(nameof(ch));
@@ -216,6 +220,7 @@ public sealed class MachineService : IMachine, IDisposable
         lock (_cmdLock)
         {
             _link.Write((ushort)(ProcessBoard.Holding.MfcSp + ch), raw);
+            _mfcSp[ch] = value;
             int bit = 7 + ch;   // MFC_UP_V1 = bit 7
             var d = upstreamValve ? (ushort)(_procDo | 1 << bit) : (ushort)(_procDo & ~(1 << bit));
             _link.Write(ProcessBoard.Holding.DoCmd, d);

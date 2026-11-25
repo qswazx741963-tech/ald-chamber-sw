@@ -193,7 +193,13 @@ Recipe 頁「自動跑片」：準備（LL 抽氣、PM 抽到 base）→ 送片 
   上方 MFC 1~8 與 ALD 閥 V1~V7，下方 Turbo GV、Turbo、前級閥、粗抽閥、Dry pump、Vent。閥開綠 / 關灰 / 動作中橘 / 互鎖擋下紅框；
   泵 運轉綠 / 加速中橘 / 警報紅；晶圓 有片藍 / 製程中綠 / 無片白 / 不明橘，圖上標晶圓編號。
   左欄：**控制模式卡**（ONLINE / OFFLINE、Go Online / Go Offline、Sequence ▾）與 **Chamber 卡**（狀態、PM 晶圓、流程、步驟、經過時間、
-  Heater / Lift、進度條：ALD cycle 與剩餘時間，或批次完成片數、中止流程）。右欄：真空、加熱（只列有開的組）、Loadlock。
+  Heater / Lift、進度條：ALD cycle 與剩餘時間，或批次完成片數、中止流程）與 **加熱卡**（只列有開的組）。
+  **2026-11-25 依使用者參考圖加資訊**（原本右欄的真空 / Loadlock 卡併進圖裡，圖變大）：數值一律黑底綠字框；
+  主要的閥（SV、Vent、Turbo GV、前級閥、粗抽閥、LL 粗抽 / 洩壓）旁有「開 / 關」上下兩格狀態框（亮的是目前狀態，動作中橘框、互鎖擋下紅框）；
+  右上 MFC 表（上游閥燈、名稱、實際流量、設定值 = IPC 最後下的值 `MachineService.MfcSetpoints`、單位）；
+  右側 PM 數值面板（PM 壓力、Chuck 溫度與設定、Barocel / Ion / Foreline、PM 晶圓 ID、Wafer lift / Heater / 上蓋狀態框）；
+  Loadlock 壓力框、LL 晶圓 ID 框、SV 上方 LL − PM 壓差；Turbo 旁「全速 / 加速中 / 停止」與「無異常 / 警報」；Dry pump 運轉狀態、Foreline 壓力框；
+  ALD 閥下方小字為管路名稱。設計座標 1000×640。
   **圖示可以點**（2026-11-12）：滑鼠移上去出現藍色虛線框，點閥 / 泵 / MFC / SV / LL 粗抽、洩壓閥 / PM / Loadlock 跳出小視窗，
   上面即時狀態、下面操作按鈕（閥開 / 關、泵啟動 / 停止、MFC 設定值 + 上游閥、Lift 上下、Heater 到 Process / 原點、LL 抽氣 / 洩壓 / 開關 SV）。
   權限與鎖定跟手動頁相同（Loadlock 部分跟 Loadlock 按鈕相同），鎖住時按鈕變灰並寫出原因；命令一樣過 IPC 與主控板互鎖。

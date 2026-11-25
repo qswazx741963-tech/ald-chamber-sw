@@ -96,8 +96,8 @@
 
         <TabControl x:Name="Tabs" Padding="0">
             <TabItem Header="總覽">
-                <!-- 主頁：左 模式 / Sequence / Chamber 資訊，中 俯視圖，右 真空 / 加熱 / Loadlock。單步操作在手動操作頁。 -->
-                <Grid ColumnDefinitions="270,*,260" Margin="6" Background="#E4EAF1">
+                <!-- 主頁：左 模式 / Sequence / Chamber / 加熱，右 俯視圖（真空、Loadlock、MFC 數值都畫在圖上，2026-11-25）。單步操作在手動操作頁或點圖示。 -->
+                <Grid ColumnDefinitions="270,*" Margin="6" Background="#E4EAF1">
                     <ScrollViewer Grid.Column="0">
                         <StackPanel Spacing="8">
                             <Border Classes="card">
@@ -122,31 +122,15 @@
                                     <Button x:Name="BtnAbort" Content="中止流程" Margin="8,0,8,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#B03030" Foreground="White" />
                                 </StackPanel>
                             </Border>
-                        </StackPanel>
-                    </ScrollViewer>
-                    <local:OverviewView Grid.Column="1" x:Name="Ov" Margin="6,0" />
-                    <ScrollViewer Grid.Column="2">
-                        <StackPanel Spacing="8">
-                            <Border Classes="card">
-                                <StackPanel>
-                                    <TextBlock Classes="cardHead" Text="真空" />
-                                    <TextBlock x:Name="TxtVac" Classes="cardBody" />
-                                </StackPanel>
-                            </Border>
                             <Border Classes="card">
                                 <StackPanel>
                                     <TextBlock Classes="cardHead" Text="加熱" />
                                     <TextBlock x:Name="TxtHeat" Classes="cardBody" />
                                 </StackPanel>
                             </Border>
-                            <Border Classes="card">
-                                <StackPanel>
-                                    <TextBlock Classes="cardHead" Text="Loadlock" />
-                                    <TextBlock x:Name="TxtLlDetail" Classes="cardBody" />
-                                </StackPanel>
-                            </Border>
                         </StackPanel>
                     </ScrollViewer>
+                    <local:OverviewView Grid.Column="1" x:Name="Ov" Margin="6,0" />
                 </Grid>
             </TabItem>
             <TabItem Header="警報">
