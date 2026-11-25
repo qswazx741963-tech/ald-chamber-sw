@@ -95,7 +95,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 
 ## 槽 1：process
 
-製程控制（ALD 閥 ×7、MFC 上游閥 ×8、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）
+製程控制（ALD 閥 ×7、MFC 上游閥 ×8、ALD VALVE PURGE 閥（MFC 匯流 → ALD 閥組，2026-11-25，DO 15）、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）
 
 ### Input Register (FC04)
 
@@ -111,7 +111,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | IR 207 | 7 | LAST_ERROR | u16 | 1 |  |  |  |  |
 | IR 208 | 8 | SLOT_ID | u16 | 1 |  |  |  | 背板腳位讀到的槽號 |
 | IR 210 | 10 | DI | u16 | 1 |  |  |  | bits: 0=RF1_POWER_CABLE_OK, 1=RF1_MATCH_CABLE_OK |
-| IR 220 | 20 | DO_FB | u16 | 1 |  |  |  | bits: 0=ALD_V1, 1=ALD_V2, 2=ALD_V3, 3=ALD_V4, 4=ALD_V5, 5=ALD_V6, 6=ALD_V7, 7=MFC_UP_V1, 8=MFC_UP_V2, 9=MFC_UP_V3, 10=MFC_UP_V4, 11=MFC_UP_V5, 12=MFC_UP_V6, 13=MFC_UP_V7, 14=MFC_UP_V8 |
+| IR 220 | 20 | DO_FB | u16 | 1 |  |  |  | bits: 0=ALD_V1, 1=ALD_V2, 2=ALD_V3, 3=ALD_V4, 4=ALD_V5, 5=ALD_V6, 6=ALD_V7, 7=MFC_UP_V1, 8=MFC_UP_V2, 9=MFC_UP_V3, 10=MFC_UP_V4, 11=MFC_UP_V5, 12=MFC_UP_V6, 13=MFC_UP_V7, 14=MFC_UP_V8, 15=ALD_PURGE_V |
 | IR 230–237 | 30–37 | MFC_PV | u16 | 8 | 0.01 | %FS |  | Bronkhorst EL-FLOW F-201CB ×7 + EL-Press P-602CV ×1（通道 8，壓力）；換成 sccm / psi 在 IPC（config 每台滿刻度） |
 | IR 238 | 38 | MANOMETER_RAW | u16 | 1 |  | mV |  | Barocel 原始電壓（1000 Torr FS），換算在 IPC |
 | IR 240 | 40 | ALD_CYCLE_NOW | u16 | 1 |  |  |  |  |
@@ -125,7 +125,7 @@ IPC 透過 Modbus TCP 連主控板（Unit ID 1）。**絕對位址 = 槽號 × 2
 | HR 200 | 0 | HEARTBEAT | u16 | 1 |  |  |  | 上層每次輪詢 +1（IPC→主控板、主控板→執行板各一層） |
 | HR 201 | 1 | COMMAND | u16 | 1 |  |  |  | 值: 0=NONE, 1=START, 2=STOP, 3=RESET_ALARM, 4=ENTER_SAFE |
 | HR 202 | 2 | WATCHDOG_MS | u16 | 1 |  | ms | 200–10000 | 預設 1000，TODO 確認 |
-| HR 210 | 10 | DO_CMD | u16 | 1 |  |  |  | bits: 0=ALD_V1, 1=ALD_V2, 2=ALD_V3, 3=ALD_V4, 4=ALD_V5, 5=ALD_V6, 6=ALD_V7, 7=MFC_UP_V1, 8=MFC_UP_V2, 9=MFC_UP_V3, 10=MFC_UP_V4, 11=MFC_UP_V5, 12=MFC_UP_V6, 13=MFC_UP_V7, 14=MFC_UP_V8 |
+| HR 210 | 10 | DO_CMD | u16 | 1 |  |  |  | bits: 0=ALD_V1, 1=ALD_V2, 2=ALD_V3, 3=ALD_V4, 4=ALD_V5, 5=ALD_V6, 6=ALD_V7, 7=MFC_UP_V1, 8=MFC_UP_V2, 9=MFC_UP_V3, 10=MFC_UP_V4, 11=MFC_UP_V5, 12=MFC_UP_V6, 13=MFC_UP_V7, 14=MFC_UP_V8, 15=ALD_PURGE_V |
 | HR 220–227 | 20–27 | MFC_SP | u16 | 8 | 0.01 | %FS | 0–100 | 0–100 % 滿刻度 = 0–5 V |
 | HR 300 | 100 | ALD_CYCLES | u16 | 1 |  |  | 1–60000 |  |
 | HR 301 | 101 | ALD_STEP_COUNT | u16 | 1 |  |  | 1–16 |  |

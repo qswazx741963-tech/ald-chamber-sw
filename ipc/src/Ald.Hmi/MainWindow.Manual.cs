@@ -23,6 +23,7 @@ public partial class MainWindow
     };
     private readonly CheckBox[] _vacChk = new CheckBox[VacItems.Length];
     private readonly CheckBox[] _aldChk = new CheckBox[7];
+    private CheckBox? _purgeChk;
 
     /// <summary>同步命令：成功寫狀態列 + 操作記錄；被拒（超上限、互鎖）顯示原因。</summary>
     private void Cmd(string what, Action act)
@@ -63,8 +64,17 @@ public partial class MainWindow
                 Cmd($"ALD V{b + 1} {(cb.IsChecked == true ? "開" : "關")}", () => _m.SetAldValves(mask));
             };
             _aldChk[i] = cb;
+            cb.IsVisible = i < (_m?.Config.Process.AldValveCount ?? 7);   // 沒裝的閥不顯示
             ald.Children.Add(cb);
         }
+        _purgeChk = new CheckBox { Content = "ALD VALVE PURGE", Margin = new(0, 0, 12, 0) };
+        _purgeChk.Click += (_, _) =>
+        {
+            if (_m is null) return;
+            bool on = _purgeChk.IsChecked == true;
+            Cmd($"ALD VALVE PURGE {(on ? "開" : "關")}", () => _m.SetAldPurge(on));
+        };
+        ald.Children.Add(_purgeChk);
         C<Button>("BtnAldAllOff").Click += (_, _) => { if (_m is not null) Cmd("ALD 閥全關", () => _m.SetAldValves(0)); };
 
         if (_m is null) return;
@@ -152,6 +162,7 @@ public partial class MainWindow
         C<TextBlock>("TxtVacFb").Text = fb.ToString();
 
         for (int i = 0; i < 7; i++) _aldChk[i].IsChecked = (s.AldValves >> i & 1) != 0;
+        if (_purgeChk is not null) _purgeChk.IsChecked = s.AldPurgeOpen;
 
         int m = C<ComboBox>("CmbMfc").SelectedIndex;
         if (m >= 0)

@@ -52,6 +52,20 @@ public partial class MainWindow
     private string[] HeaterNames => _m?.Config.Heaters.Channels.Select(h => h.Name).ToArray() ?? Enumerable.Range(1, 16).Select(i => $"#{i}").ToArray();
     private ProcessHwConfig Hw => _m?.Config.Process ?? new ProcessHwConfig();
 
+    /// <summary>存 ALD 閥管路名稱（Recipe 頁「閥管路名稱…」與總覽點閥共用）；回傳錯誤訊息，成功回 null。</summary>
+    private string? SaveValveNames(string[] names)
+    {
+        try
+        {
+            ValveNames.Save(Hw.ValveNamesPath, names);
+            _valveNames = names;
+            _alarmLog?.Add(OpSource, "Info", "ALD 閥管路名稱：" + string.Join("、", Enumerable.Range(0, Hw.AldValveCount).Select(i => ValveNames.Label(_valveNames, i))), evt: "OPERATOR");
+            RebuildTable();
+            return null;
+        }
+        catch (Exception e) { return e.Message; }
+    }
+
     private void WireRecipe()
     {
         _valveNames = ValveNames.Load(Hw.ValveNamesPath, Hw.AldValveNames);
@@ -79,6 +93,7 @@ public partial class MainWindow
         var vbox = new TextBox[7];
         for (int i = 0; i < 7; i++)
         {
+            if (i >= Hw.AldValveCount) { vbox[i] = new TextBox(); continue; }   // 沒裝的閥不顯示（名稱保留）
             vg.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             var t = new TextBlock { Text = $"V{i + 1}", VerticalAlignment = VerticalAlignment.Center };
             vbox[i] = new TextBox { Margin = new(0, 1), Watermark = "例如 TMA、N2 Purge、O3" };
@@ -88,15 +103,10 @@ public partial class MainWindow
         C<Button>("BtnRValveNames").Flyout!.Opened += (_, _) => { for (int i = 0; i < 7; i++) vbox[i].Text = _valveNames[i]; };
         C<Button>("BtnValveNamesSave").Click += (_, _) =>
         {
-            try
-            {
-                _valveNames = vbox.Select(b => (b.Text ?? "").Trim()).ToArray();
-                ValveNames.Save(Hw.ValveNamesPath, _valveNames);
-                _alarmLog?.Add(OpSource, "Info", "ALD 閥管路名稱：" + string.Join("、", Enumerable.Range(0, 7).Select(i => ValveNames.Label(_valveNames, i))), evt: "OPERATOR");
-                C<Button>("BtnRValveNames").Flyout!.Hide();
-                RebuildTable();
-            }
-            catch (Exception e) { Msg($"閥名稱存檔失敗：{e.Message}"); }
+            // 沒顯示的閥（超過 aldValveCount）保留原本名稱
+            var names = Enumerable.Range(0, 7).Select(i => i < Hw.AldValveCount ? (vbox[i].Text ?? "").Trim() : _valveNames[i]).ToArray();
+            if (SaveValveNames(names) is { } err) Msg($"閥名稱存檔失敗：{err}");
+            else C<Button>("BtnRValveNames").Flyout!.Hide();
         };
 
         // 檔案
@@ -285,6 +295,7 @@ public partial class MainWindow
                         for (int c = 0; c < 8; c++)
                             if (sm[c] > cfg.Mfc.Channels[c].FullScale)
                                 e.Add($"{at} 子步驟 {j + 1}：MFC {c + 1} {sm[c]} 超過滿刻度 {cfg.Mfc.Channels[c].FullScale} {cfg.Mfc.Channels[c].Unit}");
+                    if (s.ValveMask >> cfg.Process.AldValveCount != 0) e.Add($"{at} 子步驟 {j + 1}：用到 V{cfg.Process.AldValveCount + 1} 以後的閥，本機只有 {cfg.Process.AldValveCount} 顆 ALD 閥");
                     if (s.Rf1W > cfg.Process.Rf1MaxW) e.Add($"{at} 子步驟 {j + 1}：RF1 {s.Rf1W:0} W 超過上限 {cfg.Process.Rf1MaxW:0} W");
                     if (s.Rf2W > cfg.Process.Rf2MaxW) e.Add($"{at} 子步驟 {j + 1}：RF2 {s.Rf2W:0} W 超過上限 {cfg.Process.Rf2MaxW:0} W");
                 }
@@ -658,9 +669,10 @@ public partial class MainWindow
     private Control? SubStepCell(int k, ProcessStep s)
     {
         if (s.Kind != StepKind.Ald || s.Ald is not { } ald) return null;
+        int nv = Hw.AldValveCount;   // 實機幾顆閥就顯示幾欄
         var g = new Grid();
         g.ColumnDefinitions.Add(new ColumnDefinition(20, GridUnitType.Pixel));
-        for (int v = 0; v < 7; v++) g.ColumnDefinitions.Add(new ColumnDefinition(26, GridUnitType.Pixel));
+        for (int v = 0; v < nv; v++) g.ColumnDefinitions.Add(new ColumnDefinition(26, GridUnitType.Pixel));
         g.ColumnDefinitions.Add(new ColumnDefinition(60, GridUnitType.Pixel));
         g.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
         void Add(Control c, int r, int col) { Grid.SetRow(c, r); Grid.SetColumn(c, col); g.Children.Add(c); }
@@ -668,24 +680,24 @@ public partial class MainWindow
 
         g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
         Add(H("#"), 0, 0);
-        for (int v = 0; v < 7; v++)
+        for (int v = 0; v < nv; v++)
         {
             var h = H($"V{v + 1}");
             ToolTip.SetTip(h, ValveNames.Label(_valveNames, v));
             Add(h, 0, 1 + v);
         }
-        Add(H("ms"), 0, 8);
+        Add(H("ms"), 0, 1 + nv);
         for (int i = 0; i < ald.Steps.Count; i++)
         {
             int j = i, r = i + 1;
             var st = ald.Steps[j];
             g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             if (st.HasMfcChange || st.Rf1W > 0 || st.Rf2W > 0)
-                Add(new Border { Background = MarkBg, [Grid.ColumnSpanProperty] = 10 }, r, 0);
+                Add(new Border { Background = MarkBg, [Grid.ColumnSpanProperty] = 3 + nv }, r, 0);
             var idx = new TextBlock { Text = $"{j + 1}", VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
             ToolTip.SetTip(idx, RecipeText.Step(st, _valveNames));
             Add(idx, r, 0);
-            for (int v = 0; v < 7; v++)
+            for (int v = 0; v < nv; v++)
             {
                 int bit = v;
                 var cb = new CheckBox { IsChecked = (st.ValveMask >> bit & 1) != 0, HorizontalAlignment = HorizontalAlignment.Center, MinWidth = 0, Padding = new(0) };
@@ -698,14 +710,14 @@ public partial class MainWindow
                 };
                 Add(cb, r, 1 + v);
             }
-            Add(Num(st.DurationMs, 1, 60000, 10, "0", x => { ald.Steps[j] = ald.Steps[j] with { DurationMs = (int)x }; Dirty(); }, 56), r, 8);
-            Add(SubStepMore(k, ald, j), r, 9);
+            Add(Num(st.DurationMs, 1, 60000, 10, "0", x => { ald.Steps[j] = ald.Steps[j] with { DurationMs = (int)x }; Dirty(); }, 56), r, 1 + nv);
+            Add(SubStepMore(k, ald, j), r, 2 + nv);
         }
         var add = new Button { Content = "＋ 子步驟", Padding = new(8, 2), Margin = new(0, 4, 0, 0), IsEnabled = ald.Steps.Count < AldRecipe.MaxSteps };
         ToolTip.SetTip(add, $"每段最多 {AldRecipe.MaxSteps} 個子步驟");
         add.Click += (_, _) => { ald.Steps.Add(new AldStep("Purge", 0, 1000)); RebuildTable(); Dirty(); };
         g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-        Grid.SetColumnSpan(add, 9);
+        Grid.SetColumnSpan(add, 2 + nv);
         Add(add, ald.Steps.Count + 1, 0);
         return g;
     }

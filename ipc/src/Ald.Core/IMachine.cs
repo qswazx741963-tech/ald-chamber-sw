@@ -22,6 +22,9 @@ public interface IMachine
     /// <summary>手動開 ALD 閥（bit0 = ALD_V1）；ALD 序列執行中由製程板自己控制。</summary>
     void SetAldValves(ushort mask);
 
+    /// <summary>ALD VALVE PURGE 閥（MFC 匯流管 → ALD 閥組，製程板 DO 15）。</summary>
+    void SetAldPurge(bool open);
+
     /// <summary>下載 ALD 步驟表到製程板（槽 1，時序由執行板 1 kHz 計時器執行）。</summary>
     void DownloadAld(AldRecipe recipe);
     void StartAld();

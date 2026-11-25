@@ -139,7 +139,7 @@ static void test_process_io(void)
     uint16_t hr[40] = {0};
     hr[COM_HR_WATCHDOG_MS] = 1000;
     hr[COM_HR_COMMAND] = COM_HR_COMMAND_RESET_ALARM;
-    hr[PROC_HR_DO_CMD] = (1u << PROC_HR_DO_CMD_BIT_ALD_V7) | (1u << PROC_HR_DO_CMD_BIT_MFC_UP_V8);
+    hr[PROC_HR_DO_CMD] = (1u << PROC_HR_DO_CMD_BIT_ALD_V7) | (1u << PROC_HR_DO_CMD_BIT_MFC_UP_V8) | (1u << PROC_HR_DO_CMD_BIT_ALD_PURGE_V);
     hr[PROC_HR_MFC_SP + 7] = 5000;                 /* 50.00 % */
     hr[PROC_HR_MFC_SP + 0] = 10001;                /* 超過 100 % → 不送 */
     fake_can_rx_push(bp_make_id(BP_T_HR, 1, 0), buf, bp_pack_regs(buf, 0, hr, 30));
@@ -150,6 +150,8 @@ static void test_process_io(void)
     CHECK_EQ(fake_ao[0], 0);
     CHECK(fake_do[6]);                            /* ALD_V7 */
     CHECK(fake_do[14]);                           /* MFC_UP_V8 */
+    CHECK(fake_do[15]);                           /* ALD_PURGE_V */
+    CHECK(g_ir[PROC_IR_DO_FB] >> PROC_IR_DO_FB_BIT_ALD_PURGE_V & 1u);
     CHECK_EQ(g_ir[PROC_IR_MFC_PV + 7], 2500);     /* 1.25 V = 25.00 % */
     CHECK_EQ(g_ir[PROC_IR_MANOMETER_RAW], 4321);
 }

@@ -421,7 +421,7 @@ public static class MainBoard
 
 }
 
-/// <summary>製程控制（ALD 閥 ×7、MFC 上游閥 ×8、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）（槽 1，位址 = 200 + 區內位址）</summary>
+/// <summary>製程控制（ALD 閥 ×7、MFC 上游閥 ×8、ALD VALVE PURGE 閥（MFC 匯流 → ALD 閥組，2026-11-25，DO 15）、MFC / 壓力控制器 ×8、腔體壓力計、RF 線檢知）（槽 1，位址 = 200 + 區內位址）</summary>
 public static class ProcessBoard
 {
     public const int Slot = 1;
@@ -482,6 +482,7 @@ public static class ProcessBoard
             MfcUpV6 = 1 << 12,
             MfcUpV7 = 1 << 13,
             MfcUpV8 = 1 << 14,
+            AldPurgeV = 1 << 15,
         }
         /// <summary>Bronkhorst EL-FLOW F-201CB ×7 + EL-Press P-602CV ×1（通道 8，壓力）；換成 sccm / psi 在 IPC（config 每台滿刻度） [%FS]</summary>
         public const ushort MfcPv = 230;
@@ -532,6 +533,7 @@ public static class ProcessBoard
             MfcUpV6 = 1 << 12,
             MfcUpV7 = 1 << 13,
             MfcUpV8 = 1 << 14,
+            AldPurgeV = 1 << 15,
         }
         /// <summary>0–100 % 滿刻度 = 0–5 V [%FS]</summary>
         public const ushort MfcSp = 220;

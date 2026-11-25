@@ -84,6 +84,8 @@ internal sealed class FakeMachine : IMachine
     public void SetHeater(int ch, double sp, bool en, double ramp = 0) { HeaterSp[ch] = sp; HeaterOn[ch] = en; Log.Add($"HEAT {ch} {sp} {en}"); }
     public void SetMfc(int ch, double v, bool up) => Mfc[ch] = up ? v : 0;
     public void SetAldValves(ushort mask) => Log.Add($"ALDV {mask}");
+    public bool AldPurge;
+    public void SetAldPurge(bool open) { AldPurge = open; Log.Add($"PURGE {open}"); }
     public void DownloadAld(AldRecipe r) => Downloaded = r;
     public void StartAld() { AldRunning = true; AldTicks = 0; Log.Add("START"); }
     public void StopAld() { AldRunning = false; Log.Add("STOP"); }
@@ -137,6 +139,8 @@ public class SequencerTests
         Assert.Equal(5, m.Downloaded!.Cycles);
         Assert.Contains("START", m.Log);
         Assert.All(m.Mfc, v => Assert.Equal(0, v));                       // 製程結束關氣
+        Assert.True(m.Log.IndexOf("PURGE True") < m.Log.IndexOf("START"));  // ALD 前開 ALD VALVE PURGE
+        Assert.False(m.AldPurge);                                           // 結束關掉
         Assert.False(m.VacuumCommand.HasFlag(VacuumOutputs.ChamberVent)); // 回填完關 vent
         Assert.False(m.VacuumCommand.HasFlag(VacuumOutputs.TurboGv));
         int iPump = steps.FindIndex(x => x.Contains(" 抽真空")), iHeat = steps.FindIndex(x => x.EndsWith(" 確認溫度")),

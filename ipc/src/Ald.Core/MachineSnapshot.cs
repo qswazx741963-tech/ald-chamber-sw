@@ -48,6 +48,7 @@ public sealed record MachineSnapshot
     public bool RfOn { get; init; }
     public ushort AldValves { get; init; }                     // ALD_V1~7 實際輸出（bit0 = V1）
     public ushort MfcUpstreamValves { get; init; }             // MFC_UP_V1~8（bit0 = V1）
+    public bool AldPurgeOpen { get; init; }                    // ALD_PURGE_V（MFC 匯流 → ALD 閥組）
     public double[] MfcPct { get; init; } = Filled(8, double.NaN);    // % 滿刻度
     public double[] MfcValue { get; init; } = Filled(8, double.NaN);  // 換成 config 單位（sccm / psi）
     public int AldCycle { get; init; }

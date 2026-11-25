@@ -167,6 +167,7 @@ public sealed class ProcessSequencer
     private void GasOff(double[] cur, bool[] opened)
     {
         _m.SetAldValves(0);
+        _m.SetAldPurge(false);
         for (int i = 0; i < 8; i++) { _m.SetMfc(i, 0, false); cur[i] = 0; opened[i] = false; }
     }
 
@@ -179,6 +180,7 @@ public sealed class ProcessSequencer
         Require(_m.Snapshot.SlitClosed && _m.Snapshot.ArmClearOfSv, "Slit valve 未關或手臂未退出");
         if (ald.UsesRf) throw new SequenceException("配方有 RF 步驟，但 RF 控制還沒接上（硬體待確認）");
         if (ald.O3SetPct > 0) throw new SequenceException("配方有使用 O3，但 O3 產生器控制還沒接上（硬體待確認）");
+        _m.SetAldPurge(true);        // MFC 匯流 → ALD 閥組的進氣閥，到 GasOff / 結束才關
         _m.DownloadAld(ald);
         await DelayAsync(0.3, ct);   // 讓步驟表經背板送到製程板
         _m.StartAld();
@@ -209,6 +211,7 @@ public sealed class ProcessSequencer
     {
         SetStep("製程結束");
         _m.SetAldValves(0);
+        _m.SetAldPurge(false);
         for (int i = 0; i < 8; i++) _m.SetMfc(i, 0, false);   // 加熱維持常駐設定
     }
 
@@ -238,6 +241,7 @@ public sealed class ProcessSequencer
         {
             _m.StopAld();
             _m.SetAldValves(0);
+            _m.SetAldPurge(false);
             for (int i = 0; i < 8; i++) _m.SetMfc(i, 0, false);
         }
         catch (Exception) { /* 通訊中斷時主控板看門狗會讓全機進安全狀態 */ }

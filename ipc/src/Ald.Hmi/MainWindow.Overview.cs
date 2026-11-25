@@ -82,8 +82,9 @@ public partial class MainWindow
         int chuck = Math.Max(0, names.ToList().FindIndex(x => x.Name.StartsWith("CHUCK", StringComparison.OrdinalIgnoreCase)));
         C<OverviewView>("Ov").Update(new OverviewModel(s, _wafers?.Loadlock, _wafers?.Pm,
             llId, pmId,
-            s.AldRunning || s.SysState == SystemState.Process, m.Config.Transfer.ArmPmSteps,
+            s.AldRunning || s.SysState == SystemState.Process, XferRunning,
             mfc.Select(c => c.Name).ToArray(), mfc.Select(c => c.Unit).ToArray(), m.MfcSetpoints, _valveNames,
+            m.Config.Process.AldValveCount,
             s.TempC.Length > chuck ? s.TempC[chuck] : double.NaN, m.HeaterSetpoint(chuck)));
     }
 }

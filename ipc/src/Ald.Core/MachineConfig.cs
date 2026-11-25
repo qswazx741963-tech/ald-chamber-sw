@@ -65,6 +65,7 @@ public sealed record MachineConfig
             yield return "leakTest 壓力設定錯誤（需 abortAboveTorr > startBelowTorr > 0）";
         if (LeakTest.MeasureS is < 10 or > 7200) yield return "leakTest.measureS 需在 10–7200";
         if (Process.AldValveNames.Count != 7) yield return "process.aldValveNames 需 7 個（V1~V7）";
+        if (Process.AldValveCount is < 1 or > 7) yield return "process.aldValveCount 需在 1~7";
         if (Process.Rf1MaxW < 0 || Process.Rf2MaxW < 0) yield return "process.rf1MaxW / rf2MaxW 不能是負數";
         if (Gauges.Find(Gauges.PmInterlockGauge) is null) yield return $"gauges.pmInterlockGauge 指到不存在的壓力計 {Gauges.PmInterlockGauge}";
     }
@@ -272,6 +273,8 @@ public sealed record ProcessHwConfig
 {
     /// <summary>V1~V7 接的管路預設名稱（配方編輯頁顯示用，例如 "TMA"、"N2 Purge"、"O3"）。人機改過就以 ValveNamesPath 的檔案為準。</summary>
     public List<string> AldValveNames { get; init; } = ["", "", "", "", "", "", ""];
+    /// <summary>實機裝了幾顆 ALD 閥（1~7，2026-11-25 本機 6 顆）：人機只顯示 / 只能勾前幾顆，配方用到超過的閥會擋。製程板暫存器仍是 V1~V7。</summary>
+    public int AldValveCount { get; init; } = 7;
     /// <summary>人機「閥管路名稱」存檔位置。</summary>
     public string ValveNamesPath { get; init; } = "data/ald-valves.json";
     /// <summary>RF 功率上限（W），0 = 沒有這台。預計鎧泰 600 W / 300 W。</summary>

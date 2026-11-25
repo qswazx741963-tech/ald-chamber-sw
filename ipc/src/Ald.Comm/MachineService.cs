@@ -228,6 +228,17 @@ public sealed class MachineService : IMachine, IDisposable
         }
     }
 
+    public void SetAldPurge(bool open)
+    {
+        lock (_cmdLock)
+        {
+            const int bit = 15;   // ALD_PURGE_V
+            var d = open ? (ushort)(_procDo | 1 << bit) : (ushort)(_procDo & ~(1 << bit));
+            _link.Write(ProcessBoard.Holding.DoCmd, d);
+            _procDo = d;
+        }
+    }
+
     public void SetAldValves(ushort mask)
     {
         if (mask > 0x7F) throw new ArgumentOutOfRangeException(nameof(mask), "只有 ALD_V1~V7");

@@ -243,6 +243,7 @@
   "process": {
     "_comment": "製程硬體（2026-11-12）。aldValveNames = V1~V7 接的管路名稱（配方頁顯示用，待管路確認後填）。RF / O3 硬體確認前 rfReady / o3Ready 維持 false：含 RF / O3 的配方可以編輯，但不能執行",
     "aldValveNames": [ "", "", "", "", "", "", "" ],
+    "aldValveCount": 6,
     "rf1MaxW": 600,
     "rf2MaxW": 300,
     "rfReady": false,

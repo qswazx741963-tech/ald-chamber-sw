@@ -59,15 +59,47 @@ public partial class MainWindow
             return b;
         }
 
-        if (id[0] == 'V' && id.Length == 2)            // ALD 閥
+        if (id[0] == 'V' && id.Length == 2)            // ALD 閥：開關 + 名稱（2026-11-25 使用者要求每顆都能改名）
         {
             int i = id[1] - '0';
             string name = _valveNames.Length > i && !string.IsNullOrWhiteSpace(_valveNames[i]) ? $"（{_valveNames[i]}）" : "";
-            title.Text = $"ALD 閥 V{i + 1}{name}";
-            stateFn = s => $"目前：{((s.AldValves >> i & 1) != 0 ? "開" : "關")}{(s.AldRunning ? "（ALD 執行中，由製程板控制）" : "")}";
-            Op("開", () => Cmd($"ALD V{i + 1} 開", () => m.SetAldValves((ushort)(m.Snapshot.AldValves | 1 << i))));
-            Op("關", () => Cmd($"ALD V{i + 1} 關", () => m.SetAldValves((ushort)(m.Snapshot.AldValves & ~(1 << i)))));
+            title.Text = $"ALD 閥 AV{i + 1}{name}";
+            stateFn = s => $"目前：{((s.AldValves >> i & 1) != 0 ? "開" : "關")}{(s.AldRunning ? "（ALD 執行中，由製程板控制）" : "")}\n"
+                + $"ALD VALVE PURGE {(s.AldPurgeOpen ? "開" : "關")}";
+            Op("開", () => Cmd($"ALD AV{i + 1} 開", () => m.SetAldValves((ushort)(m.Snapshot.AldValves | 1 << i))));
+            Op("關", () => Cmd($"ALD AV{i + 1} 關", () => m.SetAldValves((ushort)(m.Snapshot.AldValves & ~(1 << i)))));
             Op("ALD 閥全關", () => Cmd("ALD 閥全關", () => m.SetAldValves(0)));
+            // 名稱：權限同配方編輯（工程師以上、OFFLINE、沒有流程）
+            var nameBox = new TextBox { Text = _valveNames.Length > i ? _valveNames[i] : "", Watermark = "例如 TMA、H2O、N2 Purge", Width = 150 };
+            var save = new Button { Content = "存名稱", Margin = new(6, 0, 0, 0) };
+            var nameMsg = new TextBlock { FontSize = 12, Foreground = HeatErrBg, TextWrapping = TextWrapping.Wrap };
+            save.Click += (_, _) =>
+            {
+                var names = _valveNames.ToArray();
+                names[i] = (nameBox.Text ?? "").Trim();
+                if (SaveValveNames(names) is { } err) { nameMsg.Text = $"存檔失敗：{err}"; return; }
+                fly.Hide();
+            };
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock { Text = "名稱 ", VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(nameBox); row.Children.Add(save);
+            extra.Children.Add(row); extra.Children.Add(nameMsg);
+            bool canName = Can(Permission.EditRecipe) && !Busy;
+            nameBox.IsEnabled = save.IsEnabled = canName;
+            if (!canName) nameMsg.Text = "改名稱需要工程師以上權限，且在 OFFLINE、沒有流程執行";
+        }
+        else if (id == "Purge")                          // ALD VALVE PURGE（MFC 匯流 → ALD 閥組）
+        {
+            title.Text = "ALD VALVE PURGE";
+            stateFn = s => $"目前：{(s.AldPurgeOpen ? "開" : "關")}\nMFC 匯流管 → ALD 閥組的進氣閥（製程板 DO 15）。\n配方 ALD 步驟會自動開，製程結束 / 中止關。";
+            Op("開", () => Cmd("ALD VALVE PURGE 開", () => m.SetAldPurge(true)));
+            Op("關", () => Cmd("ALD VALVE PURGE 關", () => m.SetAldPurge(false)));
+        }
+        else if (id == "RF")                             // RF：目前只有狀態（控制等硬體確認）
+        {
+            title.Text = "RF";
+            stateFn = s => $"RF {(s.RfOn ? "ON" : "OFF")}\n電源線 {(s.Rf1PowerCableOk ? "OK" : "未接")}　Match 線 {(s.Rf1MatchCableOk ? "OK" : "未接")}\n"
+                + "功率設定 / Fwd / Ref 等 RF 通訊手冊確認後接上，目前顯示 ----。";
         }
         else if (id[0] == 'M')                           // MFC
         {
