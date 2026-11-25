@@ -74,13 +74,13 @@ public partial class MainWindow
 
         // MFC
         var cmbM = C<ComboBox>("CmbMfc");
-        cmbM.ItemsSource = cfg.Mfc.Channels.Select((c, i) => $"{i + 1} {c.Name}（{c.Use}）").ToList();
+        RefreshManualMfcList();
         cmbM.SelectionChanged += (_, _) =>
         {
             int ch = cmbM.SelectedIndex;
             if (ch < 0) return;
-            C<NumericUpDown>("NumMfc").Maximum = (decimal)cfg.Mfc.Channels[ch].FullScale;
-            C<TextBlock>("TxtMfcUnit").Text = $"設定 {cfg.Mfc.Channels[ch].Unit}";
+            C<NumericUpDown>("NumMfc").Maximum = (decimal)_m.Config.Mfc.Channels[ch].FullScale;
+            C<TextBlock>("TxtMfcUnit").Text = $"設定 {_m.Config.Mfc.Channels[ch].Unit}";
         };
         cmbM.SelectedIndex = 1;
         C<Button>("BtnMfcApply").Click += (_, _) =>
@@ -88,7 +88,7 @@ public partial class MainWindow
             int ch = cmbM.SelectedIndex;
             double v = (double)(C<NumericUpDown>("NumMfc").Value ?? 0);
             bool up = C<CheckBox>("ChkMfcUp").IsChecked == true;
-            Cmd($"MFC {ch + 1} → {v:0.0} {cfg.Mfc.Channels[ch].Unit}{(up ? "，開上游閥" : "")}", () => _m.SetMfc(ch, v, up));
+            Cmd($"MFC {ch + 1} → {v:0.0} {_m.Config.Mfc.Channels[ch].Unit}{(up ? "，開上游閥" : "")}", () => _m.SetMfc(ch, v, up));
         };
         C<Button>("BtnMfcOff").Click += (_, _) => { int ch = cmbM.SelectedIndex; Cmd($"MFC {ch + 1} 關", () => _m.SetMfc(ch, 0, false)); };
         C<Button>("BtnMfcAllOff").Click += (_, _) => Cmd("MFC 全部關閉", () => { for (int i = 0; i < 8; i++) _m.SetMfc(i, 0, false); });
@@ -117,6 +117,16 @@ public partial class MainWindow
         s.SafeState ? "系統在安全狀態：執行板會擋下大部分輸出，請先按 Reset" : "";
 
     private bool ManualLocked(MachineSnapshot s) => !s.Connected || Busy || !Can(Permission.ManualControl);
+
+    /// <summary>手動頁 MFC 下拉選單（MFC 規格改過要重新整理，選的通道不變）。</summary>
+    private void RefreshManualMfcList()
+    {
+        if (_m is null) return;
+        var cmb = C<ComboBox>("CmbMfc");
+        int sel = cmb.SelectedIndex;
+        cmb.ItemsSource = _m.Config.Mfc.Channels.Select((c, i) => $"{i + 1} {c.Name}（{c.Use}）").ToList();
+        if (sel >= 0) cmb.SelectedIndex = sel;
+    }
 
     private void RenderManual(MachineSnapshot s)
     {

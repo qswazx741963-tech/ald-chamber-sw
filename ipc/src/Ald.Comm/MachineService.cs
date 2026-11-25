@@ -13,7 +13,7 @@ namespace Ald.Comm;
 /// </summary>
 public sealed class MachineService : IMachine, IDisposable
 {
-    private readonly MachineConfig _cfg;
+    private volatile MachineConfig _cfg;
     private readonly MainBoardLink _link;
     private readonly object _cmdLock = new();
     private volatile MachineSnapshot _snap = new() { SafeState = true };
@@ -21,6 +21,14 @@ public sealed class MachineService : IMachine, IDisposable
     private ushort _procDo, _heaterEnable, _motDo;
 
     public MachineConfig Config => _cfg;
+
+    /// <summary>人機改 MFC 規格（2026-11-25）：換掉 config 的 MFC 段，之後的換算（設定值、讀值、ALD 切換）都用新滿刻度。</summary>
+    public void UpdateMfcSpecs(IReadOnlyList<MfcChannelConfig> channels)
+    {
+        var e = MfcSpecs.Validate(channels).ToList();
+        if (e.Count > 0) throw new ArgumentException(string.Join("；", e));
+        _cfg = _cfg with { Mfc = _cfg.Mfc with { Channels = channels.ToList() } };
+    }
     public LoadlockService Loadlock { get; }
     public AlarmManager Alarms { get; }
     public MachineSnapshot Snapshot => _snap;

@@ -151,6 +151,68 @@ public sealed record MfcChannelConfig
 public sealed record MfcConfig
 {
     public List<MfcChannelConfig> Channels { get; init; } = new();
+    /// <summary>人機「MFC 規格」存檔位置（2026-11-25）：有這個檔就以它為準，沒有就用上面的 channels。</summary>
+    public string SpecPath { get; init; } = "data/mfc.json";
+}
+
+/// <summary>
+/// MFC 規格（名稱 / 氣體、用途、滿刻度、單位）在人機設定（2026-11-25 使用者要求）。
+/// 製程板只認 % 滿刻度，換算在 IPC，所以改滿刻度不用動韌體；改完立即生效（之後下的設定值照新滿刻度換算）。
+/// </summary>
+public static class MfcSpecs
+{
+    public const int Count = 8;
+    private static readonly JsonSerializerOptions Opt = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true, WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    /// <summary>讀檔；沒有檔案或內容不合格就用 config 的預設。</summary>
+    public static List<MfcChannelConfig> Load(string path, IReadOnlyList<MfcChannelConfig> fallback)
+    {
+        try
+        {
+            if (File.Exists(path) && JsonSerializer.Deserialize<List<MfcChannelConfig>>(File.ReadAllText(path), Opt) is { Count: Count } a
+                && !Validate(a).Any())
+                return a;
+        }
+        catch (Exception) { /* 用預設 */ }
+        return fallback.ToList();
+    }
+
+    public static IEnumerable<string> Validate(IReadOnlyList<MfcChannelConfig> ch)
+    {
+        if (ch.Count != Count) { yield return $"MFC 需 {Count} 組"; yield break; }
+        for (int i = 0; i < ch.Count; i++)
+        {
+            if (string.IsNullOrWhiteSpace(ch[i].Name)) yield return $"MFC {i + 1} 請填名稱";
+            if (!(ch[i].FullScale > 0) || ch[i].FullScale > 1_000_000) yield return $"MFC {i + 1} 滿刻度需大於 0";
+            if (string.IsNullOrWhiteSpace(ch[i].Unit)) yield return $"MFC {i + 1} 請填單位";
+        }
+    }
+
+    public static void Save(string path, IReadOnlyList<MfcChannelConfig> ch)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(ch, Opt));
+        File.Move(path + ".tmp", path, overwrite: true);
+    }
+
+    /// <summary>兩版差異（記操作記錄用），例如「MFC 2 滿刻度 200 → 500」。</summary>
+    public static List<string> Diff(IReadOnlyList<MfcChannelConfig> a, IReadOnlyList<MfcChannelConfig> b)
+    {
+        var d = new List<string>();
+        for (int i = 0; i < Math.Min(a.Count, b.Count); i++)
+        {
+            if (a[i].Name != b[i].Name) d.Add($"MFC {i + 1} 名稱 {a[i].Name} → {b[i].Name}");
+            if (a[i].Use != b[i].Use) d.Add($"MFC {i + 1} 用途 {a[i].Use} → {b[i].Use}");
+            if (a[i].FullScale != b[i].FullScale) d.Add($"MFC {i + 1} 滿刻度 {a[i].FullScale:0.###} → {b[i].FullScale:0.###}");
+            if (a[i].Unit != b[i].Unit) d.Add($"MFC {i + 1} 單位 {a[i].Unit} → {b[i].Unit}");
+        }
+        return d;
+    }
 }
 
 public sealed record HeaterChannelConfig

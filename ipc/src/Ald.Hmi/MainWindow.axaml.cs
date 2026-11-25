@@ -43,6 +43,7 @@ public partial class MainWindow : Window
         WireOverviewClick();
         WireHeaterPage();
         WireRecipe();
+        WireMfcSpecs();
         WireMaint();
         WireTower();
         WireBatch();

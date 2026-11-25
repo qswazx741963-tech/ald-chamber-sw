@@ -26,6 +26,11 @@
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Margin" Value="8,6" />
         </Style>
+        <!-- 寬的小視窗（MFC 規格表）：預設 FlyoutPresenter 最大寬 456 放不下 -->
+        <Style Selector="FlyoutPresenter.wide">
+            <Setter Property="MaxWidth" Value="1000"/>
+            <Setter Property="MaxHeight" Value="760"/>
+        </Style>
     </Window.Styles>
     <!-- 底層版主畫面：狀態一覽 + 基本操作。完整的手動操作頁、Recipe 編輯、趨勢圖、權限之後再加。 -->
     <Grid>
@@ -333,6 +338,7 @@
                                 </Flyout>
                             </Button.Flyout>
                         </Button>
+                        <Button x:Name="BtnRMfcSpecs" Content="MFC 規格…" ToolTip.Tip="MFC 名稱 / 氣體、用途、滿刻度、單位（整台機器共用）" />
                         <TextBlock x:Name="TxtRTotal" VerticalAlignment="Center" Foreground="#5A6B7D" />
                     </StackPanel>
                     <Border Classes="card">
